@@ -1,0 +1,73 @@
+# Niles AI - Complete Docker Setup
+# All services: n8n + Evolution API + PostgreSQL
+
+services:
+  # n8n Workflow Automation
+  n8n:
+    container_name: niles_n8n
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - ~/.n8n:/home/node/.n8n
+    networks:
+      - niles_network
+
+  # PostgreSQL for Evolution API
+  evolution_postgres:
+    container_name: niles_evolution_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
+      POSTGRES_DB: evolution_db
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    networks:
+      - niles_network
+
+  # Evolution API (WhatsApp)
+  evolution_api:
+    container_name: niles_evolution_api
+    image: atendai/evolution-api:v2.1.1
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # API Authentication
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+
+      # Database Configuration
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "postgresql://evolution:${EVOLUTION_POSTGRES_PASSWORD}@evolution_postgres:5432/evolution_db?schema=evolution_api"
+      DATABASE_CONNECTION_CLIENT_NAME: "niles_evolution"
+
+      # Data Persistence
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+
+      # Cache
+      CACHE_REDIS_ENABLED: "false"
+
+      # WhatsApp Version
+      CONFIG_SESSION_PHONE_VERSION: ""
+    volumes:
+      - ~/.evolution/instances:/evolution/instances
+    networks:
+      - niles_network
+    depends_on:
+      - evolution_postgres
+
+volumes:
+  evolution_postgres:
+
+networks:
+  niles_network:
+    driver: bridge
