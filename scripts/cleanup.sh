@@ -29,7 +29,7 @@ fi
 echo "🗑️  Stopping and removing containers..."
 
 # Remove containers from current docker-compose.yml
-docker compose -f docker/docker-compose.yml down -v 2>/dev/null || true
+docker compose -f docker/docker-compose.yml --env-file .env down -v 2>/dev/null || true
 
 # Also remove old containers (if they exist)
 echo "🗑️  Removing old containers..."
