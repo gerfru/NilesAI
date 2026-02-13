@@ -24,7 +24,7 @@ fi
 
 # Start Docker services
 echo "📦 Starting Docker containers..."
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml --env-file .env up -d
 
 # Wait for services to be ready
 echo "⏳ Waiting for services to start..."

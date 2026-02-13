@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 echo "📦 Stopping Docker containers..."
 
 # Stop containers from current docker-compose.yml
-docker compose -f docker/docker-compose.yml stop 2>/dev/null || true
+docker compose -f docker/docker-compose.yml --env-file .env stop 2>/dev/null || true
 
 # Also stop old containers (if they exist)
 docker stop n8n evolution_api evolution_postgres 2>/dev/null || true
