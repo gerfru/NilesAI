@@ -164,11 +164,11 @@ else
 
     # Pull images first
     echo "Pulling Docker images (this may take a few minutes)..."
-    docker compose -f docker/docker-compose.yml pull
+    docker compose -f docker/docker-compose.yml --env-file .env pull
 
     echo ""
     echo "Starting services..."
-    docker compose -f docker/docker-compose.yml up -d
+    docker compose -f docker/docker-compose.yml --env-file .env up -d
 
     echo ""
     echo "Waiting for services to initialize..."
@@ -179,7 +179,7 @@ else
     else
         echo_error "Failed to start services"
         echo ""
-        echo "Check logs with: docker compose -f docker/docker-compose.yml logs"
+        echo "Check logs with: docker compose -f docker/docker-compose.yml --env-file .env logs"
         exit 1
     fi
 fi
@@ -215,7 +215,7 @@ if curl -s http://localhost:5678 > /dev/null 2>&1; then
     fi
 else
     echo_error "n8n is not reachable"
-    echo "Check: docker compose -f docker/docker-compose.yml logs n8n"
+    echo "Check: docker compose -f docker/docker-compose.yml --env-file .env logs n8n"
 fi
 
 # Step 5: Google Calendar
