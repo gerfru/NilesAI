@@ -6,7 +6,7 @@
 
 Integration von WhatsApp via Evolution API (self-hosted) für Nachrichten-Management durch den AI-Agenten.
 
-**Methode:** Evolution API v2.1.1 mit PostgreSQL + Docker Compose
+**Methode:** Evolution API v2.3.7 mit PostgreSQL + Docker Compose
 
 **Status:** ✅ Funktioniert (getestet Februar 2026)
 
@@ -50,7 +50,7 @@ services:
 
   evolution-api:
     container_name: evolution_api
-    image: atendai/evolution-api:v2.1.1
+    image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
     ports:
       - "8080:8080"

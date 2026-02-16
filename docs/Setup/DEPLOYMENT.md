@@ -17,16 +17,21 @@ Das Niles-Setup besteht aus:
 ```
 Niles/
 ├── docker/
-│   └── docker-compose.yml  # Alle Docker Services
+│   └── docker-compose.yml     # Alle Docker Services
+├── workflows/
+│   ├── Niles-hybrid-with-contacts.json  # Haupt-Workflow (WhatsApp AI Agent)
+│   └── sync-contacts.json     # CardDAV → PostgreSQL Kontakt-Sync
 ├── scripts/
-│   ├── setup.sh           # Einmalige Ersteinrichtung
-│   ├── setup-interactive.sh  # Interaktives Setup mit Checks
-│   ├── start.sh           # Tägliches Starten
-│   ├── stop.sh            # Stoppen
-│   ├── status.sh          # Status-Check
-│   ├── cleanup.sh         # Komplett zurücksetzen (VORSICHT!)
-│   └── backup.sh          # Backup erstellen
-└── Setup/                 # Detaillierte Dokumentation
+│   ├── setup-interactive.sh   # Interaktives Setup mit Checks
+│   ├── start.sh               # Tägliches Starten
+│   ├── stop.sh                # Stoppen
+│   ├── status.sh              # Status-Check
+│   ├── backup.sh              # Backup erstellen
+│   ├── cleanup.sh             # Komplett zurücksetzen (VORSICHT!)
+│   └── import-workflows.sh    # Workflows via n8n API importieren
+├── docs/
+│   └── Setup/                 # Detaillierte Dokumentation
+└── .env                       # API Keys & Passwörter (nicht in Git)
 ```
 
 ## Schnellstart (Neues System)
@@ -309,12 +314,12 @@ Siehe [Setup/07-production.md](Setup/07-production.md) für Details.
 
 ### API Keys ändern
 
-In `docker/docker-compose.yml`:
+In `.env` im Projekt-Root:
 
-```yaml
-environment:
-  AUTHENTICATION_API_KEY: "DEIN_NEUES_KEY"  # Evolution API
-  POSTGRES_PASSWORD: "DEIN_NEUES_PASSWORD"   # PostgreSQL
+```bash
+N8N_API_KEY=dein-n8n-api-key           # für import-workflows.sh
+EVOLUTION_API_KEY=dein-evolution-key     # Evolution API + n8n Workflows
+EVOLUTION_POSTGRES_PASSWORD=dein-pw      # PostgreSQL
 ```
 
 **WICHTIG:** Nach Änderung Container neu starten!
