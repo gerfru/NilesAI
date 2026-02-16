@@ -8,10 +8,10 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
       "position": [
-        -400,
-        0
+        -1040,
+        192
       ],
-      "id": "6db04ba3-be83-4f6e-8d28-bba6e49954c7",
+      "id": "4180efb0-0859-4a60-b1f0-950d3e0fafdf",
       "name": "When chat message received",
       "webhookId": "c8af9ddc-3a28-4114-ac8e-9e128243eec4"
     },
@@ -24,10 +24,10 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        -80,
-        0
+        -720,
+        192
       ],
-      "id": "a9d81522-74ed-45ea-9c1d-6b0df84907f1",
+      "id": "1c6daad3-67cb-46fe-a773-39eab64a4f18",
       "name": "AI Agent"
     },
     {
@@ -44,10 +44,10 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
       "position": [
-        -80,
-        208
+        -720,
+        400
       ],
-      "id": "506d3ee1-054f-431e-868e-22270be7d836",
+      "id": "ae79546a-9aaf-4c01-91d0-5db9982708e7",
       "name": "Qwen 2.5 7B MLX",
       "alwaysOutputData": false,
       "executeOnce": false,
@@ -65,10 +65,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        160,
-        0
+        -480,
+        192
       ],
-      "id": "parse-ai-output",
+      "id": "755eda90-c399-46fc-be72-93b4b862ed7b",
       "name": "Parse AI Output"
     },
     {
@@ -93,21 +93,21 @@
               "rightValue": true
             }
           ]
-        }
+        },
+        "options": {}
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        400,
-        0
+        -240,
+        192
       ],
-      "id": "route-group-or-phone",
+      "id": "7772b513-a264-4f95-852d-21327eaca0dc",
       "name": "Route: Group or Phone?"
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "http://evolution_api:8080/chat/fetchChats/niles-whatsapp",
+        "url": "http://evolution_api:8080/group/fetchAllGroups/niles-whatsapp?getParticipants=false",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -122,23 +122,23 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        640,
-        -180
+        0,
+        0
       ],
-      "id": "fetch-groups",
+      "id": "d64a723e-3ec8-4c32-9eb1-5e1a5d83305c",
       "name": "Fetch WhatsApp Groups"
     },
     {
       "parameters": {
-        "jsCode": "const groupName = $('Parse AI Output').first().json.groupName;\nconst allChats = $json.body || $json;\n\n// Filter for groups only (groups have JID ending with @g.us)\nconst groups = Array.isArray(allChats) ? allChats.filter(chat =>\n  (chat.id || chat.jid)?.endsWith('@g.us')\n) : [];\n\nif (groups.length === 0) {\n  throw new Error('Keine WhatsApp-Gruppen verfügbar. Ist WhatsApp verbunden?');\n}\n\n// Find matching group using partial match (case-insensitive)\nconst matchedGroup = groups.find(g =>\n  (g.subject?.toLowerCase() || '').includes(groupName) ||\n  (g.name?.toLowerCase() || '').includes(groupName)\n);\n\nif (!matchedGroup) {\n  const availableGroups = groups.map(g => g.subject || g.name).filter(Boolean).join(', ');\n  throw new Error(`Gruppe \"${groupName}\" wurde nicht gefunden. Verfügbare Gruppen: ${availableGroups || '(keine)'}`);\n}\n\n// Return the group JID (format: 120363xxx@g.us)\nreturn {\n  number: matchedGroup.id || matchedGroup.jid,\n  text: $('Parse AI Output').first().json.text,\n  groupFound: true,\n  groupName: matchedGroup.subject || matchedGroup.name\n};"
+        "jsCode": "const groupName = $('Parse AI Output').first().json.groupName;\n\n// Get all groups from previous node (n8n splits array into multiple items)\nconst groups = $input.all().map(item => item.json);\n\nif (groups.length === 0) {\n  throw new Error('Keine WhatsApp-Gruppen verfügbar. Ist WhatsApp verbunden?');\n}\n\n// Find matching group using partial match (case-insensitive)\nconst matchedGroup = groups.find(g =>\n  (g.subject?.toLowerCase() || '').includes(groupName)\n);\n\nif (!matchedGroup) {\n  const availableGroups = groups.map(g => g.subject).filter(Boolean).join(', ');\n  throw new Error(`Gruppe \"${groupName}\" wurde nicht gefunden. Verfügbare Gruppen: ${availableGroups || '(keine)'}`);\n}\n\n// Return the group JID (format: 120363xxx@g.us)\nreturn {\n  number: matchedGroup.id,\n  text: $('Parse AI Output').first().json.text,\n  groupFound: true,\n  groupName: matchedGroup.subject\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        -180
+        240,
+        0
       ],
-      "id": "match-group",
+      "id": "10d414b8-d4f4-413b-b7e3-8fe4f9a4e57b",
       "name": "Match Group by Name"
     },
     {
@@ -172,10 +172,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1120,
-        -180
+        480,
+        0
       ],
-      "id": "send-to-group",
+      "id": "0878166f-a4a7-4607-b3e2-4b9c6ca99cc2",
       "name": "Send to Group"
     },
     {
@@ -209,10 +209,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        640,
-        180
+        0,
+        368
       ],
-      "id": "send-to-phone",
+      "id": "177ef632-d3ca-44e3-990b-62283a54932a",
       "name": "Send to Phone"
     }
   ],
@@ -309,10 +309,10 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "hybrid-v1",
+  "versionId": "de5f33c0-f1d6-4674-9703-df970e69ebc9",
   "meta": {
     "instanceId": "39144f6df16e1c2f4e4d367c9c17d3e054797a9b4c0736b11e20a857fb329f3d"
   },
-  "id": "NilesHybrid001",
+  "id": "IyA7QHfar8ZKm4Q5",
   "tags": []
 }
