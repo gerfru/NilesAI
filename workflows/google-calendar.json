@@ -1,0 +1,73 @@
+{
+  "name": "Google Calendar",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "fa320103-a4d5-44c2-9f6a-213bcd14078a",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "geraldfruhmann@gmail.com",
+          "mode": "list",
+          "cachedResultName": "geraldfruhmann@gmail.com"
+        },
+        "start": "={{ $now.plus(1, 'hour') }}",
+        "end": "={{ $now.plus(2, 'hour') }}",
+        "additionalFields": {
+          "description": "Test Workflow n8n",
+          "summary": "Niles"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        0
+      ],
+      "id": "fdce5546-c54a-4b06-b8bd-6e6e1e593ee0",
+      "name": "Create an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "qUkPiLKJQtDq8S2O",
+          "name": "Google Calendar account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "43937f76-39c1-4d02-b322-723e90739b59",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "39144f6df16e1c2f4e4d367c9c17d3e054797a9b4c0736b11e20a857fb329f3d"
+  },
+  "id": "Fq28RnX6FzG8QGIY",
+  "tags": []
+}
