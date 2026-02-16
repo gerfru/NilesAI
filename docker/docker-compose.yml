@@ -11,6 +11,7 @@ services:
       - "5678:5678"
     environment:
       - N8N_SECURE_COOKIE=false
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
     volumes:
       - ~/.n8n:/home/node/.n8n
     networks:
@@ -21,6 +22,8 @@ services:
     container_name: niles_evolution_postgres
     image: postgres:15-alpine
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
