@@ -1,0 +1,178 @@
+{
+  "name": "Niles AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -368,
+        0
+      ],
+      "id": "fa2ebd6c-5c81-422b-b806-268136ec07d3",
+      "name": "When chat message received",
+      "webhookId": "c8af9ddc-3a28-4114-ac8e-9e128243eec4"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Du bist ein WhatsApp-Assistent. Deine Aufgabe ist es, Nachrichten weiterzuleiten.\n\nWICHTIG:\n- Gib NUR den exakten Nachrichtentext zurück, den der Benutzer senden möchte.\n- Formuliere die Nachricht NICHT um.\n- Füge KEINE Begrüßungen, Vorschläge oder Erklärungen hinzu.\n- Wenn der Benutzer sagt \"sende Hi\", antworte NUR mit: Hi\n- Gib die Telefonnummer weiter ohne \"+\", also 436601234567\nDeine Antwort wird direkt als WhatsApp-Nachricht gesendet."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        352,
+        -48
+      ],
+      "id": "f3f6918e-6251-40fe-a141-26a118e58ce8",
+      "name": "AI Agent",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen2.5-coder-7b-instruct-mlx",
+          "mode": "list",
+          "cachedResultName": "qwen2.5-coder-7b-instruct-mlx"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        224
+      ],
+      "id": "7600f59c-7b3d-4535-8e07-deacde3f1476",
+      "name": "Qwen 2.5 7B MLX",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "AqnBdqvoLrHHdaVG",
+          "name": "Local Qwen"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendText/niles-whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('Code in JavaScript').first().json.number }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        800,
+        -48
+      ],
+      "id": "3c49f275-03a4-4592-ad9b-f5fa5e0355bc",
+      "name": "send_whatsapp"
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $json.chatInput || \"\";\n\nconst numMatch = s.match(/(\\+?\\d[\\d\\s]{6,}\\d)/);\nlet number = numMatch ? numMatch[1] : \"\";\nnumber = number.replace(/\\s+/g, \"\").replace(/^\\+/, \"\").replace(/^00/, \"\");\n\nconst textMatch = s.match(/[\"“](.+?)[\"”]/) || s.match(/['](.+?)[']/);\nconst userText = textMatch ? textMatch[1] : \"\";\n\nreturn [{ ...$json, number, userText }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        0
+      ],
+      "id": "c7ec7150-3795-4c12-9c0e-ee1421c643fd",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen 2.5 7B MLX": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "send_whatsapp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_whatsapp": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5dc3b5c5-f375-424a-bb2e-76c194021119",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "39144f6df16e1c2f4e4d367c9c17d3e054797a9b4c0736b11e20a857fb329f3d"
+  },
+  "id": "V9nOcYNybF9m7YDh",
+  "tags": []
+}
