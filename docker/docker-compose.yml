@@ -33,7 +33,7 @@ services:
   # Evolution API (WhatsApp)
   evolution_api:
     container_name: niles_evolution_api
-    image: atendai/evolution-api:v2.1.1
+    image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -56,8 +56,8 @@ services:
       # Cache
       CACHE_REDIS_ENABLED: "false"
 
-      # WhatsApp Version
-      CONFIG_SESSION_PHONE_VERSION: ""
+      # WhatsApp Version (disabled - causes group message issues)
+      # CONFIG_SESSION_PHONE_VERSION: ""
     volumes:
       - ~/.evolution/instances:/evolution/instances
     networks:
