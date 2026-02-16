@@ -12,6 +12,7 @@ Niles is a self-hosted AI agent that runs entirely offline on Apple Silicon hard
 - Visual workflow automation with n8n
 - Calendar management (Google Calendar + CalDAV)
 - WhatsApp integration via Evolution API
+- CardDAV contact sync with PostgreSQL cache
 - Complete offline capability
 
 ## Architecture
@@ -79,29 +80,35 @@ open -a "LM Studio"
 
 ## Installation
 
-See [Setup Documentation](Setup/README.md) for detailed installation steps:
+See [Setup Documentation](docs/Setup/) for detailed installation steps:
 
-1. [LM Studio Installation](Setup/01-lm-studio.md)
-2. [n8n Docker Setup](Setup/02-n8n.md)
-3. [Google Calendar Integration](Setup/03-google-calendar.md)
-4. [CalDAV Integration](Setup/03-mailbox-caldav.md)
-5. [WhatsApp Integration](Setup/05-whatsapp-evolution.md)
-6. [AI Agent Configuration](Setup/06-ai-agent.md)
+1. [LM Studio Installation](docs/Setup/01-lm-studio.md)
+2. [n8n Docker Setup](docs/Setup/02-n8n.md)
+3. [Google Calendar Integration](docs/Setup/03-google-calendar.md)
+4. [CalDAV Integration](docs/Setup/03-mailbox-caldav.md)
+5. [WhatsApp Integration](docs/Setup/05-whatsapp-evolution.md)
+6. [Production & Autostart](docs/Setup/06-production.md)
 
 ## Project Structure
 
 ```text
 Niles/
 ├── docker/
-│   └── docker-compose.yml    # All services (n8n, Evolution, PostgreSQL)
+│   └── docker-compose.yml        # All services (n8n, Evolution, PostgreSQL)
+├── workflows/
+│   ├── Niles-hybrid-with-contacts.json  # Main AI Agent workflow (WhatsApp)
+│   └── sync-contacts.json        # CardDAV → PostgreSQL contact sync
 ├── scripts/
-│   ├── start.sh             # Start all services
-│   ├── stop.sh              # Stop all services
-│   ├── status.sh            # Check service status
-│   ├── backup.sh            # Create backup
-│   └── cleanup.sh           # Remove all containers
-└── Setup/
-    └── *.md                 # Detailed setup documentation
+│   ├── start.sh                  # Start all services
+│   ├── stop.sh                   # Stop all services
+│   ├── status.sh                 # Check service status
+│   ├── backup.sh                 # Create backup
+│   ├── cleanup.sh                # Remove all containers
+│   └── import-workflows.sh       # Import workflows via n8n API
+├── docs/
+│   ├── konzept.md                # Project concept
+│   └── Setup/                    # Step-by-step setup guides
+└── .env                          # API keys & passwords (not in git)
 ```
 
 ## Scripts
@@ -134,13 +141,13 @@ Niles/
 
 **Benchmarks on Mac Mini M4 (16GB RAM):**
 
-| Component                        | Resource Usage | Notes                    |
-|----------------------------------|----------------|--------------------------|
-| LM Studio (Qwen2.5-Coder:7b MLX) | 8GB RAM        | 100+ tokens/sec          |
-| n8n (Docker)                     | 500MB RAM      | Workflow automation      |
-| Evolution API (Docker)           | 300MB RAM      | WhatsApp gateway         |
-| PostgreSQL (Docker)              | 100MB RAM      | Evolution database       |
-| **Total**                        | ~9GB RAM       | 7GB available for system |
+| Component | Resource Usage | Notes |
+| --- | --- | --- |
+| LM Studio (Qwen2.5-Coder:7b MLX) | 8GB RAM | 100+ tokens/sec |
+| n8n (Docker) | 500MB RAM | Workflow automation |
+| Evolution API (Docker) | 300MB RAM | WhatsApp gateway |
+| PostgreSQL (Docker) | 100MB RAM | Evolution DB + Contact cache |
+| **Total** | ~9GB RAM | 7GB available for system |
 
 ## Troubleshooting
 
