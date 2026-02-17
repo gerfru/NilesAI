@@ -22,8 +22,8 @@ services:
     container_name: niles_evolution_postgres
     image: postgres:15-alpine
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    # Port not exposed -- access only via Docker network
+    # For local debugging: ports: ["127.0.0.1:5432:5432"]
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
@@ -81,6 +81,7 @@ services:
       - PYTHONPATH=/app/src
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
+      - NILES_API_KEY=${NILES_API_KEY:-}
       - CARDDAV_URL=${CARDDAV_URL:-}
       - CARDDAV_USER=${CARDDAV_USER:-}
       - CARDDAV_PASSWORD=${CARDDAV_PASSWORD:-}

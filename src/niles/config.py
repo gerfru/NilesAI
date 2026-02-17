@@ -1,5 +1,7 @@
 """Niles configuration via Pydantic Settings."""
 
+import secrets
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -25,6 +27,11 @@ class Settings(BaseSettings):
     evolution_api_url: str = "http://evolution_api:8080"
     evolution_api_key: str  # Via EVOLUTION_API_KEY
     evolution_instance: str = "niles-whatsapp"
+
+    # Niles API authentication
+    niles_api_key: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+    )
 
     # Features
     feature_whatsapp_auto_reply: bool = False

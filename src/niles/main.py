@@ -1,12 +1,15 @@
 """Niles AI Core – FastAPI entry point."""
 
 import asyncio
+import hmac
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
 import asyncpg
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ValidationError
 
 from .actions.contacts import ContactsAction
@@ -53,6 +56,11 @@ async def lifespan(app: FastAPI):
 
     # Reconfigure logging with settings
     _configure_logging(settings.log_level)
+
+    # Log auto-generated API key for /chat access
+    if not os.environ.get("NILES_API_KEY"):
+        logger.info("Auto-generated NILES_API_KEY: %s", settings.niles_api_key)
+        logger.info("Set NILES_API_KEY in .env for a stable key.")
 
     # Database connection pool
     pool = await asyncpg.create_pool(
@@ -120,6 +128,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
 app.include_router(whatsapp_router)
 
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def require_api_key(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> str:
+    """Validate X-API-Key header against settings.niles_api_key."""
+    expected = request.app.state.settings.niles_api_key
+    if not api_key or not hmac.compare_digest(api_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
 
 @app.get("/health")
 async def health():
@@ -132,7 +153,7 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, _key: str = Depends(require_api_key)):
     """Direct chat endpoint for testing (no WhatsApp)."""
     agent = app.state.agent
     event = {
