@@ -12,6 +12,8 @@ from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
 from .config import Settings
+from .memory.history import ConversationHistory
+from .memory.store import MemoryStore
 from .sources.whatsapp import router as whatsapp_router
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,12 @@ async def lifespan(app: FastAPI):
     )
     logger.info("PostgreSQL pool created")
 
+    # Memory & History
+    memory = MemoryStore(pool)
+    await memory.initialize()
+    history = ConversationHistory(pool)
+    await history.initialize()
+
     # Actions
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings)
@@ -71,6 +79,8 @@ async def lifespan(app: FastAPI):
         config=settings,
         contacts=contacts,
         whatsapp=whatsapp_action,
+        memory=memory,
+        history=history,
     )
 
     # Store on app state for access in route handlers

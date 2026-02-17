@@ -1,4 +1,4 @@
-"""System prompt loading."""
+"""System prompt loading and building."""
 
 import logging
 from pathlib import Path
@@ -12,7 +12,7 @@ _DEFAULT_PROMPT = (
 
 
 def load_system_prompt(path: str | None = None) -> str:
-    """Load system prompt from soul.md file."""
+    """Load base system prompt from soul.md file."""
     if path is None:
         # Default: config/soul.md relative to project root
         path = Path(__file__).parent.parent.parent.parent / "config" / "soul.md"
@@ -24,3 +24,23 @@ def load_system_prompt(path: str | None = None) -> str:
     except FileNotFoundError:
         logger.warning("soul.md not found at %s, using default prompt", path)
         return _DEFAULT_PROMPT
+
+
+def build_system_prompt(base_prompt: str, memories: list[dict]) -> str:
+    """Build full system prompt with memory context."""
+    if not memories:
+        return base_prompt
+
+    memory_lines = []
+    for entry in memories:
+        key = entry["key"]
+        value = entry["value"]
+        memory_lines.append(f"- {key}: {value}")
+
+    memory_section = (
+        "\n\n## Dein Gedächtnis\n"
+        "Folgende Dinge hast du dir gemerkt:\n"
+        + "\n".join(memory_lines)
+    )
+
+    return base_prompt + memory_section
