@@ -8,7 +8,9 @@ from openai import AsyncOpenAI
 from ..actions.contacts import ContactsAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
-from .prompts import load_system_prompt
+from ..memory.history import ConversationHistory
+from ..memory.store import MemoryStore
+from .prompts import build_system_prompt, load_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,44 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": "Speichert einen Fakt oder eine Information dauerhaft im Gedächtnis. Nutze einen kurzen, beschreibenden Schlüssel.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Kurzer Schlüssel (z.B. 'zahnarzt_termin', 'lieblings_essen')",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Der zu merkende Inhalt",
+                    },
+                },
+                "required": ["key", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall",
+            "description": "Ruft eine gespeicherte Information aus dem Gedächtnis ab.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Schlüssel der gespeicherten Information",
+                    },
+                },
+                "required": ["key"],
+            },
+        },
+    },
 ]
 
 MAX_TOOL_ROUNDS = 5
@@ -61,11 +101,13 @@ class NilesAgent:
     """
     Event processing pipeline:
     1. Receive event
-    2. Build messages (system prompt + user message)
-    3. Call LLM with tools
-    4. Execute tool calls if any
-    5. Feed results back to LLM
-    6. Return final response
+    2. Load conversation history and memory context
+    3. Build messages (system prompt + history + user message)
+    4. Call LLM with tools
+    5. Execute tool calls if any
+    6. Feed results back to LLM
+    7. Save conversation history
+    8. Return final response
     """
 
     def __init__(
@@ -73,6 +115,8 @@ class NilesAgent:
         config: Settings,
         contacts: ContactsAction,
         whatsapp: WhatsAppAction,
+        memory: MemoryStore,
+        history: ConversationHistory,
     ):
         self.llm = AsyncOpenAI(
             base_url=config.llm_base_url,
@@ -81,7 +125,9 @@ class NilesAgent:
         self.model = config.llm_model
         self.contacts = contacts
         self.whatsapp = whatsapp
-        self.system_prompt = load_system_prompt()
+        self.memory = memory
+        self.history = history
+        self.base_prompt = load_system_prompt()
 
     async def process_event(self, event: dict) -> str:
         """
@@ -93,10 +139,22 @@ class NilesAgent:
         Returns:
             Response text
         """
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": event["content"]},
-        ]
+        chat_id = event["from"]
+
+        # Load memory context for system prompt
+        memories = await self.memory.list_all()
+        system_prompt = build_system_prompt(self.base_prompt, memories)
+
+        # Load conversation history
+        history_messages = await self.history.get_recent(chat_id)
+
+        # Build message list: system + history + current message
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": event["content"]})
+
+        # Save user message to history
+        await self.history.add_message(chat_id, "user", event["content"])
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
@@ -118,6 +176,9 @@ class NilesAgent:
                 content = choice.message.content or ""
                 if not content:
                     logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
+                # Save assistant response to history
+                if content:
+                    await self.history.add_message(chat_id, "assistant", content)
                 return content
 
             # Append assistant message with tool calls (serialize to dict)
@@ -168,5 +229,15 @@ class NilesAgent:
 
             result = await self.whatsapp.send_message(to=to, text=text)
             return {"status": "sent", "to": to} if "error" not in result else result
+
+        if name == "remember":
+            await self.memory.set(args["key"], args["value"])
+            return {"status": "saved", "key": args["key"]}
+
+        if name == "recall":
+            value = await self.memory.get(args["key"])
+            if value is not None:
+                return {"key": args["key"], "value": value}
+            return {"error": f"Nichts gespeichert unter '{args['key']}'"}
 
         return {"error": f"Unknown tool: {name}"}
