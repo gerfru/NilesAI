@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Store on app state for access in route handlers
+    app.state.settings = settings
     app.state.pool = pool
     app.state.agent = agent
     app.state.whatsapp_action = whatsapp_action

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     evolution_api_key: str  # Via EVOLUTION_API_KEY
     evolution_instance: str = "niles-whatsapp"
 
+    # Features
+    feature_whatsapp_auto_reply: bool = False
+    feature_tool_send_whatsapp: bool = True
+
     # CardDAV (mailbox.org)
     carddav_url: str = "https://dav.mailbox.org/carddav/32"
     carddav_user: str = ""
