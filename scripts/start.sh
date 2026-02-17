@@ -39,6 +39,8 @@ docker compose -f docker/docker-compose.yml ps
 
 echo ""
 echo "📊 Service URLs:"
+echo "  - Niles Core:       http://localhost:8000"
+echo "  - Niles API Docs:   http://localhost:8000/docs"
 echo "  - n8n:              http://localhost:5678"
 echo "  - Evolution API:    http://localhost:8080"
 echo "  - Evolution Manager: http://localhost:8080/manager"

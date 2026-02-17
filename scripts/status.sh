@@ -21,7 +21,20 @@ echo "📦 Docker Services:"
 docker compose -f docker/docker-compose.yml ps
 echo ""
 
+# Check Niles Core
+echo "🧠 Niles Core:"
+if HEALTH=$(curl -s http://localhost:8000/health 2>&1); then
+    if echo "$HEALTH" | grep -q '"status":"ok"'; then
+        echo "  ✅ Running on http://localhost:8000"
+    else
+        echo "  ⚠️  Running but health check failed"
+    fi
+else
+    echo "  ❌ Not reachable"
+fi
+
 # Check n8n
+echo ""
 echo "🔧 n8n:"
 if curl -s http://localhost:5678 > /dev/null 2>&1; then
     echo "  ✅ Running on http://localhost:5678"
@@ -68,6 +81,8 @@ fi
 
 echo ""
 echo "💡 Service URLs:"
-echo "  - n8n:               http://localhost:5678"
-echo "  - Evolution Manager:  http://localhost:8080/manager"
-echo "  - LM Studio API:      http://localhost:1234/v1"
+echo "  - Niles Core:          http://localhost:8000"
+echo "  - Niles API Docs:      http://localhost:8000/docs"
+echo "  - n8n:                 http://localhost:5678"
+echo "  - Evolution Manager:   http://localhost:8080/manager"
+echo "  - LM Studio API:       http://localhost:1234/v1"
