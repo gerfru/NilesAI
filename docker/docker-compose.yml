@@ -81,8 +81,10 @@ services:
       - PYTHONPATH=/app/src
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
+      - CARDDAV_URL=${CARDDAV_URL:-}
       - CARDDAV_USER=${CARDDAV_USER:-}
       - CARDDAV_PASSWORD=${CARDDAV_PASSWORD:-}
+      - FEATURE_CARDDAV_SYNC=${FEATURE_CARDDAV_SYNC:-false}
     volumes:
       - ../src:/app/src
       - ../config:/app/config:ro
