@@ -3,10 +3,16 @@
 # Niles AI - Test Runner
 # Führt alle pytest Tests aus
 
-set -e
+set -euo pipefail
 
 # Change to Niles root directory
 cd "$(dirname "$0")/.."
+
+# Check prerequisites
+if ! command -v python3 &>/dev/null; then
+    echo "❌ Error: python3 not found. Please install Python 3.11+."
+    exit 1
+fi
 
 echo "🧪 Running Niles Tests..."
 echo ""

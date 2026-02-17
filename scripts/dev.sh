@@ -3,10 +3,22 @@
 # Niles AI - Development Server
 # Startet den Niles Core lokal (ohne Docker) mit Auto-Reload
 
-set -e
+set -euo pipefail
 
 # Change to Niles root directory
 cd "$(dirname "$0")/.."
+
+# Check prerequisites
+if ! command -v python3 &>/dev/null; then
+    echo "❌ Error: python3 not found. Please install Python 3.11+."
+    exit 1
+fi
+
+if [ ! -f .env ]; then
+    echo "❌ Error: .env file not found!"
+    echo "  cp .env.example .env && nano .env"
+    exit 1
+fi
 
 echo "🛠️  Starting Niles Core (Development Mode)..."
 echo ""
