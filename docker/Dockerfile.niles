@@ -5,15 +5,15 @@ WORKDIR /app
 # Install uv for fast dependency management
 RUN pip install uv
 
-# Copy dependency files
+# Copy dependency files and install (cached layer)
 COPY pyproject.toml .
-
-# Install dependencies
+COPY src/ ./src/
 RUN uv pip install --system -e ".[dev]"
 
-# Copy application code
-COPY src/ ./src/
+# Copy config
 COPY config/ ./config/
 
-# Run
+# src/niles must be importable as "niles"
+ENV PYTHONPATH=/app/src
+
 CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
