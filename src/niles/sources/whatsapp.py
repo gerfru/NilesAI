@@ -60,11 +60,14 @@ async def whatsapp_webhook(request: Request):
         "metadata": {"jid": remote_jid},
     }
 
-    response_text = await agent.process_event(event)
+    try:
+        response_text = await agent.process_event(event)
 
-    # Send reply
-    if response_text:
-        whatsapp_action = request.app.state.whatsapp_action
-        await whatsapp_action.send_message(to=remote_jid, text=response_text)
+        # Send reply
+        if response_text:
+            whatsapp_action = request.app.state.whatsapp_action
+            await whatsapp_action.send_message(to=remote_jid, text=response_text)
+    except Exception:
+        logger.exception("Failed to process WhatsApp message from %s", sender)
 
     return {"status": "processed"}
