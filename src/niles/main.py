@@ -1,5 +1,6 @@
 """Niles AI Core – FastAPI entry point."""
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from .config import Settings
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
 from .sources.whatsapp import router as whatsapp_router
+from .sync.carddav import CardDAVSync
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,23 @@ async def lifespan(app: FastAPI):
     history = ConversationHistory(pool)
     await history.initialize()
 
+    # CardDAV Sync
+    carddav_sync = CardDAVSync(pool, settings)
+    await carddav_sync.initialize()
+
+    scheduler = None
+    if settings.feature_carddav_sync:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(
+            carddav_sync.sync_contacts, "cron", hour=3, minute=0,
+            id="carddav_daily_sync",
+        )
+        scheduler.start()
+        logger.info("CardDAV sync scheduler started (daily at 03:00)")
+        asyncio.create_task(carddav_sync.sync_contacts())
+
     # Actions
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings)
@@ -92,6 +111,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if scheduler:
+        scheduler.shutdown()
     await pool.close()
     logger.info("Niles Core shut down.")
 
