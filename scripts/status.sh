@@ -3,14 +3,22 @@
 # Niles AI - Status Check Script
 # Prüft ob alle Services laufen
 
-set -e
+set -euo pipefail
 
 # Change to Niles root directory
 cd "$(dirname "$0")/.."
 
+# Check prerequisites
+if ! command -v docker &>/dev/null; then
+    echo "❌ Error: docker not found. Please install Docker Desktop."
+    exit 1
+fi
+
 # Load environment variables if .env exists
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
 echo "🔍 Niles AI - Status Check"
