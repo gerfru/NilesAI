@@ -1,0 +1,14 @@
+# MCP Server Configuration
+# Phase 1: Keine MCP Server (eigene Actions zuerst)
+# Phase 5: Home Assistant, Filesystem, etc.
+
+servers: {}
+
+# Beispiel für später:
+# servers:
+#   home-assistant:
+#     command: npx
+#     args: ["-y", "@anthropic/mcp-server-home-assistant"]
+#     env:
+#       HA_URL: "${HA_URL}"
+#       HA_TOKEN: "${HA_TOKEN}"

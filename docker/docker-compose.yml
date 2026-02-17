@@ -68,6 +68,30 @@ services:
     depends_on:
       - evolution_postgres
 
+  # Niles AI Core
+  niles_core:
+    container_name: niles_core
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.niles
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
+      - CARDDAV_USER=${CARDDAV_USER:-}
+      - CARDDAV_PASSWORD=${CARDDAV_PASSWORD:-}
+    volumes:
+      - ../src:/app/src
+      - ../config:/app/config:ro
+    command: uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - niles_network
+    depends_on:
+      - evolution_postgres
+      - evolution_api
+
 volumes:
   evolution_postgres:
 
