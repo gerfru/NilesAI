@@ -4,6 +4,33 @@
 
 ---
 
+## Authentifizierung
+
+### /chat -- API Key
+
+Erwartet den Header `X-API-Key` mit dem Wert von `NILES_API_KEY`. Wird kein Key gesetzt, generiert Niles beim Start einen zufaelligen Key und loggt ihn.
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "X-API-Key: <NILES_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hallo"}'
+```
+
+### /webhook/whatsapp -- URL Token
+
+Erwartet den Query-Parameter `?token=` mit dem Wert von `EVOLUTION_API_KEY`. Evolution API (self-hosted) kann keine Custom-Headers bei Webhook-Requests senden, daher wird ein URL-Token verwendet.
+
+```
+POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
+```
+
+### /health -- Kein Auth
+
+Health Check ist oeffentlich zugaenglich.
+
+---
+
 ## Endpoints
 
 ### GET /health
@@ -57,11 +84,13 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 | Code | Bedeutung |
 |------|-----------|
 | 200 | Nachricht verarbeitet |
+| 401 | Fehlender oder ungueltiger API Key |
 | 422 | Ungueltige Request-Daten |
 | 500 | Interner Fehler |
 
 **Hinweise:**
 
+- Erfordert `X-API-Key` Header (siehe Authentifizierung)
 - Verwendet `chat_id = "api"` fuer die Konversations-Historie
 - Memory und Tool-Calls sind voll verfuegbar (gleiche Pipeline wie WhatsApp)
 
@@ -69,6 +98,7 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 
 ```bash
 curl -X POST http://localhost:8000/chat \
+  -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Merke dir: Mein Lieblingsessen ist Pizza"}'
 ```
@@ -113,9 +143,13 @@ Evolution API v2.3.7 Payload (Beispiel fuer `messages.upsert`):
 6. Event wird an `NilesAgent.process_event()` uebergeben
 7. Antwort wird via `WhatsAppAction.send_message()` zurueckgesendet
 
+**Authentifizierung:**
+
+Erfordert `?token=<EVOLUTION_API_KEY>` als Query-Parameter (siehe Authentifizierung). Gibt HTTP 401 bei ungueltigem oder fehlendem Token zurueck.
+
 **Response:**
 
-Gibt immer HTTP 200 zurueck, unabhaengig vom Verarbeitungsergebnis. Dies verhindert Retry-Spam durch die Evolution API.
+Bei gueltigem Token: Gibt immer HTTP 200 zurueck, unabhaengig vom Verarbeitungsergebnis. Dies verhindert Retry-Spam durch die Evolution API.
 
 ```json
 {"status": "processed"}
@@ -250,7 +284,7 @@ curl -X POST http://localhost:8080/webhook/set/niles-whatsapp \
   -d '{
     "webhook": {
       "enabled": true,
-      "url": "http://niles_core:8000/webhook/whatsapp",
+      "url": "http://niles_core:8000/webhook/whatsapp?token=<EVOLUTION_API_KEY>",
       "events": ["MESSAGES_UPSERT"]
     }
   }'

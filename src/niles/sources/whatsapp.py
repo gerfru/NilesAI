@@ -1,8 +1,10 @@
 """WhatsApp webhook handler for Evolution API."""
 
+import hmac
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -10,13 +12,20 @@ router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
 
 @router.post("/whatsapp")
-async def whatsapp_webhook(request: Request):
+async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     """
     Evolution API webhook handler.
 
     Receives MESSAGES_UPSERT events and forwards them to the agent.
+    Requires a valid token query parameter for authentication.
     Always returns 200 to prevent retry-spam from Evolution.
     """
+    settings = request.app.state.settings
+    expected = settings.evolution_api_key
+    if not token or not hmac.compare_digest(token, expected):
+        logger.warning("Webhook request with invalid or missing token")
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
     try:
         payload = await request.json()
     except Exception:
