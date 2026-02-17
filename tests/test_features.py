@@ -11,6 +11,7 @@ from niles.config import Settings
 class TestFeatureFlagDefaults:
     def test_auto_reply_disabled_by_default(self):
         settings = Settings(
+            _env_file=None,
             postgres_password="test",
             evolution_api_key="test",
         )
@@ -18,10 +19,19 @@ class TestFeatureFlagDefaults:
 
     def test_send_whatsapp_enabled_by_default(self):
         settings = Settings(
+            _env_file=None,
             postgres_password="test",
             evolution_api_key="test",
         )
         assert settings.feature_tool_send_whatsapp is True
+
+    def test_carddav_sync_disabled_by_default(self):
+        settings = Settings(
+            _env_file=None,
+            postgres_password="test",
+            evolution_api_key="test",
+        )
+        assert settings.feature_carddav_sync is False
 
     def test_flags_from_env(self, monkeypatch):
         monkeypatch.setenv("FEATURE_WHATSAPP_AUTO_REPLY", "true")
