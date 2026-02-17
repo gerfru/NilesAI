@@ -2,6 +2,7 @@
 
 import json
 import logging
+from typing import Any
 
 import asyncpg
 
@@ -15,7 +16,7 @@ class MemoryStore:
         self.pool = pool
 
     async def initialize(self) -> None:
-        """Create memory table if it doesn't exist."""
+        """Create memory table and indexes if they don't exist."""
         await self.pool.execute("""
             CREATE TABLE IF NOT EXISTS memory (
                 key TEXT PRIMARY KEY,
@@ -24,18 +25,26 @@ class MemoryStore:
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_updated
+            ON memory (updated_at DESC)
+        """)
         logger.info("Memory store initialized")
 
-    async def get(self, key: str) -> dict | None:
+    async def get(self, key: str) -> Any | None:
         """Get a value by key. Returns None if not found."""
         row = await self.pool.fetchrow(
             "SELECT value FROM memory WHERE key = $1", key
         )
         if row is None:
             return None
-        return json.loads(row["value"])
+        try:
+            return json.loads(row["value"])
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Corrupted memory value for key: %s", key)
+            return None
 
-    async def set(self, key: str, value) -> None:
+    async def set(self, key: str, value: Any) -> None:
         """Set a value (UPSERT). Value can be any JSON-serializable object."""
         await self.pool.execute(
             """
@@ -56,16 +65,28 @@ class MemoryStore:
         return result == "DELETE 1"
 
     async def search(self, prefix: str) -> list[dict]:
-        """Search for keys matching a prefix."""
+        """Search for keys matching a prefix. Uses parameterized LIKE."""
         rows = await self.pool.fetch(
-            "SELECT key, value FROM memory WHERE key LIKE $1 || '%' ORDER BY key",
-            prefix,
+            "SELECT key, value FROM memory WHERE key LIKE $1 ORDER BY key",
+            prefix + "%",
         )
-        return [{"key": row["key"], "value": json.loads(row["value"])} for row in rows]
+        results = []
+        for row in rows:
+            try:
+                results.append({"key": row["key"], "value": json.loads(row["value"])})
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Corrupted memory value for key: %s", row["key"])
+        return results
 
     async def list_all(self) -> list[dict]:
         """List all memory entries (for system prompt context)."""
         rows = await self.pool.fetch(
             "SELECT key, value FROM memory ORDER BY updated_at DESC"
         )
-        return [{"key": row["key"], "value": json.loads(row["value"])} for row in rows]
+        results = []
+        for row in rows:
+            try:
+                results.append({"key": row["key"], "value": json.loads(row["value"])})
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Corrupted memory value for key: %s", row["key"])
+        return results

@@ -1,7 +1,7 @@
 """Tests for memory store and conversation history."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -18,11 +18,12 @@ class TestMemoryStore:
     def store(self, pool):
         return MemoryStore(pool)
 
-    async def test_initialize_creates_table(self, store, pool):
+    async def test_initialize_creates_table_and_index(self, store, pool):
         await store.initialize()
-        pool.execute.assert_called_once()
-        sql = pool.execute.call_args[0][0]
-        assert "CREATE TABLE IF NOT EXISTS memory" in sql
+        assert pool.execute.call_count == 2
+        calls = [c[0][0] for c in pool.execute.call_args_list]
+        assert "CREATE TABLE IF NOT EXISTS memory" in calls[0]
+        assert "CREATE INDEX IF NOT EXISTS idx_memory_updated" in calls[1]
 
     async def test_get_returns_value(self, store, pool):
         pool.fetchrow.return_value = {"value": json.dumps("hello")}
@@ -60,6 +61,14 @@ class TestMemoryStore:
         assert len(result) == 2
         assert result[0]["key"] == "todo_1"
         assert result[0]["value"] == "Buy milk"
+        # Verify prefix + "%" is passed to the query
+        call_args = pool.fetch.call_args[0]
+        assert call_args[1] == "todo%"
+
+    async def test_get_handles_corrupted_data(self, store, pool):
+        pool.fetchrow.return_value = {"value": "not-valid-json{"}
+        result = await store.get("broken")
+        assert result is None
 
     async def test_list_all(self, store, pool):
         pool.fetch.return_value = [
