@@ -22,19 +22,19 @@ echo_step() {
 }
 
 echo_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 echo_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
 echo_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}[WARN] $1${NC}"
 }
 
 echo_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}[INFO] $1${NC}"
 }
 
 wait_for_user() {
@@ -55,13 +55,13 @@ fi
 clear
 echo -e "${BLUE}"
 cat << "EOF"
-╔═══════════════════════════════════════════════════╗
-║                                                   ║
-║             🤖  Niles AI Setup  🤖                ║
-║                                                   ║
-║         Interactive Installation & Setup          ║
-║                                                   ║
-╚═══════════════════════════════════════════════════╝
++===================================================+
+|                                                     |
+|              Niles AI Setup                         |
+|                                                     |
+|         Interactive Installation & Setup            |
+|                                                     |
++===================================================+
 EOF
 echo -e "${NC}"
 echo ""
@@ -318,7 +318,7 @@ else
             echo "  1. Login with API Key: ${EVOLUTION_API_KEY}"
             echo "  2. Click on 'niles-whatsapp'"
             echo "  3. Scan QR code with WhatsApp app"
-            echo "     (WhatsApp → Settings → Linked Devices)"
+            echo "     (WhatsApp -> Settings -> Linked Devices)"
             echo ""
             wait_for_user
 
@@ -382,40 +382,36 @@ fi
 
 # Summary
 echo ""
-echo_step "Setup Complete!"
+echo_step "Setup Complete"
 
 cat << EOF
 
-╔═══════════════════════════════════════════════════╗
-║                                                   ║
-║           ✨  Setup Complete!  ✨                 ║
-║                                                   ║
-╚═══════════════════════════════════════════════════╝
++===================================================+
+|                                                     |
+|              Setup Complete                          |
+|                                                     |
++===================================================+
 
-📊 Service URLs:
+Service URLs:
    - n8n:               http://localhost:5678
    - Evolution Manager:  http://localhost:8080/manager
    - LM Studio API:      http://localhost:1234/v1
 
-📚 Documentation:
+Documentation:
    - Setup Guide:        Setup/README.md
    - Google Calendar:    Setup/03-google-calendar.md
    - mailbox.org:        Setup/03-mailbox-caldav.md
    - WhatsApp:           Setup/05-whatsapp-evolution.md
 
-🚀 Daily Usage:
+Daily Usage:
    ./scripts/start.sh   - Start all services
    ./scripts/stop.sh    - Stop all services
    ./scripts/status.sh  - Check status
 
-📝 Next Steps:
+Next Steps:
    1. Configure remaining integrations
    2. Create AI Agent workflows
    3. Read Setup/06-ai-agent.md
-
-💡 Get Help:
-   - Setup/README.md
-   - n8n Community: https://community.n8n.io/
 
 EOF
 
@@ -429,5 +425,5 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-echo_success "Setup script finished!"
+echo_success "Setup script finished."
 echo ""

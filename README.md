@@ -1,218 +1,106 @@
-# Niles AI
+# Niles AI Core
 
-100% local AI agent running on Mac Mini M4 with Apple Silicon optimization.
+Lokaler AI-Butler auf Mac Mini M4. Empfaengt Events aus verschiedenen Quellen (WhatsApp, Email, Kalender), verarbeitet sie mit einem lokalen LLM und fuehrt Aktionen aus.
 
-## Overview
+## Status
 
-Niles is a self-hosted AI agent that runs entirely offline on Apple Silicon hardware. All data remains local, no cloud dependencies, zero monthly costs.
+Stage 1-3 implementiert. Stage 4-6 geplant.
 
-**Key Features:**
+| Stage | Status | Beschreibung |
+|-------|--------|-------------|
+| 1 | Abgeschlossen | FastAPI Scaffold, Docker, pytest, /health |
+| 2 | Abgeschlossen | WhatsApp empfangen, LLM-Verarbeitung, antworten |
+| 3 | Abgeschlossen | Key-Value Memory, Konversations-Historie |
+| 4 | Geplant | CardDAV Kontakt-Sync (ersetzt n8n) |
+| 5 | Geplant | MCP Client, externe Tools |
+| 6 | Geplant | IMAP + CalDAV als Event-Quellen |
 
-- Local LLM inference using Apple MLX (80+ tokens/sec on M4)
-- Visual workflow automation with n8n
-- Calendar management (Google Calendar + CalDAV)
-- WhatsApp integration via Evolution API
-- CardDAV contact sync with PostgreSQL cache
-- Complete offline capability
+## Architektur
 
-## Architecture
-
-```text
-┌─────────────────────────────────────────┐
-│         Mac Mini M4 (16GB RAM)          │
-│                                         │
-│  LM Studio (MLX) ──► n8n (Docker)       │
-│                       │                 │
-│                       ├─► Google Cal    │
-│                       ├─► CalDAV        │
-│                       └─► WhatsApp      │
-└─────────────────────────────────────────┘
+```
+Event Sources                Niles Core (FastAPI :8000)              External
+                         +--------------------------------+
+WhatsApp --- Webhook --> |  sources/whatsapp.py           |
+                         |         |                      |
+                         |         v                      |
+POST /chat  ----------> |  agent/core.py (NilesAgent)    |--> LM Studio :1234
+                         |    |  Tool-Call Loop (max 5)   |
+                         |    |                           |
+                         |    +- memory/store.py          |--> PostgreSQL :5432
+                         |    +- memory/history.py        |--> PostgreSQL :5432
+                         |    +- actions/contacts.py      |--> PostgreSQL :5432
+                         |    +- actions/whatsapp.py      |--> Evolution API :8080
+                         +--------------------------------+
 ```
 
-**Stack:**
+## Projektstruktur
 
-- **LM Studio** - Apple MLX-optimized LLM inference (Port 1234)
-- **n8n** - Workflow automation & AI agent builder (Port 5678)
-- **Evolution API** - WhatsApp gateway with PostgreSQL (Port 8080)
-- **Tailscale** - Optional remote access
-
-## System Requirements
-
-- Mac Mini M4 (16GB RAM minimum, 32GB recommended)
-- macOS 14.0 or later
-- Docker Desktop for Mac
-- 20GB free disk space
+```
+Niles/
+├── src/niles/                  # Python Backend
+│   ├── main.py                 # FastAPI + Lifespan
+│   ├── config.py               # Pydantic Settings
+│   ├── agent/                  # LLM Agent, Tool-Call-Pipeline
+│   ├── memory/                 # Key-Value Store, Chat-History
+│   ├── actions/                # WhatsApp senden, Kontakt-Lookup
+│   └── sources/                # Webhook-Handler
+├── tests/                      # pytest Tests
+├── config/                     # soul.md (Agent-Persoenlichkeit)
+├── docker/                     # Dockerfile, docker-compose.yml
+├── scripts/                    # dev.sh, test.sh, start.sh, stop.sh, status.sh
+├── docs/                       # Technische Dokumentation
+├── pyproject.toml
+└── .env                        # Secrets (nicht in Git)
+```
 
 ## Quick Start
 
-### 1. Configure Environment
+### Voraussetzungen
+
+- Python >= 3.11
+- Docker Desktop
+- LM Studio (mit geladenem MLX-Modell auf Port 1234)
+
+### 1. Environment konfigurieren
 
 ```bash
-# Copy example environment file
 cp .env.example .env
-
-# Edit .env and set your API keys
-nano .env
+# Pflichtfelder setzen: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY
 ```
 
-### 2. Start Services
+### 2. Services starten
 
 ```bash
-# Start Docker containers
 ./scripts/start.sh
-
-# Start LM Studio manually
-open -a "LM Studio"
-# Then start server on port 1234 in LM Studio UI
 ```
 
-### 3. Access
-
-- **n8n Workflow UI:** <http://localhost:5678>
-- **LM Studio API:** <http://localhost:1234/v1>
-- **Evolution Manager:** <http://localhost:8080/manager>
-
-### 4. Check Status
+### 3. Status pruefen
 
 ```bash
 ./scripts/status.sh
 ```
 
-## Installation
-
-See [Setup Documentation](docs/Setup/) for detailed installation steps:
-
-1. [LM Studio Installation](docs/Setup/01-lm-studio.md)
-2. [n8n Docker Setup](docs/Setup/02-n8n.md)
-3. [Google Calendar Integration](docs/Setup/03-google-calendar.md)
-4. [CalDAV Integration](docs/Setup/03-mailbox-caldav.md)
-5. [WhatsApp Integration](docs/Setup/05-whatsapp-evolution.md)
-6. [Production & Autostart](docs/Setup/06-production.md)
-
-## Project Structure
-
-```text
-Niles/
-├── docker/
-│   └── docker-compose.yml        # All services (n8n, Evolution, PostgreSQL)
-├── workflows/
-│   ├── Niles-hybrid-with-contacts.json  # Main AI Agent workflow (WhatsApp)
-│   └── sync-contacts.json        # CardDAV → PostgreSQL contact sync
-├── scripts/
-│   ├── start.sh                  # Start all services
-│   ├── stop.sh                   # Stop all services
-│   ├── status.sh                 # Check service status
-│   ├── backup.sh                 # Create backup
-│   ├── cleanup.sh                # Remove all containers
-│   └── import-workflows.sh       # Import workflows via n8n API
-├── docs/
-│   ├── konzept.md                # Project concept
-│   └── Setup/                    # Step-by-step setup guides
-└── .env                          # API keys & passwords (not in git)
-```
-
-## Scripts
-
-### Start/Stop
+### 4. Testen
 
 ```bash
-./scripts/start.sh    # Start all Docker services
-./scripts/stop.sh     # Stop all Docker services
-./scripts/status.sh   # Check if services are running
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hallo Niles!"}'
 ```
 
-### Backup/Restore
+## Dokumentation
 
-```bash
-./scripts/backup.sh   # Create timestamped backup
-# Backups stored in ~/Backups/Niles/
-# Includes: n8n data, WhatsApp sessions, PostgreSQL, configs
-```
+- [Technische Spezifikation](docs/Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
+- [Architektur](docs/Architecture.md) -- Systemuebersicht, Module, Datenfluss, DB-Schema
+- [API Reference](docs/API.md) -- Endpoints, Payloads, Agent-Tools
+- [Development Guide](docs/Development.md) -- Setup, Testing, Konventionen
 
-### Cleanup
+## Stack
 
-```bash
-./scripts/cleanup.sh  # Remove all containers and volumes
-# WARNING: Destructive operation, prompts for confirmation
-# Keeps: ~/.n8n and ~/.evolution as backup
-```
-
-## Performance
-
-**Benchmarks on Mac Mini M4 (16GB RAM):**
-
-| Component | Resource Usage | Notes |
-| --- | --- | --- |
-| LM Studio (Qwen2.5-Coder:7b MLX) | 8GB RAM | 100+ tokens/sec |
-| n8n (Docker) | 500MB RAM | Workflow automation |
-| Evolution API (Docker) | 300MB RAM | WhatsApp gateway |
-| PostgreSQL (Docker) | 100MB RAM | Evolution DB + Contact cache |
-| **Total** | ~9GB RAM | 7GB available for system |
-
-## Troubleshooting
-
-### Common Issues
-
-**n8n "Bad request" error:**
-
-- Disable "Use Response API" in AI Agent node settings
-
-**Google OAuth fails:**
-
-- Disable "Enhanced Safe Browsing" in Google account security settings
-
-**LM Studio slow inference:**
-
-- Verify MLX-optimized model is loaded (not GGUF)
-- Check model file ends with `-mlx` in LM Studio
-
-**WhatsApp connection stuck on "connecting":**
-
-- Delete instance in Evolution Manager
-- Create new instance and re-scan QR code
-- Check `docker logs niles_evolution_api` for errors
-
-**Evolution API 400 Bad Request:**
-
-- Verify phone number format: `4915123456789` (country code + number, no plus sign)
-- Check Evolution API is running: `docker ps | grep evolution`
-
-### Logs
-
-```bash
-# Check Docker container logs
-docker logs niles_n8n
-docker logs niles_evolution_api
-docker logs niles_evolution_postgres
-
-# Check all services
-docker compose -f docker/docker-compose.yml logs
-```
-
-## Security
-
-- All services run in isolated Docker network
-- No external API calls (except optional Google Calendar OAuth)
-- Credentials stored encrypted in n8n database (AES-256)
-- WhatsApp sessions stored locally in `~/.evolution/instances`
-- Optional: Use Tailscale for secure remote access
-
-## Contributing
-
-This is a personal project. Issues and pull requests welcome.
-
-## License
-
-Open source for personal use. See LICENSE file for details.
-
-## Support
-
-- **n8n Community:** https://community.n8n.io/
-- **LM Studio Discord:** https://discord.gg/lmstudio
-- **Evolution API Docs:** https://doc.evolution-api.com/
-
-## Acknowledgments
-
-- Built with [n8n](https://n8n.io/)
-- Powered by [LM Studio](https://lmstudio.ai/)
-- WhatsApp integration via [Evolution API](https://evolution-api.com/)
+| Komponente | Technologie | Port |
+|------------|-------------|------|
+| Niles Core | FastAPI (Python) | 8000 |
+| LLM Inference | LM Studio (MLX) | 1234 |
+| Datenbank | PostgreSQL 15 | 5432 |
+| WhatsApp Gateway | Evolution API v2.3.7 | 8080 |
+| Legacy Workflows | n8n | 5678 |
