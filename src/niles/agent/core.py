@@ -115,14 +115,18 @@ class NilesAgent:
 
             # No tool calls – return the text response
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
-                return choice.message.content or ""
+                content = choice.message.content or ""
+                if not content:
+                    logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
+                return content
 
-            # Append assistant message with tool calls
-            messages.append(choice.message)
+            # Append assistant message with tool calls (serialize to dict)
+            messages.append(choice.message.model_dump(exclude_unset=True))
 
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call)
+                logger.info("Tool result [%s]: %s", tool_call.id, result)
                 messages.append(
                     {
                         "role": "tool",
@@ -142,7 +146,7 @@ class NilesAgent:
         except json.JSONDecodeError:
             return {"error": "Invalid arguments"}
 
-        logger.info("Tool call: %s(%s)", name, args)
+        logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)
 
         if name == "find_contact":
             contact = await self.contacts.find_by_name(args["name"])
@@ -160,7 +164,7 @@ class NilesAgent:
                 if contact and contact.get("phone"):
                     to = contact["phone"]
                 else:
-                    return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
+                    return {"error": f"Kontakt '{args['to']}' nicht gefunden oder keine Telefonnummer vorhanden"}
 
             result = await self.whatsapp.send_message(to=to, text=text)
             return {"status": "sent", "to": to} if "error" not in result else result
