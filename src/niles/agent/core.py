@@ -118,6 +118,7 @@ class NilesAgent:
         memory: MemoryStore,
         history: ConversationHistory,
     ):
+        self.config = config
         self.llm = AsyncOpenAI(
             base_url=config.llm_base_url,
             api_key="not-needed",  # LM Studio doesn't require a key
@@ -216,6 +217,10 @@ class NilesAgent:
             return {"error": f"Kontakt '{args['name']}' nicht gefunden"}
 
         if name == "send_whatsapp":
+            if not self.config.feature_tool_send_whatsapp:
+                logger.info("send_whatsapp tool disabled via feature flag")
+                return {"error": "WhatsApp senden ist derzeit deaktiviert"}
+
             to = args["to"]
             text = args["text"]
 
