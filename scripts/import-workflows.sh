@@ -40,7 +40,7 @@ check_n8n_running() {
         echo "Start n8n first: ./scripts/start.sh"
         exit 1
     fi
-    echo -e "${GREEN}✓ n8n is running${NC}"
+    echo -e "${GREEN}n8n is running${NC}"
 }
 
 # Get existing workflows from n8n
@@ -92,10 +92,10 @@ import_workflow() {
         http_code=$(echo "$response" | tail -n 1)
 
         if [ "$http_code" = "200" ]; then
-            echo -e "  ${GREEN}✓ Workflow updated successfully${NC}"
+            echo -e "  ${GREEN}Workflow updated successfully${NC}"
             return 0
         else
-            echo -e "  ${RED}✗ Failed to update workflow (HTTP $http_code)${NC}"
+            echo -e "  ${RED}Failed to update workflow (HTTP $http_code)${NC}"
             response_body=$(echo "$response" | sed '$d')
             echo "$response_body"
             return 1
@@ -112,10 +112,10 @@ import_workflow() {
         http_code=$(echo "$response" | tail -n 1)
 
         if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
-            echo -e "  ${GREEN}✓ Workflow created successfully${NC}"
+            echo -e "  ${GREEN}Workflow created successfully${NC}"
             return 0
         else
-            echo -e "  ${RED}✗ Failed to create workflow (HTTP $http_code)${NC}"
+            echo -e "  ${RED}Failed to create workflow (HTTP $http_code)${NC}"
             response_body=$(echo "$response" | sed '$d')
             echo "$response_body"
             return 1

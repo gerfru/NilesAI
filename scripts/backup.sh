@@ -18,7 +18,7 @@ BACKUP_DIR="$HOME/Backups/Niles"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/$TIMESTAMP"
 
-echo -e "${BLUE}🔄 Niles AI - Backup${NC}"
+echo -e "${BLUE}Niles AI - Backup${NC}"
 echo ""
 echo "Creating backup at: $BACKUP_PATH"
 echo ""
@@ -27,38 +27,38 @@ echo ""
 mkdir -p "$BACKUP_PATH"
 
 # 1. Backup n8n data
-echo "📦 Backing up n8n data..."
+echo "Backing up n8n data..."
 if [ -d ~/.n8n ]; then
     tar -czf "$BACKUP_PATH/n8n-data.tar.gz" -C ~ .n8n
-    echo -e "${GREEN}✅ n8n data backed up${NC}"
+    echo -e "${GREEN}n8n data backed up${NC}"
 else
-    echo "⚠️  No n8n data found (skipping)"
+    echo "No n8n data found (skipping)"
 fi
 
 # 1b. Backup Evolution WhatsApp sessions
 echo ""
-echo "📱 Backing up WhatsApp sessions..."
+echo "Backing up WhatsApp sessions..."
 if [ -d ~/.evolution ]; then
     tar -czf "$BACKUP_PATH/evolution-data.tar.gz" -C ~ .evolution
-    echo -e "${GREEN}✅ WhatsApp sessions backed up${NC}"
+    echo -e "${GREEN}WhatsApp sessions backed up${NC}"
 else
-    echo "⚠️  No WhatsApp sessions found (skipping)"
+    echo "No WhatsApp sessions found (skipping)"
 fi
 
 # 2. Backup configuration files
 echo ""
-echo "📝 Backing up configuration..."
+echo "Backing up configuration..."
 cp -r docker "$BACKUP_PATH/"
 cp -r Setup "$BACKUP_PATH/" 2>/dev/null || true
 cp -r scripts "$BACKUP_PATH/" 2>/dev/null || true
 if [ -f .env ]; then
     cp .env "$BACKUP_PATH/"
 fi
-echo -e "${GREEN}✅ Configuration backed up${NC}"
+echo -e "${GREEN}Configuration backed up${NC}"
 
 # 3. Backup Docker volumes (only PostgreSQL)
 echo ""
-echo "💾 Backing up Docker volumes..."
+echo "Backing up Docker volumes..."
 
 # Evolution PostgreSQL
 if docker volume inspect docker_evolution_postgres > /dev/null 2>&1; then
@@ -66,18 +66,18 @@ if docker volume inspect docker_evolution_postgres > /dev/null 2>&1; then
         -v docker_evolution_postgres:/data \
         -v "$BACKUP_PATH":/backup \
         alpine tar czf /backup/evolution-postgres.tar.gz -C /data .
-    echo -e "${GREEN}✅ PostgreSQL data backed up${NC}"
+    echo -e "${GREEN}PostgreSQL data backed up${NC}"
 elif docker volume inspect evolution_postgres > /dev/null 2>&1; then
     docker run --rm \
         -v evolution_postgres:/data \
         -v "$BACKUP_PATH":/backup \
         alpine tar czf /backup/evolution-postgres.tar.gz -C /data .
-    echo -e "${GREEN}✅ PostgreSQL data backed up${NC}"
+    echo -e "${GREEN}PostgreSQL data backed up${NC}"
 fi
 
 # 4. Create restore script
 echo ""
-echo "📄 Creating restore script..."
+echo "Creating restore script..."
 
 cat > "$BACKUP_PATH/restore.sh" << 'RESTORE_EOF'
 #!/bin/bash
@@ -85,30 +85,30 @@ cat > "$BACKUP_PATH/restore.sh" << 'RESTORE_EOF'
 
 set -e
 
-echo "🔄 Restoring Niles AI backup..."
+echo "Restoring Niles AI backup..."
 echo ""
 
 BACKUP_DIR="$(dirname "$0")"
 
 # Restore n8n
 if [ -f "$BACKUP_DIR/n8n-data.tar.gz" ]; then
-    echo "📦 Restoring n8n data..."
+    echo "Restoring n8n data..."
     tar -xzf "$BACKUP_DIR/n8n-data.tar.gz" -C ~
-    echo "✅ n8n data restored"
+    echo "n8n data restored"
 fi
 
 # Restore WhatsApp sessions
 if [ -f "$BACKUP_DIR/evolution-data.tar.gz" ]; then
     echo ""
-    echo "📱 Restoring WhatsApp sessions..."
+    echo "Restoring WhatsApp sessions..."
     tar -xzf "$BACKUP_DIR/evolution-data.tar.gz" -C ~
-    echo "✅ WhatsApp sessions restored"
+    echo "WhatsApp sessions restored"
 fi
 
 # Restore config
 if [ -d "$BACKUP_DIR/docker" ]; then
     echo ""
-    echo "📝 Restoring configuration..."
+    echo "Restoring configuration..."
     cp -r "$BACKUP_DIR/docker" ~/Documents/Niles/
     if [ -d "$BACKUP_DIR/Setup" ]; then
         cp -r "$BACKUP_DIR/Setup" ~/Documents/Niles/
@@ -116,12 +116,12 @@ if [ -d "$BACKUP_DIR/docker" ]; then
     if [ -d "$BACKUP_DIR/scripts" ]; then
         cp -r "$BACKUP_DIR/scripts" ~/Documents/Niles/
     fi
-    echo "✅ Configuration restored"
+    echo "Configuration restored"
 fi
 
 # Restore Docker volumes (only PostgreSQL)
 echo ""
-echo "💾 Restoring Docker volumes..."
+echo "Restoring Docker volumes..."
 
 # Create volumes if they don't exist
 docker volume create evolution_postgres 2>/dev/null || true
@@ -132,11 +132,11 @@ if [ -f "$BACKUP_DIR/evolution-postgres.tar.gz" ]; then
         -v evolution_postgres:/data \
         -v "$BACKUP_DIR":/backup \
         alpine sh -c "cd /data && tar xzf /backup/evolution-postgres.tar.gz"
-    echo "✅ PostgreSQL data restored"
+    echo "PostgreSQL data restored"
 fi
 
 echo ""
-echo "✅ Restore complete!"
+echo "Restore complete."
 echo ""
 echo "Next steps:"
 echo "  1. cd ~/Documents/Niles"
@@ -174,49 +174,49 @@ EOF
 
 # 6. Create compressed archive
 echo ""
-echo "🗜️  Creating compressed archive..."
+echo "Creating compressed archive..."
 cd "$BACKUP_DIR"
 tar -czf "niles-backup-$TIMESTAMP.tar.gz" "$TIMESTAMP"
 ARCHIVE_SIZE=$(du -h "niles-backup-$TIMESTAMP.tar.gz" | cut -f1)
 
-echo -e "${GREEN}✅ Archive created: niles-backup-$TIMESTAMP.tar.gz${NC}"
+echo -e "${GREEN}Archive created: niles-backup-$TIMESTAMP.tar.gz${NC}"
 echo ""
 
 # 7. Cleanup old backups (keep last 7)
-echo "🧹 Cleaning up old backups (keeping last 7)..."
+echo "Cleaning up old backups (keeping last 7)..."
 cd "$BACKUP_DIR"
 ls -t niles-backup-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
 ls -td [0-9]* 2>/dev/null | tail -n +8 | xargs rm -rf 2>/dev/null || true
-echo -e "${GREEN}✅ Old backups cleaned up${NC}"
+echo -e "${GREEN}Old backups cleaned up${NC}"
 
 # Summary
 echo ""
-echo -e "${GREEN}═══════════════════════════════════════${NC}"
-echo -e "${GREEN}✅  Backup Complete!${NC}"
-echo -e "${GREEN}═══════════════════════════════════════${NC}"
+echo -e "${GREEN}=======================================${NC}"
+echo -e "${GREEN}Backup Complete${NC}"
+echo -e "${GREEN}=======================================${NC}"
 echo ""
-echo "📁 Backup location:"
+echo "Backup location:"
 echo "   $BACKUP_PATH"
 echo ""
-echo "🗜️  Compressed archive:"
+echo "Compressed archive:"
 echo "   $BACKUP_DIR/niles-backup-$TIMESTAMP.tar.gz"
 echo "   Size: $ARCHIVE_SIZE"
 echo ""
-echo "📋 What's included:"
-echo "   ✅ n8n workflows & credentials (~/.n8n)"
-echo "   ✅ WhatsApp sessions (~/.evolution)"
-echo "   ✅ PostgreSQL database (Docker volume)"
-echo "   ✅ Configuration files (docker/, scripts/, Setup/)"
-echo "   ✅ Restore script"
+echo "Included:"
+echo "   - n8n workflows & credentials (~/.n8n)"
+echo "   - WhatsApp sessions (~/.evolution)"
+echo "   - PostgreSQL database (Docker volume)"
+echo "   - Configuration files (docker/, scripts/, Setup/)"
+echo "   - Restore script"
 echo ""
-echo "💡 To restore on another Mac:"
+echo "To restore on another Mac:"
 echo "   1. Copy: niles-backup-$TIMESTAMP.tar.gz"
 echo "   2. Extract: tar -xzf niles-backup-$TIMESTAMP.tar.gz"
 echo "   3. Run: cd $TIMESTAMP && ./restore.sh"
 echo ""
-echo "⚠️  Manual steps after restore:"
+echo "Manual steps after restore:"
 echo "   - Google Calendar: Re-authenticate OAuth"
 echo "   - LM Studio: Re-download model"
 echo ""
-echo "✅  No QR code scan needed (WhatsApp sessions included)"
+echo "No QR code scan needed (WhatsApp sessions included)."
 echo ""
