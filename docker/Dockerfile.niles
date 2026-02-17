@@ -5,10 +5,10 @@ WORKDIR /app
 # Install uv for fast dependency management
 RUN pip install uv
 
-# Copy dependency files and install (cached layer)
+# Copy dependency files and install (production only)
 COPY pyproject.toml .
 COPY src/ ./src/
-RUN uv pip install --system -e ".[dev]"
+RUN uv pip install --system .
 
 # Copy config
 COPY config/ ./config/

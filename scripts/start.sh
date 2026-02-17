@@ -3,13 +3,24 @@
 # Niles AI - Start Script
 # Startet alle Docker Services
 
-set -e
-
-echo "🚀 Starting Niles AI..."
-echo ""
+set -euo pipefail
 
 # Change to Niles root directory
 cd "$(dirname "$0")/.."
+
+# Check prerequisites
+if ! command -v docker &>/dev/null; then
+    echo "❌ Error: docker not found. Please install Docker Desktop."
+    exit 1
+fi
+
+if ! docker info &>/dev/null; then
+    echo "❌ Error: Docker daemon is not running. Please start Docker Desktop."
+    exit 1
+fi
+
+echo "🚀 Starting Niles AI..."
+echo ""
 
 # Check if .env exists
 if [ ! -f .env ]; then
