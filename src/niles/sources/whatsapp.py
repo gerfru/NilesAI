@@ -63,10 +63,13 @@ async def whatsapp_webhook(request: Request):
     try:
         response_text = await agent.process_event(event)
 
-        # Send reply
-        if response_text:
+        # Send reply only if auto-reply is enabled
+        settings = request.app.state.settings
+        if response_text and settings.feature_whatsapp_auto_reply:
             whatsapp_action = request.app.state.whatsapp_action
             await whatsapp_action.send_message(to=remote_jid, text=response_text)
+        elif response_text:
+            logger.info("Auto-reply disabled, suppressed response to %s", sender)
     except Exception:
         logger.exception("Failed to process WhatsApp message from %s", sender)
 
