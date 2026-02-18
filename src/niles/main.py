@@ -16,6 +16,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .actions.calendar import CalendarAction
 from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
@@ -24,6 +25,7 @@ from .mcp.client import MCPManager
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
 from .sources.whatsapp import router as whatsapp_router
+from .sync.caldav import CalDAVSync
 from .sync.carddav import CardDAVSync
 
 logger = logging.getLogger(__name__)
@@ -92,18 +94,39 @@ async def lifespan(app: FastAPI):
     carddav_sync = CardDAVSync(pool, settings)
     await carddav_sync.initialize()
 
+    # CalDAV Sync
+    caldav_sync = CalDAVSync(pool, settings)
+    await caldav_sync.initialize()
+
+    # Scheduler (shared by CardDAV and CalDAV)
     scheduler = None
-    if settings.feature_carddav_sync:
+    if settings.feature_carddav_sync or settings.feature_caldav_sync:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
         scheduler = AsyncIOScheduler()
+
+    if settings.feature_carddav_sync:
         scheduler.add_job(
             carddav_sync.sync_contacts, "cron", hour=3, minute=0,
             id="carddav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
         )
-        scheduler.start()
-        logger.info("CardDAV sync scheduler started (daily at 03:00)")
         asyncio.create_task(carddav_sync.sync_contacts())
+        logger.info("CardDAV sync scheduled (daily at 03:00)")
+
+    calendar = None
+    if settings.feature_caldav_sync:
+        scheduler.add_job(
+            caldav_sync.sync_events, "cron", hour=3, minute=15,
+            id="caldav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
+        )
+        asyncio.create_task(caldav_sync.sync_events())
+        calendar = CalendarAction(pool, timezone=settings.timezone)
+        logger.info("CalDAV sync scheduled (daily at 03:15)")
+
+    if scheduler:
+        scheduler.start()
 
     # MCP Servers
     mcp_manager = MCPManager()
@@ -121,6 +144,8 @@ async def lifespan(app: FastAPI):
         memory=memory,
         history=history,
         mcp_manager=mcp_manager,
+        calendar=calendar,
+        caldav_sync=caldav_sync if settings.feature_caldav_sync else None,
     )
 
     # Store on app state for access in route handlers
