@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from niles.config import Settings
-from niles.sync.caldav import CalDAVSync, _parse_dt, _unfold_ics
+from niles.sync.caldav import CalDAVSync, _escape_ical_text, _parse_dt, _unfold_ics
 
 _TZ_VIENNA = ZoneInfo("Europe/Vienna")
 
@@ -220,6 +220,42 @@ class TestParseDt:
         assert dt.tzinfo == timezone.utc
         assert all_day is False
 
+    def test_invalid_date_value(self):
+        dt, all_day = _parse_dt("DTSTART:not-a-date")
+        assert dt is None
+        assert all_day is False
+
+    def test_invalid_all_day_value(self):
+        dt, all_day = _parse_dt("DTSTART;VALUE=DATE:baddate")
+        assert dt is None
+        assert all_day is False
+
+
+class TestEscapeIcalText:
+    def test_escapes_semicolons(self):
+        assert _escape_ical_text("a;b") == "a\\;b"
+
+    def test_escapes_commas(self):
+        assert _escape_ical_text("a,b") == "a\\,b"
+
+    def test_escapes_backslashes(self):
+        assert _escape_ical_text("a\\b") == "a\\\\b"
+
+    def test_escapes_newlines(self):
+        assert _escape_ical_text("line1\nline2") == "line1\\nline2"
+
+    def test_escapes_crlf(self):
+        assert _escape_ical_text("line1\r\nline2") == "line1\\nline2"
+
+    def test_strips_bare_cr(self):
+        assert _escape_ical_text("line1\rline2") == "line1line2"
+
+    def test_plain_text_unchanged(self):
+        assert _escape_ical_text("Hello World") == "Hello World"
+
+    def test_combined_escaping(self):
+        assert _escape_ical_text("a;b,c\\d\ne") == "a\\;b\\,c\\\\d\\ne"
+
 
 class TestParseICalendar:
     def test_full_event(self, sync):
@@ -409,3 +445,36 @@ class TestCreateEvent:
 
         # No local upsert on failure
         pool.execute.assert_not_called()
+
+    async def test_injection_attempt_escaped(self, sync, pool):
+        """Verify iCalendar injection via summary is neutralized by escaping."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.put.return_value = mock_response
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await sync.create_event(
+                summary="Meeting\r\nDTEND:20260101T000000Z\r\nSUMMARY:Injected",
+                dtstart_str="2026-02-20T14:00",
+            )
+
+        assert result["status"] == "created"
+        put_call = mock_client.put.call_args
+        body = put_call.kwargs.get("content") or put_call[1].get("content", "")
+        # Newlines should be escaped, not raw
+        assert "SUMMARY:Meeting\\nDTEND" in body
+        # Should NOT contain a raw injected SUMMARY line
+        assert "\r\nSUMMARY:Injected" not in body
+
+    async def test_invalid_iso_raises(self, sync, pool):
+        """Invalid ISO datetime string should raise ValueError."""
+        with pytest.raises(ValueError):
+            await sync.create_event(
+                summary="Bad",
+                dtstart_str="not-a-date",
+            )

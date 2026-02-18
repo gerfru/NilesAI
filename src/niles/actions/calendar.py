@@ -8,14 +8,13 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
-_TZ_VIENNA = ZoneInfo("Europe/Vienna")
-
 
 class CalendarAction:
     """Search calendar events by keyword and/or date range."""
 
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, timezone: str = "Europe/Vienna"):
         self.pool = pool
+        self.tz = ZoneInfo(timezone)
 
     async def find_by_query(
         self,
@@ -57,33 +56,32 @@ class CalendarAction:
 
         return [self._row_to_dict(row) for row in rows]
 
-    @staticmethod
-    def _parse_date(value: str, end_of_day: bool = False) -> datetime | None:
+    def _parse_date(self, value: str, end_of_day: bool = False) -> datetime | None:
         """Parse an ISO date string to a timezone-aware datetime."""
         try:
             dt = datetime.fromisoformat(value)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_TZ_VIENNA)
+                dt = dt.replace(tzinfo=self.tz)
             if end_of_day and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
         except ValueError:
+            logger.warning("Failed to parse date: %s", value)
             return None
 
-    @staticmethod
-    def _row_to_dict(row: asyncpg.Record) -> dict:
+    def _row_to_dict(self, row: asyncpg.Record) -> dict:
         """Convert a database row to a formatted dict."""
         dtstart = row["dtstart"]
         dtend = row["dtend"]
 
         result = {
             "summary": row["summary"],
-            "start": dtstart.astimezone(_TZ_VIENNA).isoformat() if dtstart else None,
+            "start": dtstart.astimezone(self.tz).isoformat() if dtstart else None,
             "all_day": row["all_day"],
         }
 
         if dtend:
-            result["end"] = dtend.astimezone(_TZ_VIENNA).isoformat()
+            result["end"] = dtend.astimezone(self.tz).isoformat()
         if row["description"]:
             result["description"] = row["description"]
         if row["location"]:
