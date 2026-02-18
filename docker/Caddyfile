@@ -44,18 +44,3 @@ https://localhost:8443, https://192.168.1.x:8443, https://192.168.1.x:8443 {
 	}
 	reverse_proxy evolution_api:8080
 }
-
-# n8n (:5678)
-https://localhost:5678, https://192.168.1.x:5678, https://192.168.1.x:5678 {
-	tls internal
-	import security_headers
-	log {
-		output file /data/access-n8n.log {
-			roll_size 10mb
-			roll_keep 3
-		}
-		format json
-		level INFO
-	}
-	reverse_proxy n8n:5678
-}

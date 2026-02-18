@@ -8,11 +8,13 @@ import sys
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -20,10 +22,12 @@ from .actions.calendar import CalendarAction
 from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
-from .config import Settings
+from .config import Settings, apply_overrides
 from .mcp.client import MCPManager
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
+from .settings_store import SettingsStore
+from .sources.web import router as web_router
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
 from .sync.carddav import CardDAVSync
@@ -90,6 +94,14 @@ async def lifespan(app: FastAPI):
     history = ConversationHistory(pool)
     await history.initialize()
 
+    # Settings store (runtime overrides from DB)
+    settings_store = SettingsStore(pool)
+    await settings_store.initialize()
+    overrides = await settings_store.get_all()
+    if overrides:
+        apply_overrides(settings, overrides)
+        logger.info("Applied %d settings override(s) from DB", len(overrides))
+
     # CardDAV Sync
     carddav_sync = CardDAVSync(pool, settings)
     await carddav_sync.initialize()
@@ -153,6 +165,8 @@ async def lifespan(app: FastAPI):
     app.state.pool = pool
     app.state.agent = agent
     app.state.whatsapp_action = whatsapp_action
+    app.state.history = history
+    app.state.settings_store = settings_store
 
     yield
 
@@ -182,8 +196,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         del self._hits[oldest_ip]
 
     async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health checks
-        if request.url.path == "/health":
+        # Skip rate limiting for health checks and static files
+        if request.url.path == "/health" or request.url.path.startswith("/static"):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -211,6 +225,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.include_router(whatsapp_router)
+app.include_router(web_router)
+
+# Static files (CSS, JS)
+_static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -224,6 +243,12 @@ async def require_api_key(
     if not api_key or len(api_key) > 256 or not hmac.compare_digest(api_key, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
+
+
+@app.get("/")
+async def root():
+    """Redirect to web UI."""
+    return RedirectResponse(url="/ui/chat", status_code=303)
 
 
 @app.get("/health")

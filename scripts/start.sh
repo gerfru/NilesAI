@@ -50,11 +50,11 @@ docker compose -f docker/docker-compose.yml ps
 
 echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
-echo "  - Niles Core:        https://localhost"
+echo "  - Niles Web UI:      https://localhost/ui/chat"
 echo "  - Niles API Docs:    https://localhost/docs"
-echo "  - n8n:               https://localhost:5678"
 echo "  - Evolution API:     https://localhost:8443"
 echo "  - Evolution Manager: https://localhost:8443/manager"
+echo "  - LM Studio API:     http://localhost:1234/v1"
 echo ""
 echo "Next steps:"
 echo "  1. Open LM Studio manually: open -a 'LM Studio'"
