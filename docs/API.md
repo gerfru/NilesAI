@@ -1,6 +1,64 @@
 # Niles AI Core -- API Reference
 
-> **Stand:** 2026-02-17
+> **Stand:** 2026-02-18
+
+---
+
+## HTTPS (Caddy Reverse Proxy)
+
+Alle externen Zugriffe laufen ueber HTTPS via Caddy Reverse Proxy mit self-signed Zertifikaten (`tls internal`).
+
+| Port | Service | Intern |
+|------|---------|--------|
+| 443 | Niles Core API | niles_core:8000 |
+| 8443 | Evolution API | evolution_api:8080 |
+
+- **Self-signed Zertifikate:** Browser-Warnung beim ersten Zugriff akzeptieren
+- **curl:** `--insecure` Flag verwenden (oder `-k`)
+- **Interner Docker-Traffic:** bleibt HTTP (Container-zu-Container)
+
+---
+
+## Authentifizierung
+
+### /chat -- API Key
+
+Erwartet den Header `X-API-Key` mit dem Wert von `NILES_API_KEY`. Wird kein Key gesetzt, generiert Niles beim Start einen zufaelligen Key (abrufbar via `docker exec niles_core printenv NILES_API_KEY`).
+
+```bash
+curl -k -X POST https://localhost/chat \
+  -H "X-API-Key: <NILES_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hallo"}'
+```
+
+### /webhook/whatsapp -- URL Token
+
+Erwartet den Query-Parameter `?token=` mit dem Wert von `EVOLUTION_API_KEY`. Evolution API (self-hosted v2.3.x) kann keine Custom-Headers bei Webhook-Requests senden (Feature-Request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), daher wird ein URL-Token verwendet.
+
+```
+POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
+```
+
+**Risikobewertung:** Query-Parameter koennen in Server-Logs erscheinen. Caddy loggt standardmaessig keine Query-Parameter. Der Webhook-Traffic laeuft intern ueber das Docker-Netzwerk (HTTP, Container-zu-Container), nie ueber das oeffentliche Netz. Sobald Evolution API Custom-Headers unterstuetzt, sollte auf Header-basierte Authentifizierung migriert werden.
+
+### /health -- Kein Auth
+
+Health Check ist oeffentlich zugaenglich. Rate Limiting (60 req/min) gilt nicht fuer `/health`.
+
+### Rate Limiting
+
+Alle Endpoints (ausser `/health`) sind auf 60 Requests pro Minute pro Client-IP begrenzt. Bei Ueberschreitung wird HTTP 429 zurueckgegeben.
+
+### Secrets Rotation
+
+Keys koennen jederzeit rotiert werden:
+
+1. Neuen Key in `.env` setzen (`NILES_API_KEY`, `EVOLUTION_API_KEY`)
+2. Container neu starten: `./scripts/start.sh`
+3. Bei Aenderung von `EVOLUTION_API_KEY`: Webhook-URL in der Evolution API aktualisieren (siehe unten)
+
+Wird `NILES_API_KEY` nicht gesetzt, generiert Niles bei jedem Containerstart einen neuen Key (automatische Rotation).
 
 ---
 
@@ -57,18 +115,21 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 | Code | Bedeutung |
 |------|-----------|
 | 200 | Nachricht verarbeitet |
+| 401 | Fehlender oder ungueltiger API Key |
 | 422 | Ungueltige Request-Daten |
 | 500 | Interner Fehler |
 
 **Hinweise:**
 
+- Erfordert `X-API-Key` Header (siehe Authentifizierung)
 - Verwendet `chat_id = "api"` fuer die Konversations-Historie
 - Memory und Tool-Calls sind voll verfuegbar (gleiche Pipeline wie WhatsApp)
 
 **Beispiel:**
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -k -X POST https://localhost/chat \
+  -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Merke dir: Mein Lieblingsessen ist Pizza"}'
 ```
@@ -113,9 +174,13 @@ Evolution API v2.3.7 Payload (Beispiel fuer `messages.upsert`):
 6. Event wird an `NilesAgent.process_event()` uebergeben
 7. Antwort wird via `WhatsAppAction.send_message()` zurueckgesendet
 
+**Authentifizierung:**
+
+Erfordert `?token=<EVOLUTION_API_KEY>` als Query-Parameter (siehe Authentifizierung). Gibt HTTP 401 bei ungueltigem oder fehlendem Token zurueck.
+
 **Response:**
 
-Gibt immer HTTP 200 zurueck, unabhaengig vom Verarbeitungsergebnis. Dies verhindert Retry-Spam durch die Evolution API.
+Bei gueltigem Token: Gibt immer HTTP 200 zurueck, unabhaengig vom Verarbeitungsergebnis. Dies verhindert Retry-Spam durch die Evolution API.
 
 ```json
 {"status": "processed"}
@@ -244,17 +309,19 @@ Ruft einen gespeicherten Fakt aus dem Memory ab.
 Die Evolution API muss so konfiguriert werden, dass sie Webhooks an Niles sendet:
 
 ```bash
-curl -X POST http://localhost:8080/webhook/set/niles-whatsapp \
+curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
   -H "apikey: <EVOLUTION_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "webhook": {
       "enabled": true,
-      "url": "http://niles_core:8000/webhook/whatsapp",
+      "url": "http://niles_core:8000/webhook/whatsapp?token=<EVOLUTION_API_KEY>",
       "events": ["MESSAGES_UPSERT"]
     }
   }'
 ```
+
+**Hinweis:** Die Webhook-URL nutzt den Docker-internen Hostnamen `niles_core` (HTTP, Container-zu-Container). Der `curl`-Aufruf selbst geht ueber Caddy (HTTPS).
 
 Die Webhook-URL verwendet den Docker-internen Hostnamen `niles_core`.
 
