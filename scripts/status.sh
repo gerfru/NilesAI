@@ -29,11 +29,11 @@ echo "Docker Services:"
 docker compose -f docker/docker-compose.yml ps
 echo ""
 
-# Check Niles Core
+# Check Niles Core (via Caddy HTTPS)
 echo "Niles Core:"
-if HEALTH=$(curl -s http://localhost:8000/health 2>&1); then
+if HEALTH=$(curl -sk https://localhost/health 2>&1); then
     if echo "$HEALTH" | grep -q '"status":"ok"'; then
-        echo "  Running on http://localhost:8000"
+        echo "  Running on https://localhost"
     else
         echo "  Running but health check failed"
     fi
@@ -44,23 +44,23 @@ fi
 # Check n8n
 echo ""
 echo "n8n:"
-if curl -s http://localhost:5678 > /dev/null 2>&1; then
-    echo "  Running on http://localhost:5678"
+if curl -sk https://localhost:5678 > /dev/null 2>&1; then
+    echo "  Running on https://localhost:5678"
 else
     echo "  Not reachable"
 fi
 
-# Check Evolution API
+# Check Evolution API (via Caddy HTTPS)
 echo ""
 echo "Evolution API:"
-if RESPONSE=$(curl -s http://localhost:8080/ 2>&1); then
+if RESPONSE=$(curl -sk https://localhost:8443/ 2>&1); then
     if echo "$RESPONSE" | grep -q "Welcome to the Evolution API"; then
-        echo "  Running on http://localhost:8080"
+        echo "  Running on https://localhost:8443"
 
         # Check WhatsApp instance status
         echo ""
         echo "  WhatsApp Instance:"
-        if INSTANCE=$(curl -s -H "apikey: ${EVOLUTION_API_KEY}" http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1); then
+        if INSTANCE=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://localhost:8443/instance/connectionState/niles-whatsapp 2>&1); then
             if echo "$INSTANCE" | grep -q '"state":"open"'; then
                 echo "    Connected"
             elif echo "$INSTANCE" | grep -q '"state":"connecting"'; then
@@ -88,9 +88,9 @@ else
 fi
 
 echo ""
-echo "Service URLs:"
-echo "  - Niles Core:          http://localhost:8000"
-echo "  - Niles API Docs:      http://localhost:8000/docs"
-echo "  - n8n:                 http://localhost:5678"
-echo "  - Evolution Manager:   http://localhost:8080/manager"
+echo "Service URLs (HTTPS via Caddy, self-signed):"
+echo "  - Niles Core:          https://localhost"
+echo "  - Niles API Docs:      https://localhost/docs"
+echo "  - n8n:                 https://localhost:5678"
+echo "  - Evolution Manager:   https://localhost:8443/manager"
 echo "  - LM Studio API:       http://localhost:1234/v1"
