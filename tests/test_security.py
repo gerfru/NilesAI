@@ -1,9 +1,11 @@
 """Tests for API authentication and rate limiting."""
 
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from niles.config import Settings
 
@@ -110,3 +112,103 @@ class TestRateLimiting:
         window = now - 60.0
         pruned = [t for t in middleware._hits[client_ip] if t > window]
         assert len(pruned) == 1
+
+    def test_evict_oldest_ip_when_table_full(self):
+        from niles.main import RateLimitMiddleware
+
+        middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
+        middleware.MAX_TRACKED_IPS = 3  # low limit for testing
+        now = time.monotonic()
+
+        # Fill with 4 IPs (exceeds limit of 3)
+        middleware._hits["10.0.0.1"] = [now - 50]  # oldest last-hit
+        middleware._hits["10.0.0.2"] = [now - 30]
+        middleware._hits["10.0.0.3"] = [now - 10]
+        middleware._hits["10.0.0.4"] = [now]
+
+        middleware._evict_oldest()
+
+        assert len(middleware._hits) == 3
+        assert "10.0.0.1" not in middleware._hits  # oldest evicted
+
+    def test_evict_does_nothing_under_limit(self):
+        from niles.main import RateLimitMiddleware
+
+        middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
+        middleware.MAX_TRACKED_IPS = 10
+        now = time.monotonic()
+
+        middleware._hits["10.0.0.1"] = [now]
+        middleware._hits["10.0.0.2"] = [now]
+
+        middleware._evict_oldest()
+
+        assert len(middleware._hits) == 2
+
+
+class TestRateLimitingIntegration:
+    """Integration tests: real HTTP requests through the rate limit middleware."""
+
+    @pytest.fixture
+    def limited_app(self):
+        """Create a minimal FastAPI app with a low rate limit (3 req/min)."""
+        from niles.main import RateLimitMiddleware
+
+        test_app = FastAPI()
+        test_app.add_middleware(RateLimitMiddleware, requests_per_minute=3)
+
+        @test_app.get("/health")
+        async def health():
+            return {"status": "ok"}
+
+        @test_app.get("/test")
+        async def test_endpoint():
+            return {"data": "ok"}
+
+        return test_app
+
+    def test_returns_429_when_limit_exceeded(self, limited_app):
+        """Requests beyond the limit get HTTP 429."""
+        with TestClient(limited_app) as client:
+            for _ in range(3):
+                resp = client.get("/test")
+                assert resp.status_code == 200
+
+            resp = client.get("/test")
+            assert resp.status_code == 429
+            assert resp.json() == {"detail": "Too many requests"}
+
+    def test_health_exempt_from_rate_limit(self, limited_app):
+        """/health is never rate-limited, even after exceeding limit."""
+        with TestClient(limited_app) as client:
+            # Exhaust rate limit on /test
+            for _ in range(4):
+                client.get("/test")
+
+            # /health must still return 200
+            for _ in range(10):
+                resp = client.get("/health")
+                assert resp.status_code == 200
+
+    def test_429_includes_correct_body(self, limited_app):
+        """429 response body contains the expected detail message."""
+        with TestClient(limited_app) as client:
+            for _ in range(4):
+                client.get("/test")
+
+            resp = client.get("/test")
+            assert resp.status_code == 429
+            body = resp.json()
+            assert "detail" in body
+            assert body["detail"] == "Too many requests"
+
+    def test_different_paths_share_rate_limit(self, limited_app):
+        """Rate limit is per-IP, not per-path."""
+        with TestClient(limited_app) as client:
+            # Mix requests to /test and /health-exempt paths
+            for _ in range(3):
+                client.get("/test")
+
+            # Same IP, different path -- should still be limited
+            resp = client.get("/test")
+            assert resp.status_code == 429
