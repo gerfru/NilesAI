@@ -3,6 +3,7 @@
 import json
 import logging
 
+import httpx
 from openai import AsyncOpenAI
 
 from ..actions.calendar import CalendarAction
@@ -341,9 +342,12 @@ class NilesAgent:
                     description=args.get("description", ""),
                     location=args.get("location", ""),
                 )
+            except httpx.HTTPError as e:
+                logger.error("HTTP error creating event: %s", e)
+                return {"error": "Termin konnte nicht erstellt werden (Netzwerkfehler)"}
             except Exception as e:
                 logger.error("Failed to create event: %s", e)
-                return {"error": f"Termin konnte nicht erstellt werden: {e}"}
+                return {"error": "Termin konnte nicht erstellt werden"}
 
         # MCP tools (prefixed with mcp__)
         if self.mcp and self.mcp.is_mcp_tool(name):
