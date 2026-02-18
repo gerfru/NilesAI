@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Stand:** 2026-02-17
+> **Stand:** 2026-02-18
 
 ---
 
@@ -71,7 +71,19 @@ Startet uvicorn mit Auto-Reload auf `http://127.0.0.1:8000`. Setzt voraus, dass 
 ./scripts/start.sh
 ```
 
-Startet alle Container (PostgreSQL, Evolution API, n8n, Niles Core). Niles Core laeuft mit Volume-Mount und `--reload` fuer Live-Reload bei Code-Aenderungen.
+Startet alle Container (PostgreSQL, Evolution API, n8n, Niles Core, Caddy). Niles Core laeuft mit Volume-Mount und `--reload` fuer Live-Reload bei Code-Aenderungen.
+
+**HTTPS:** Caddy terminiert TLS mit self-signed Zertifikaten. Fuer lokales Testen `--insecure` bei curl verwenden:
+
+```bash
+curl -k https://localhost/health
+curl -k -X POST https://localhost/chat \
+  -H "X-API-Key: <KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Test"}'
+```
+
+Alternativ direkt ueber den Docker-internen Port (ohne TLS): `docker exec niles_core curl http://localhost:8000/health`
 
 ### Status pruefen
 
