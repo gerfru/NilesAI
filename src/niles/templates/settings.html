@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Settings - Niles AI{% endblock %}
+{% block content %}
+<h2>Settings</h2>
+<div id="toast-container"></div>
+
+<article>
+    <h3>Feature Flags</h3>
+    {% for key in ['feature_whatsapp_auto_reply', 'feature_tool_send_whatsapp', 'feature_carddav_sync', 'feature_caldav_sync'] %}
+    <label>
+        <input type="checkbox" role="switch"
+               {% if settings.__dict__[key] %}checked{% endif %}
+               hx-post="/ui/api/settings/{{ key }}"
+               hx-target="#toast-container"
+               hx-swap="innerHTML"
+               hx-vals='js:{"value": event.target.checked ? "true" : "false"}'>
+        {{ key }}
+    </label>
+    {% endfor %}
+</article>
+
+<article>
+    <h3>LLM Configuration</h3>
+    {% for key in ['llm_base_url', 'llm_model'] %}
+    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>{{ key }}
+            <input type="text" name="value" value="{{ settings.__dict__[key] }}">
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+    {% endfor %}
+</article>
+
+<article>
+    <h3>General</h3>
+    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>timezone
+            <input type="text" name="value" value="{{ settings.timezone }}">
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+    <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>log_level
+            <select name="value">
+                {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
+                <option value="{{ level }}" {% if settings.log_level == level %}selected{% endif %}>{{ level }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+</article>
+
+<article>
+    <h3>Infrastructure (read-only)</h3>
+    <p><small>Diese Werte koennen nur in der <code>.env</code> Datei geaendert werden (Container-Neustart noetig).</small></p>
+    <table>
+        <tbody>
+            <tr><td>postgres_host</td><td>{{ settings.postgres_host }}</td></tr>
+            <tr><td>postgres_port</td><td>{{ settings.postgres_port }}</td></tr>
+            <tr><td>postgres_db</td><td>{{ settings.postgres_db }}</td></tr>
+            <tr><td>postgres_user</td><td>{{ settings.postgres_user }}</td></tr>
+            <tr><td>postgres_password</td><td>********</td></tr>
+            <tr><td>evolution_api_url</td><td>{{ settings.evolution_api_url }}</td></tr>
+            <tr><td>evolution_api_key</td><td>********</td></tr>
+            <tr><td>carddav_url</td><td>{{ settings.carddav_url }}</td></tr>
+            <tr><td>carddav_user</td><td>{{ settings.carddav_user }}</td></tr>
+            <tr><td>carddav_password</td><td>{% if settings.carddav_password %}********{% else %}(not set){% endif %}</td></tr>
+            <tr><td>caldav_url</td><td>{{ settings.caldav_url }}</td></tr>
+            <tr><td>caldav_user</td><td>{{ settings.caldav_user }}</td></tr>
+            <tr><td>caldav_password</td><td>{% if settings.caldav_password %}********{% else %}(not set){% endif %}</td></tr>
+        </tbody>
+    </table>
+</article>
+{% endblock %}
