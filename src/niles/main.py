@@ -5,12 +5,16 @@ import hmac
 import logging
 import os
 import sys
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
@@ -128,7 +132,40 @@ async def lifespan(app: FastAPI):
     logger.info("Niles Core shut down.")
 
 
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple in-memory rate limiter per client IP."""
+
+    def __init__(self, app, requests_per_minute: int = 60):
+        super().__init__(app)
+        self.rpm = requests_per_minute
+        self._hits: dict[str, list[float]] = defaultdict(list)
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip rate limiting for health checks
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        window = now - 60.0
+
+        # Prune old entries and append current
+        hits = self._hits[client_ip]
+        self._hits[client_ip] = [t for t in hits if t > window]
+        self._hits[client_ip].append(now)
+
+        if len(self._hits[client_ip]) > self.rpm:
+            logger.warning("Rate limit exceeded for %s", client_ip)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests"},
+            )
+
+        return await call_next(request)
+
+
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.include_router(whatsapp_router)
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
