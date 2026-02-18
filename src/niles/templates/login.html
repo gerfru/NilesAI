@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Login - Niles AI{% endblock %}
+{% block content %}
+<article>
+    <h2>Niles AI Login</h2>
+    {% if error %}
+    <p role="alert">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/ui/login">
+        <label for="api_key">API Key</label>
+        <input type="password" id="api_key" name="api_key" required
+               placeholder="NILES_API_KEY eingeben" autofocus>
+        <button type="submit">Login</button>
+    </form>
+    <p><small>Den API-Key findest du mit: <code>docker exec niles_core printenv NILES_API_KEY</code></small></p>
+</article>
+{% endblock %}

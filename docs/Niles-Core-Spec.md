@@ -27,8 +27,7 @@ Niles ist ein lokaler, privater AI-Butler auf einem Mac Mini M4. Er empfaengt Ev
 | PostgreSQL | 5432 | Nicht exponiert | Datenbank (evolution_db) |
 | Evolution API v2.3.7 | 8080 | https://localhost:8443 | WhatsApp Gateway |
 | Niles Core (FastAPI) | 8000 | https://localhost | Python Backend |
-| Caddy | -- | :443, :8443, :5678 | HTTPS Reverse Proxy |
-| n8n | 5678 | https://localhost:5678 | Legacy Workflows (wird schrittweise ersetzt) |
+| Caddy | -- | :443, :8443 | HTTPS Reverse Proxy |
 
 **Netzwerk-Architektur:** Alle Docker-Services kommunizieren intern via HTTP. Externer Zugriff ausschliesslich ueber Caddy (HTTPS, self-signed). PostgreSQL und Service-Ports sind nicht exponiert.
 
@@ -48,7 +47,6 @@ Externe Clients (Browser, curl, Tailscale)
 │  Caddy Reverse Proxy                    │
 │  :443 -> niles_core:8000                │
 │  :8443 -> evolution_api:8080            │
-│  :5678 -> n8n:5678                      │
 │  Security Headers, Access Logs          │
 └──────────────┬──────────────────────────┘
                | HTTP (intern)
@@ -298,7 +296,7 @@ APScheduler fuer taeglichen Sync (03:00). Feature Flag: `FEATURE_CARDDAV_SYNC`.
 ### 4.1 Netzwerk
 
 - **HTTPS via Caddy:** Alle externen Zugriffe ueber self-signed TLS-Zertifikate (`tls internal`)
-- **Keine exponierten Ports:** PostgreSQL, Niles Core, Evolution API und n8n sind nur via Docker-Netzwerk erreichbar
+- **Keine exponierten Ports:** PostgreSQL, Niles Core und Evolution API sind nur via Docker-Netzwerk erreichbar
 - **Security Headers:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, Server-Header entfernt
 
 ### 4.2 Authentifizierung
@@ -324,7 +322,7 @@ APScheduler fuer taeglichen Sync (03:00). Feature Flag: `FEATURE_CARDDAV_SYNC`.
 
 - Caddy schreibt JSON-formatierte Access Logs pro Service
 - Log-Rotation: 10 MB pro Datei, 3 Dateien behalten
-- Dateien: `access-niles.log`, `access-evolution.log`, `access-n8n.log`
+- Dateien: `access-niles.log`, `access-evolution.log`
 
 ---
 
@@ -370,11 +368,10 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 | Container | Image | Exponierter Port | Zweck |
 |-----------|-------|-----------------|-------|
-| `niles_caddy` | `caddy:2-alpine` | 443, 8443, 5678 | HTTPS Reverse Proxy |
+| `niles_caddy` | `caddy:2-alpine` | 443, 8443 | HTTPS Reverse Proxy |
 | `niles_core` | Build (Dockerfile.niles) | -- (via Caddy) | Python Backend |
 | `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp Gateway |
-| `niles_n8n` | `n8nio/n8n:latest` | -- (via Caddy) | Legacy Workflows |
 
 ### 6.3 Volumes
 
@@ -384,7 +381,6 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | `caddy_data` | TLS-Zertifikate |
 | `caddy_config` | Caddy-Konfiguration |
 | `~/.evolution/instances` | WhatsApp-Sessions |
-| `~/.n8n` | n8n-Daten |
 
 ---
 
@@ -395,29 +391,17 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | 1 | `stage/1-scaffold` | #1 | Abgeschlossen | FastAPI, Docker, pytest, /health |
 | 2 | `stage/2-whatsapp-loop` | #4 | Abgeschlossen | WhatsApp empfangen, LLM, antworten |
 | 3 | `stage/3-memory` | #6 | Abgeschlossen | Key-Value Memory, Chat-History, Feature Flags |
-| 4 | `stage/4-carddav-sync` | #8 | Abgeschlossen | CardDAV Kontakt-Sync (ersetzt n8n) |
+| 4 | `stage/4-carddav-sync` | #8 | Abgeschlossen | CardDAV Kontakt-Sync |
 | 5 | `stage/5-security-hardening` | #9, #10 | Abgeschlossen | Auth, Rate Limiting, HTTPS, Security Headers |
-| 6 | -- | -- | Geplant | MCP Integration |
-| 7 | -- | -- | Geplant | Email & Kalender |
-| 8 | -- | -- | Geplant | n8n Abloesung |
+| 6 | `stage/6-mcp` | #11 | Abgeschlossen | MCP Integration |
+| 7 | `stage/7-caldav-calendar` | #12 | Abgeschlossen | CalDAV Kalender-Sync |
+| 8 | -- | -- | Geplant | Email als Event-Quelle |
 
-### Roadmap (Stage 6-8)
+### Roadmap
 
-**Stage 6 -- MCP Integration:**
-- `src/niles/mcp/client.py` -- MCPManager
-- MCP-Server als Subprocesses starten
-- Tools dynamisch in Agent registrieren
-- `config/mcp_servers.yaml` befuellen
-
-**Stage 7 -- Email & Kalender:**
+**Stage 8 -- Email:**
 - `src/niles/sources/email.py` -- IMAP Poller (alle 5 min)
-- `src/niles/sources/calendar.py` -- CalDAV Poller (alle 15 min)
-- Neue Agent-Tools: `create_event`, `draft_email`
-
-**Stage 8 -- n8n Abloesung:**
-- Alle verbleibenden n8n-Workflows in Niles Core migrieren
-- n8n-Service und Caddy-Route entfernen
-- Port 5678 freigeben
+- Neue Agent-Tools: `draft_email`
 
 ---
 
