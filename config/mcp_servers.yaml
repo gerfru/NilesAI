@@ -1,11 +1,24 @@
 # MCP Server Configuration
-# Phase 1: Keine MCP Server (eigene Actions zuerst)
-# Phase 5: Home Assistant, Filesystem, etc.
+# Tools from configured servers are automatically available to the agent.
+# Built-in tools (contacts, whatsapp, memory) are always active.
+#
+# Format:
+#   servers:
+#     <name>:
+#       command: <executable>
+#       args: [<arg1>, <arg2>, ...]
+#       env:                          # optional
+#         KEY: "${ENV_VAR}"           # ${VAR} expands from environment
 
 servers: {}
 
-# Beispiel für später:
+# Beispiele:
+#
 # servers:
+#   filesystem:
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
+#
 #   home-assistant:
 #     command: npx
 #     args: ["-y", "@anthropic/mcp-server-home-assistant"]
