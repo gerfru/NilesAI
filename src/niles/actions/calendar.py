@@ -33,8 +33,13 @@ class CalendarAction:
         Returns:
             List of event dicts (max 10), sorted by dtstart ascending.
         """
-        # Parse date parameters
-        ts_from = self._parse_date(date_from) if date_from else None
+        # Parse date parameters; default to "from now" when no range given
+        if date_from:
+            ts_from = self._parse_date(date_from)
+        elif not date_to:
+            ts_from = datetime.now(tz=self.tz)
+        else:
+            ts_from = None
         ts_to = self._parse_date(date_to, end_of_day=True) if date_to else None
 
         rows = await self.pool.fetch(
