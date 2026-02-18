@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Niles AI - Backup Script
-# Sichert alle Daten: n8n, WhatsApp, Config
+# Sichert alle Daten: WhatsApp, Config, PostgreSQL
 
 set -e
 
@@ -26,16 +26,7 @@ echo ""
 # Create backup directory
 mkdir -p "$BACKUP_PATH"
 
-# 1. Backup n8n data
-echo "Backing up n8n data..."
-if [ -d ~/.n8n ]; then
-    tar -czf "$BACKUP_PATH/n8n-data.tar.gz" -C ~ .n8n
-    echo -e "${GREEN}n8n data backed up${NC}"
-else
-    echo "No n8n data found (skipping)"
-fi
-
-# 1b. Backup Evolution WhatsApp sessions
+# 1. Backup Evolution WhatsApp sessions
 echo ""
 echo "Backing up WhatsApp sessions..."
 if [ -d ~/.evolution ]; then
@@ -89,13 +80,6 @@ echo "Restoring Niles AI backup..."
 echo ""
 
 BACKUP_DIR="$(dirname "$0")"
-
-# Restore n8n
-if [ -f "$BACKUP_DIR/n8n-data.tar.gz" ]; then
-    echo "Restoring n8n data..."
-    tar -xzf "$BACKUP_DIR/n8n-data.tar.gz" -C ~
-    echo "n8n data restored"
-fi
 
 # Restore WhatsApp sessions
 if [ -f "$BACKUP_DIR/evolution-data.tar.gz" ]; then
@@ -156,7 +140,6 @@ Hostname: $(hostname)
 Docker Version: $(docker --version)
 
 Contents:
-- n8n data (~/.n8n)
 - WhatsApp sessions (~/.evolution)
 - PostgreSQL Docker volume
 - Configuration files (docker/, Setup/, scripts/)
@@ -203,7 +186,6 @@ echo "   $BACKUP_DIR/niles-backup-$TIMESTAMP.tar.gz"
 echo "   Size: $ARCHIVE_SIZE"
 echo ""
 echo "Included:"
-echo "   - n8n workflows & credentials (~/.n8n)"
 echo "   - WhatsApp sessions (~/.evolution)"
 echo "   - PostgreSQL database (Docker volume)"
 echo "   - Configuration files (docker/, scripts/, Setup/)"
