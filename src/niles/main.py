@@ -135,10 +135,19 @@ async def lifespan(app: FastAPI):
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Simple in-memory rate limiter per client IP."""
 
+    MAX_TRACKED_IPS = 10_000
+
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.rpm = requests_per_minute
         self._hits: dict[str, list[float]] = defaultdict(list)
+
+    def _evict_oldest(self) -> None:
+        """Remove the oldest IP entry when the tracking table is full."""
+        if len(self._hits) <= self.MAX_TRACKED_IPS:
+            return
+        oldest_ip = min(self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0)
+        del self._hits[oldest_ip]
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks
@@ -153,6 +162,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         hits = self._hits[client_ip]
         self._hits[client_ip] = [t for t in hits if t > window]
         self._hits[client_ip].append(now)
+
+        # Evict oldest IP if tracking table grows too large
+        self._evict_oldest()
 
         if len(self._hits[client_ip]) > self.rpm:
             logger.warning("Rate limit exceeded for %s", client_ip)
