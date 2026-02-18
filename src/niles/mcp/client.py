@@ -1,5 +1,6 @@
 """MCP client manager -- starts MCP servers and exposes their tools."""
 
+import asyncio
 import logging
 import os
 import re
@@ -8,16 +9,26 @@ from pathlib import Path
 
 import yaml
 from mcp import ClientSession, StdioServerParameters, stdio_client
+from mcp.types import Tool
 
 logger = logging.getLogger(__name__)
 
 # Separator between server name and tool name in prefixed tool names
 _SEP = "__"
+_STARTUP_TIMEOUT = 30  # seconds
+_VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def _expand_env(value: str) -> str:
     """Expand ${VAR} references in a string using os.environ."""
-    return re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), ""), value)
+
+    def _replacer(match: re.Match) -> str:
+        var_name = match.group(1)
+        if var_name not in os.environ:
+            logger.warning("Environment variable ${%s} not set, using empty string", var_name)
+        return os.environ.get(var_name, "")
+
+    return re.sub(r"\$\{(\w+)\}", _replacer, value)
 
 
 class MCPManager:
@@ -73,21 +84,26 @@ class MCPManager:
 
         params = StdioServerParameters(command=command, args=args, env=env)
 
-        # Enter the stdio_client context via the exit stack
-        read_stream, write_stream = await self._exit_stack.enter_async_context(
-            stdio_client(params)
-        )
+        async with asyncio.timeout(_STARTUP_TIMEOUT):
+            # Enter the stdio_client context via the exit stack
+            read_stream, write_stream = await self._exit_stack.enter_async_context(
+                stdio_client(params)
+            )
 
-        session = await self._exit_stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
+            session = await self._exit_stack.enter_async_context(
+                ClientSession(read_stream, write_stream)
+            )
 
-        await session.initialize()
-        self._sessions[name] = session
+            await session.initialize()
+            self._sessions[name] = session
 
-        # Discover tools
-        result = await session.list_tools()
+            # Discover tools
+            result = await session.list_tools()
+
         for tool in result.tools:
+            if not _VALID_TOOL_NAME.match(tool.name):
+                logger.warning("Skipping tool with invalid name: %s", tool.name)
+                continue
             prefixed = f"mcp{_SEP}{name}{_SEP}{tool.name}"
             self._tool_map[prefixed] = (name, tool.name)
             self._openai_tools.append(_mcp_tool_to_openai(prefixed, tool))
@@ -111,12 +127,16 @@ class MCPManager:
 
         result = await session.call_tool(name=tool_name, arguments=arguments)
 
+        texts = []
+        for c in result.content:
+            if hasattr(c, "text"):
+                texts.append(c.text)
+            else:
+                logger.debug("Skipping non-text content item: %s", type(c).__name__)
+
         if result.isError:
-            texts = [c.text for c in result.content if hasattr(c, "text")]
             return f"Error: {' '.join(texts)}" if texts else "Error: unknown MCP error"
 
-        # Extract text content from result
-        texts = [c.text for c in result.content if hasattr(c, "text")]
         return "\n".join(texts) if texts else ""
 
     async def stop_all(self) -> None:
@@ -128,7 +148,7 @@ class MCPManager:
         logger.info("MCP: all servers stopped")
 
 
-def _mcp_tool_to_openai(prefixed_name: str, tool) -> dict:
+def _mcp_tool_to_openai(prefixed_name: str, tool: Tool) -> dict:
     """Convert an MCP Tool to OpenAI function-calling format."""
     return {
         "type": "function",

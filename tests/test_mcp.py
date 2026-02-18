@@ -1,12 +1,9 @@
 """Tests for MCP client manager and agent integration."""
 
-import json
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+import logging
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from niles.mcp.client import MCPManager, _expand_env, _mcp_tool_to_openai
+from niles.mcp.client import MCPManager, _VALID_TOOL_NAME, _expand_env, _mcp_tool_to_openai
 
 
 class TestExpandEnv:
@@ -25,6 +22,13 @@ class TestExpandEnv:
 
     def test_leaves_plain_text(self):
         assert _expand_env("no vars here") == "no vars here"
+
+    def test_warns_on_missing_var(self, monkeypatch, caplog):
+        monkeypatch.delenv("MISSING_VAR", raising=False)
+        with caplog.at_level(logging.WARNING):
+            result = _expand_env("${MISSING_VAR}")
+        assert result == ""
+        assert "MISSING_VAR" in caplog.text
 
 
 class TestMCPToolToOpenAI:
@@ -250,3 +254,51 @@ class TestAgentMCPDispatch:
 
         assert result == {"status": "saved", "key": "test"}
         mock_mcp.call_tool.assert_not_called()
+
+    async def test_agent_truncates_large_mcp_result(self):
+        from niles.agent.core import MAX_MCP_RESULT_SIZE, NilesAgent
+        from niles.config import Settings
+
+        settings = Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            niles_api_key="test",
+        )
+
+        large_result = "x" * (MAX_MCP_RESULT_SIZE + 1000)
+        mock_mcp = MagicMock()
+        mock_mcp.is_mcp_tool.return_value = True
+        mock_mcp.call_tool = AsyncMock(return_value=large_result)
+
+        agent = NilesAgent(
+            config=settings,
+            contacts=MagicMock(),
+            whatsapp=MagicMock(),
+            memory=MagicMock(),
+            history=MagicMock(),
+            mcp_manager=mock_mcp,
+        )
+
+        tool_call = MagicMock()
+        tool_call.function.name = "mcp__server__tool"
+        tool_call.function.arguments = "{}"
+        tool_call.id = "call_big"
+
+        result = await agent._execute_tool_call(tool_call)
+
+        assert result["result"].endswith("...[truncated]")
+        assert len(result["result"]) <= MAX_MCP_RESULT_SIZE + len("\n...[truncated]")
+
+
+class TestToolNameValidation:
+    def test_valid_names(self):
+        assert _VALID_TOOL_NAME.match("search")
+        assert _VALID_TOOL_NAME.match("get-data")
+        assert _VALID_TOOL_NAME.match("list_files")
+        assert _VALID_TOOL_NAME.match("tool123")
+
+    def test_invalid_names(self):
+        assert not _VALID_TOOL_NAME.match("has space")
+        assert not _VALID_TOOL_NAME.match("semi;colon")
+        assert not _VALID_TOOL_NAME.match("path/traversal")
+        assert not _VALID_TOOL_NAME.match("")
