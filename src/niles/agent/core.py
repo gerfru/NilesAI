@@ -5,10 +5,12 @@ import logging
 
 from openai import AsyncOpenAI
 
+from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
+from ..sync.caldav import CalDAVSync
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from .prompts import build_system_prompt, load_system_prompt
@@ -93,6 +95,64 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_event",
+            "description": "Sucht Kalendertermine nach Stichwort und/oder Zeitraum.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Suchbegriff (Name, Ort, Beschreibung). Leer lassen fuer reine Datumssuche.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Startdatum (ISO-Format, z.B. '2026-02-20' oder '2026-02-20T14:00'). Optional.",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "Enddatum (ISO-Format). Optional.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_event",
+            "description": "Erstellt einen neuen Kalendertermin.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Titel des Termins",
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": "Startzeit (ISO-Format, z.B. '2026-02-20T14:00')",
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": "Endzeit (ISO-Format). Optional, Standard: 1 Stunde nach Start.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Beschreibung des Termins. Optional.",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Ort des Termins. Optional.",
+                    },
+                },
+                "required": ["summary", "start"],
+            },
+        },
+    },
 ]
 
 MAX_TOOL_ROUNDS = 5
@@ -120,6 +180,8 @@ class NilesAgent:
         memory: MemoryStore,
         history: ConversationHistory,
         mcp_manager: MCPManager | None = None,
+        calendar: CalendarAction | None = None,
+        caldav_sync: CalDAVSync | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -132,6 +194,8 @@ class NilesAgent:
         self.memory = memory
         self.history = history
         self.mcp = mcp_manager
+        self.calendar = calendar
+        self.caldav_sync = caldav_sync
         self.base_prompt = load_system_prompt()
 
     async def process_event(self, event: dict) -> str:
@@ -251,6 +315,35 @@ class NilesAgent:
             if value is not None:
                 return {"key": args["key"], "value": value}
             return {"error": f"Nichts gespeichert unter '{args['key']}'"}
+
+        if name == "find_event":
+            if not self.calendar:
+                return {"error": "Kalender ist nicht konfiguriert"}
+            events = await self.calendar.find_by_query(
+                query=args.get("query", ""),
+                date_from=args.get("date_from", ""),
+                date_to=args.get("date_to", ""),
+            )
+            if events:
+                return {"events": events, "count": len(events)}
+            return {"error": "Keine Termine gefunden"}
+
+        if name == "create_event":
+            if not self.caldav_sync:
+                return {"error": "Kalender ist nicht konfiguriert"}
+            if not self.config.feature_caldav_sync:
+                return {"error": "Kalender-Sync ist deaktiviert"}
+            try:
+                return await self.caldav_sync.create_event(
+                    summary=args["summary"],
+                    dtstart_str=args["start"],
+                    dtend_str=args.get("end"),
+                    description=args.get("description", ""),
+                    location=args.get("location", ""),
+                )
+            except Exception as e:
+                logger.error("Failed to create event: %s", e)
+                return {"error": f"Termin konnte nicht erstellt werden: {e}"}
 
         # MCP tools (prefixed with mcp__)
         if self.mcp and self.mcp.is_mcp_tool(name):
