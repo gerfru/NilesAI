@@ -33,15 +33,24 @@ class Settings(BaseSettings):
         default_factory=lambda: secrets.token_urlsafe(32),
     )
 
+    # Timezone (used by CalDAV sync and calendar actions)
+    timezone: str = "Europe/Vienna"
+
     # Features
     feature_whatsapp_auto_reply: bool = False
     feature_tool_send_whatsapp: bool = True
     feature_carddav_sync: bool = False
+    feature_caldav_sync: bool = False
 
     # CardDAV (mailbox.org)
     carddav_url: str = "https://dav.example.com/carddav/32"
     carddav_user: str = ""
     carddav_password: str = ""
+
+    # CalDAV (mailbox.org)
+    caldav_url: str = "https://dav.example.com/caldav/"
+    caldav_user: str = ""
+    caldav_password: str = ""
 
     model_config = {
         "env_file": ".env",
