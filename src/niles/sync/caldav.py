@@ -13,8 +13,6 @@ from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
-_TZ_VIENNA = ZoneInfo("Europe/Vienna")
-
 # PROPFIND body to list iCalendar resources
 _PROPFIND_BODY = (
     '<?xml version="1.0" encoding="utf-8"?>'
@@ -30,6 +28,18 @@ _HREF_REGEX = re.compile(
 
 # Regex to parse DTSTART/DTEND lines with optional parameters
 _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
+
+
+def _escape_ical_text(text: str) -> str:
+    """Escape special characters for iCalendar TEXT values (RFC 5545 section 3.3.11)."""
+    return (
+        text.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "")
+    )
 
 
 def _unfold_ics(text: str) -> str:
@@ -83,12 +93,21 @@ def _parse_dt(line: str) -> tuple[datetime | None, bool]:
 
 
 class CalDAVSync:
-    """Syncs calendar events from a CalDAV server to PostgreSQL."""
+    """Syncs calendar events from a CalDAV server to PostgreSQL.
+
+    Known limitations:
+    - No RRULE expansion (recurring events stored as single instance)
+    - Only first VEVENT per .ics file is parsed
+    - VTIMEZONE blocks are ignored (uses ZoneInfo from TZID parameter)
+    - No VALARM (reminder) support
+    - No ATTENDEE support
+    """
 
     def __init__(self, pool: asyncpg.Pool, config: Settings):
         self.pool = pool
         self.caldav_url = config.caldav_url
-        self.auth = (config.caldav_user, config.caldav_password)
+        self.auth = httpx.BasicAuth(config.caldav_user, config.caldav_password)
+        self.tz = ZoneInfo(config.timezone)
         # Base URL for fetching individual .ics files (scheme + host)
         self._base_url = re.match(r"https?://[^/]+", config.caldav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
@@ -297,20 +316,20 @@ class CalDAVSync:
         # Parse start time
         dtstart = datetime.fromisoformat(dtstart_str)
         if dtstart.tzinfo is None:
-            dtstart = dtstart.replace(tzinfo=_TZ_VIENNA)
+            dtstart = dtstart.replace(tzinfo=self.tz)
 
         # Parse or default end time
         if dtend_str:
             dtend = datetime.fromisoformat(dtend_str)
             if dtend.tzinfo is None:
-                dtend = dtend.replace(tzinfo=_TZ_VIENNA)
+                dtend = dtend.replace(tzinfo=self.tz)
         else:
             dtend = dtstart + timedelta(hours=1)
 
         # Format for iCalendar (local time with TZID)
         dt_fmt = "%Y%m%dT%H%M%S"
-        start_local = dtstart.astimezone(_TZ_VIENNA).strftime(dt_fmt)
-        end_local = dtend.astimezone(_TZ_VIENNA).strftime(dt_fmt)
+        start_local = dtstart.astimezone(self.tz).strftime(dt_fmt)
+        end_local = dtend.astimezone(self.tz).strftime(dt_fmt)
 
         # Build iCalendar body
         ics_body = (
@@ -320,14 +339,14 @@ class CalDAVSync:
             "BEGIN:VEVENT\r\n"
             f"UID:{uid}\r\n"
             f"DTSTAMP:{now_utc}\r\n"
-            f"DTSTART;TZID=Europe/Vienna:{start_local}\r\n"
-            f"DTEND;TZID=Europe/Vienna:{end_local}\r\n"
-            f"SUMMARY:{summary}\r\n"
+            f"DTSTART;TZID={self.tz.key}:{start_local}\r\n"
+            f"DTEND;TZID={self.tz.key}:{end_local}\r\n"
+            f"SUMMARY:{_escape_ical_text(summary)}\r\n"
         )
         if description:
-            ics_body += f"DESCRIPTION:{description}\r\n"
+            ics_body += f"DESCRIPTION:{_escape_ical_text(description)}\r\n"
         if location:
-            ics_body += f"LOCATION:{location}\r\n"
+            ics_body += f"LOCATION:{_escape_ical_text(location)}\r\n"
         ics_body += "END:VEVENT\r\n" "END:VCALENDAR\r\n"
 
         # PUT to CalDAV server
@@ -363,7 +382,7 @@ class CalDAVSync:
         return {
             "status": "created",
             "summary": summary,
-            "start": dtstart.astimezone(_TZ_VIENNA).isoformat(),
-            "end": dtend.astimezone(_TZ_VIENNA).isoformat(),
+            "start": dtstart.astimezone(self.tz).isoformat(),
+            "end": dtend.astimezone(self.tz).isoformat(),
             "uid": uid,
         }

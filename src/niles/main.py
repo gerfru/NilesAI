@@ -109,6 +109,7 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(
             carddav_sync.sync_contacts, "cron", hour=3, minute=0,
             id="carddav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
         )
         asyncio.create_task(carddav_sync.sync_contacts())
         logger.info("CardDAV sync scheduled (daily at 03:00)")
@@ -118,9 +119,10 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(
             caldav_sync.sync_events, "cron", hour=3, minute=15,
             id="caldav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
         )
         asyncio.create_task(caldav_sync.sync_events())
-        calendar = CalendarAction(pool)
+        calendar = CalendarAction(pool, timezone=settings.timezone)
         logger.info("CalDAV sync scheduled (daily at 03:15)")
 
     if scheduler:
