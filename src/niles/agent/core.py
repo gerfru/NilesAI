@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from ..actions.contacts import ContactsAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
+from ..mcp.client import MCPManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from .prompts import build_system_prompt, load_system_prompt
@@ -95,6 +96,7 @@ TOOLS = [
 ]
 
 MAX_TOOL_ROUNDS = 5
+MAX_MCP_RESULT_SIZE = 100_000  # 100 KB limit for MCP tool results
 
 
 class NilesAgent:
@@ -117,6 +119,7 @@ class NilesAgent:
         whatsapp: WhatsAppAction,
         memory: MemoryStore,
         history: ConversationHistory,
+        mcp_manager: MCPManager | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -128,6 +131,7 @@ class NilesAgent:
         self.whatsapp = whatsapp
         self.memory = memory
         self.history = history
+        self.mcp = mcp_manager
         self.base_prompt = load_system_prompt()
 
     async def process_event(self, event: dict) -> str:
@@ -157,13 +161,16 @@ class NilesAgent:
         # Save user message to history
         await self.history.add_message(chat_id, "user", event["content"])
 
+        # Combine built-in tools with MCP tools
+        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
             try:
                 response = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=TOOLS,
+                    tools=all_tools,
                     temperature=0.7,
                 )
             except Exception as e:
@@ -244,5 +251,16 @@ class NilesAgent:
             if value is not None:
                 return {"key": args["key"], "value": value}
             return {"error": f"Nichts gespeichert unter '{args['key']}'"}
+
+        # MCP tools (prefixed with mcp__)
+        if self.mcp and self.mcp.is_mcp_tool(name):
+            try:
+                result_text = await self.mcp.call_tool(name, args)
+                if len(result_text) > MAX_MCP_RESULT_SIZE:
+                    result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
+                return {"result": result_text}
+            except Exception as e:
+                logger.error("MCP tool call failed [%s]: %s", name, e)
+                return {"error": f"MCP tool error: {e}"}
 
         return {"error": f"Unknown tool: {name}"}
