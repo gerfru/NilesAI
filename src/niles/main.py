@@ -57,9 +57,12 @@ async def lifespan(app: FastAPI):
     # Reconfigure logging with settings
     _configure_logging(settings.log_level)
 
-    # Log auto-generated API key for /chat access
+    # Warn if API key was auto-generated (do not log the key itself)
     if not os.environ.get("NILES_API_KEY"):
-        logger.info("Auto-generated NILES_API_KEY: %s", settings.niles_api_key)
+        logger.info(
+            "NILES_API_KEY auto-generated. Retrieve with: "
+            "docker exec niles_core printenv NILES_API_KEY"
+        )
         logger.info("Set NILES_API_KEY in .env for a stable key.")
 
     # Database connection pool
@@ -137,7 +140,7 @@ async def require_api_key(
 ) -> str:
     """Validate X-API-Key header against settings.niles_api_key."""
     expected = request.app.state.settings.niles_api_key
-    if not api_key or not hmac.compare_digest(api_key, expected):
+    if not api_key or len(api_key) > 256 or not hmac.compare_digest(api_key, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
 

@@ -18,11 +18,12 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
     Receives MESSAGES_UPSERT events and forwards them to the agent.
     Requires a valid token query parameter for authentication.
-    Always returns 200 to prevent retry-spam from Evolution.
+    Returns 401 for auth failures, 200 for all other cases to prevent
+    retry-spam from Evolution.
     """
     settings = request.app.state.settings
     expected = settings.evolution_api_key
-    if not token or not hmac.compare_digest(token, expected):
+    if not token or len(token) > 256 or not hmac.compare_digest(token, expected):
         logger.warning("Webhook request with invalid or missing token")
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 

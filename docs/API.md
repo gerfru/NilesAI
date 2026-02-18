@@ -1,6 +1,21 @@
 # Niles AI Core -- API Reference
 
-> **Stand:** 2026-02-17
+> **Stand:** 2026-02-18
+
+---
+
+## HTTPS (Caddy Reverse Proxy)
+
+Alle externen Zugriffe laufen ueber HTTPS via Caddy Reverse Proxy mit self-signed Zertifikaten (`tls internal`).
+
+| Port | Service | Intern |
+|------|---------|--------|
+| 443 | Niles Core API | niles_core:8000 |
+| 8443 | Evolution API | evolution_api:8080 |
+
+- **Self-signed Zertifikate:** Browser-Warnung beim ersten Zugriff akzeptieren
+- **curl:** `--insecure` Flag verwenden (oder `-k`)
+- **Interner Docker-Traffic:** bleibt HTTP (Container-zu-Container)
 
 ---
 
@@ -8,10 +23,10 @@
 
 ### /chat -- API Key
 
-Erwartet den Header `X-API-Key` mit dem Wert von `NILES_API_KEY`. Wird kein Key gesetzt, generiert Niles beim Start einen zufaelligen Key und loggt ihn.
+Erwartet den Header `X-API-Key` mit dem Wert von `NILES_API_KEY`. Wird kein Key gesetzt, generiert Niles beim Start einen zufaelligen Key (abrufbar via `docker exec niles_core printenv NILES_API_KEY`).
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -k -X POST https://localhost/chat \
   -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Hallo"}'
@@ -97,7 +112,7 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 **Beispiel:**
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -k -X POST https://localhost/chat \
   -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Merke dir: Mein Lieblingsessen ist Pizza"}'
@@ -278,7 +293,7 @@ Ruft einen gespeicherten Fakt aus dem Memory ab.
 Die Evolution API muss so konfiguriert werden, dass sie Webhooks an Niles sendet:
 
 ```bash
-curl -X POST http://localhost:8080/webhook/set/niles-whatsapp \
+curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
   -H "apikey: <EVOLUTION_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -289,6 +304,8 @@ curl -X POST http://localhost:8080/webhook/set/niles-whatsapp \
     }
   }'
 ```
+
+**Hinweis:** Die Webhook-URL nutzt den Docker-internen Hostnamen `niles_core` (HTTP, Container-zu-Container). Der `curl`-Aufruf selbst geht ueber Caddy (HTTPS).
 
 Die Webhook-URL verwendet den Docker-internen Hostnamen `niles_core`.
 
