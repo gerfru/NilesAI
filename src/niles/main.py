@@ -20,6 +20,7 @@ from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
 from .config import Settings
+from .mcp.client import MCPManager
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
 from .sources.whatsapp import router as whatsapp_router
@@ -104,6 +105,10 @@ async def lifespan(app: FastAPI):
         logger.info("CardDAV sync scheduler started (daily at 03:00)")
         asyncio.create_task(carddav_sync.sync_contacts())
 
+    # MCP Servers
+    mcp_manager = MCPManager()
+    await mcp_manager.start_all()
+
     # Actions
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings)
@@ -115,6 +120,7 @@ async def lifespan(app: FastAPI):
         whatsapp=whatsapp_action,
         memory=memory,
         history=history,
+        mcp_manager=mcp_manager,
     )
 
     # Store on app state for access in route handlers
@@ -126,6 +132,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    await mcp_manager.stop_all()
     if scheduler:
         scheduler.shutdown()
     await pool.close()
