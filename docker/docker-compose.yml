@@ -107,6 +107,7 @@ services:
       - CALDAV_USER=${CALDAV_USER:-}
       - CALDAV_PASSWORD=${CALDAV_PASSWORD:-}
       - FEATURE_CALDAV_SYNC=${FEATURE_CALDAV_SYNC:-false}
+      - TIMEZONE=${TIMEZONE:-Europe/Vienna}
     volumes:
       - ../src:/app/src
       - ../config:/app/config:ro
