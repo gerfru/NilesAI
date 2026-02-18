@@ -1,0 +1,24 @@
+# Niles AI - Caddy Reverse Proxy
+# Self-signed TLS certificates (tls internal)
+
+{
+	default_sni localhost
+}
+
+# Niles Core API (:443)
+https://localhost, https://100.85.159.70, https://192.168.0.248 {
+	tls internal
+	reverse_proxy niles_core:8000
+}
+
+# Evolution API (:8443)
+https://localhost:8443, https://100.85.159.70:8443, https://192.168.0.248:8443 {
+	tls internal
+	reverse_proxy evolution_api:8080
+}
+
+# n8n (:5678)
+https://localhost:5678, https://100.85.159.70:5678, https://192.168.0.248:5678 {
+	tls internal
+	reverse_proxy n8n:5678
+}

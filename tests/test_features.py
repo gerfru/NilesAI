@@ -45,6 +45,8 @@ class TestFeatureFlagDefaults:
 
 
 class TestAutoReplyFlag:
+    VALID_TOKEN = "test-api-key"
+
     @pytest.fixture
     def mock_app(self):
         """Create a mock app with state."""
@@ -53,7 +55,7 @@ class TestAutoReplyFlag:
         app.state.whatsapp_action = AsyncMock()
         app.state.settings = Settings(
             postgres_password="test",
-            evolution_api_key="test",
+            evolution_api_key=self.VALID_TOKEN,
         )
         return app
 
@@ -82,7 +84,7 @@ class TestAutoReplyFlag:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        result = await whatsapp_webhook(request)
+        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
         assert result == {"status": "processed"}
         mock_app.state.agent.process_event.assert_called_once()
@@ -98,7 +100,7 @@ class TestAutoReplyFlag:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        result = await whatsapp_webhook(request)
+        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
         assert result == {"status": "processed"}
         mock_app.state.agent.process_event.assert_called_once()
@@ -106,6 +108,30 @@ class TestAutoReplyFlag:
             to="436601234567@s.whatsapp.net",
             text="Reply text",
         )
+
+    async def test_webhook_rejects_invalid_token(self, mock_app, webhook_payload):
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        result = await whatsapp_webhook(request, token="wrong-token")
+
+        assert result.status_code == 401
+        mock_app.state.agent.process_event.assert_not_called()
+
+    async def test_webhook_rejects_missing_token(self, mock_app, webhook_payload):
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        result = await whatsapp_webhook(request, token="")
+
+        assert result.status_code == 401
+        mock_app.state.agent.process_event.assert_not_called()
 
 
 class TestSendWhatsAppFlag:
