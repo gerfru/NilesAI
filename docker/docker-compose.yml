@@ -7,8 +7,7 @@ services:
     container_name: niles_n8n
     image: n8nio/n8n:latest
     restart: unless-stopped
-    ports:
-      - "5678:5678"
+    # No port exposed -- access only via Caddy reverse proxy (HTTPS :5678)
     environment:
       - N8N_SECURE_COOKIE=false
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
@@ -22,8 +21,8 @@ services:
     container_name: niles_evolution_postgres
     image: postgres:15-alpine
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    # Port not exposed -- access only via Docker network
+    # For local debugging: ports: ["127.0.0.1:5432:5432"]
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
@@ -38,8 +37,7 @@ services:
     container_name: niles_evolution_api
     image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    # No port exposed -- access only via Caddy reverse proxy (HTTPS :8443)
     environment:
       # API Authentication
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
@@ -68,6 +66,26 @@ services:
     depends_on:
       - evolution_postgres
 
+  # Caddy Reverse Proxy (HTTPS termination)
+  caddy:
+    container_name: niles_caddy
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "8443:8443"
+      - "5678:5678"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - niles_network
+    depends_on:
+      - niles_core
+      - evolution_api
+      - n8n
+
   # Niles AI Core
   niles_core:
     container_name: niles_core
@@ -75,12 +93,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.niles
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # No port exposed -- access only via Caddy reverse proxy (HTTPS :443)
     environment:
       - PYTHONPATH=/app/src
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
+      - NILES_API_KEY=${NILES_API_KEY:-}
       - CARDDAV_URL=${CARDDAV_URL:-}
       - CARDDAV_USER=${CARDDAV_USER:-}
       - CARDDAV_PASSWORD=${CARDDAV_PASSWORD:-}
@@ -97,6 +115,8 @@ services:
 
 volumes:
   evolution_postgres:
+  caddy_data:
+  caddy_config:
 
 networks:
   niles_network:
