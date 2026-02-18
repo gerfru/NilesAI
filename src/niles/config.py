@@ -37,11 +37,17 @@ class Settings(BaseSettings):
     feature_whatsapp_auto_reply: bool = False
     feature_tool_send_whatsapp: bool = True
     feature_carddav_sync: bool = False
+    feature_caldav_sync: bool = False
 
     # CardDAV (mailbox.org)
     carddav_url: str = "https://dav.mailbox.org/carddav/32"
     carddav_user: str = ""
     carddav_password: str = ""
+
+    # CalDAV (mailbox.org)
+    caldav_url: str = "https://dav.mailbox.org/caldav/"
+    caldav_user: str = ""
+    caldav_password: str = ""
 
     model_config = {
         "env_file": ".env",
