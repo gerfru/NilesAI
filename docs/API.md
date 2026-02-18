@@ -34,15 +34,31 @@ curl -k -X POST https://localhost/chat \
 
 ### /webhook/whatsapp -- URL Token
 
-Erwartet den Query-Parameter `?token=` mit dem Wert von `EVOLUTION_API_KEY`. Evolution API (self-hosted) kann keine Custom-Headers bei Webhook-Requests senden, daher wird ein URL-Token verwendet.
+Erwartet den Query-Parameter `?token=` mit dem Wert von `EVOLUTION_API_KEY`. Evolution API (self-hosted v2.3.x) kann keine Custom-Headers bei Webhook-Requests senden (Feature-Request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), daher wird ein URL-Token verwendet.
 
 ```
 POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
 ```
 
+**Risikobewertung:** Query-Parameter koennen in Server-Logs erscheinen. Caddy loggt standardmaessig keine Query-Parameter. Der Webhook-Traffic laeuft intern ueber das Docker-Netzwerk (HTTP, Container-zu-Container), nie ueber das oeffentliche Netz. Sobald Evolution API Custom-Headers unterstuetzt, sollte auf Header-basierte Authentifizierung migriert werden.
+
 ### /health -- Kein Auth
 
-Health Check ist oeffentlich zugaenglich.
+Health Check ist oeffentlich zugaenglich. Rate Limiting (60 req/min) gilt nicht fuer `/health`.
+
+### Rate Limiting
+
+Alle Endpoints (ausser `/health`) sind auf 60 Requests pro Minute pro Client-IP begrenzt. Bei Ueberschreitung wird HTTP 429 zurueckgegeben.
+
+### Secrets Rotation
+
+Keys koennen jederzeit rotiert werden:
+
+1. Neuen Key in `.env` setzen (`NILES_API_KEY`, `EVOLUTION_API_KEY`)
+2. Container neu starten: `./scripts/start.sh`
+3. Bei Aenderung von `EVOLUTION_API_KEY`: Webhook-URL in der Evolution API aktualisieren (siehe unten)
+
+Wird `NILES_API_KEY` nicht gesetzt, generiert Niles bei jedem Containerstart einen neuen Key (automatische Rotation).
 
 ---
 

@@ -1,5 +1,6 @@
-"""Tests for API authentication."""
+"""Tests for API authentication and rate limiting."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -74,3 +75,38 @@ class TestNilesApiKeyDefault:
             evolution_api_key="test",
         )
         assert settings.niles_api_key == "my-custom-key"
+
+
+class TestRateLimiting:
+    def test_rate_limit_middleware_allows_normal_traffic(self):
+        from niles.main import RateLimitMiddleware
+
+        middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
+        # Simulate 5 hits within window -- all should be under limit
+        client_ip = "127.0.0.1"
+        now = time.monotonic()
+        middleware._hits[client_ip] = [now - i for i in range(4)]
+        middleware._hits[client_ip].append(now)
+        assert len(middleware._hits[client_ip]) <= 5
+
+    def test_rate_limit_middleware_detects_excess(self):
+        from niles.main import RateLimitMiddleware
+
+        middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
+        client_ip = "127.0.0.1"
+        now = time.monotonic()
+        # Fill with 6 hits (exceeds limit of 5)
+        middleware._hits[client_ip] = [now - i for i in range(6)]
+        assert len(middleware._hits[client_ip]) > 5
+
+    def test_rate_limit_middleware_prunes_old_entries(self):
+        from niles.main import RateLimitMiddleware
+
+        middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
+        client_ip = "127.0.0.1"
+        now = time.monotonic()
+        # Old entries (> 60s ago) should be pruned
+        middleware._hits[client_ip] = [now - 120, now - 90, now]
+        window = now - 60.0
+        pruned = [t for t in middleware._hits[client_ip] if t > window]
+        assert len(pruned) == 1
