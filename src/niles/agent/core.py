@@ -96,6 +96,7 @@ TOOLS = [
 ]
 
 MAX_TOOL_ROUNDS = 5
+MAX_MCP_RESULT_SIZE = 100_000  # 100 KB limit for MCP tool results
 
 
 class NilesAgent:
@@ -255,6 +256,8 @@ class NilesAgent:
         if self.mcp and self.mcp.is_mcp_tool(name):
             try:
                 result_text = await self.mcp.call_tool(name, args)
+                if len(result_text) > MAX_MCP_RESULT_SIZE:
+                    result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
                 return {"result": result_text}
             except Exception as e:
                 logger.error("MCP tool call failed [%s]: %s", name, e)
