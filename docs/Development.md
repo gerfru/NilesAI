@@ -100,6 +100,14 @@ curl -k -X POST https://localhost/chat \
 
 Alternativ direkt ueber den Docker-internen Port (ohne TLS): `docker exec niles_core curl http://localhost:8000/health`
 
+**Postgres Debugging:** Der Postgres-Port ist standardmaessig nicht erreichbar. Um direkt auf die Datenbank zuzugreifen (z.B. via `psql`), in `.env` setzen:
+
+```bash
+POSTGRES_HOST_PORT=5432
+```
+
+Dann: `psql -h 127.0.0.1 -U evolution -d evolution_db`
+
 ### Status pruefen
 
 ```bash
