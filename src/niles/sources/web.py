@@ -366,7 +366,7 @@ async def callback_google(
             "google_configured": gc,
         })
 
-    if not userinfo.get("email_verified", False):
+    if not userinfo.get("verified_email", userinfo.get("email_verified", False)):
         return templates.TemplateResponse(request, "login.html", {
             "error": "E-Mail-Adresse nicht verifiziert.",
             "google_configured": gc,
