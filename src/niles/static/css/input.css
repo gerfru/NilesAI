@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Toggle switch (replaces Pico CSS role="switch") */
+@layer components {
+    .toggle-switch {
+        @apply relative inline-block w-11 h-6 cursor-pointer;
+    }
+    .toggle-switch input {
+        @apply sr-only;
+    }
+    .toggle-switch .toggle-track {
+        @apply absolute inset-0 rounded-full bg-gray-300 dark:bg-gray-600
+               transition-colors duration-200;
+    }
+    .toggle-switch input:checked + .toggle-track {
+        @apply bg-blue-600;
+    }
+    .toggle-switch .toggle-track::after {
+        content: "";
+        @apply absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white
+               transition-transform duration-200;
+    }
+    .toggle-switch input:checked + .toggle-track::after {
+        @apply translate-x-5;
+    }
+}
+
+/* Toast fadeout animation */
+@layer utilities {
+    .animate-fadeout {
+        animation: fadeout 4s forwards;
+    }
+}
+
+@keyframes fadeout {
+    0%, 75% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Thinking dots animation */
+@layer utilities {
+    .animate-blink {
+        animation: blink 1.4s infinite both;
+    }
+}
+
+@keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40% { opacity: 1; }
+}
+
+/* Thin scrollbar */
+.thin-scrollbar {
+    scrollbar-width: thin;
+}
+
+.thin-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded;
+}
+
+/* Markdown content inside assistant bubbles */
+.markdown p:last-child {
+    @apply mb-0;
+}
+
+.markdown pre {
+    @apply my-2 p-2 rounded-lg overflow-x-auto bg-gray-800 text-gray-100;
+}
+
+.markdown code {
+    @apply text-sm;
+}
+
+.markdown ul, .markdown ol {
+    @apply ml-4 mb-2;
+}
+
+.markdown ul {
+    @apply list-disc;
+}
+
+.markdown ol {
+    @apply list-decimal;
+}
+
+.markdown strong {
+    @apply font-bold;
+}
+
+.markdown a {
+    @apply text-blue-500 underline;
+}
+
+.markdown blockquote {
+    @apply border-l-4 border-gray-300 dark:border-gray-600 pl-3 italic text-gray-600 dark:text-gray-400;
+}
+
+.markdown h1, .markdown h2, .markdown h3 {
+    @apply font-bold mt-2 mb-1;
+}

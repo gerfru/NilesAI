@@ -1,84 +1,108 @@
 {% extends "base.html" %}
 {% block title %}Settings - Niles AI{% endblock %}
 {% block content %}
-<h2>Settings</h2>
+<h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Settings</h2>
 <div id="toast-container"></div>
 
-<article>
-    <h3>Feature Flags</h3>
-    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Feature Flags</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, enabled in feature_flags.items() %}
     <form hx-post="/ui/api/settings/{{ key }}"
-          hx-target="#toast-container" hx-swap="innerHTML">
+          hx-target="#toast-container" hx-swap="innerHTML"
+          class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
         <input type="hidden" name="value"
                value="{{ 'true' if enabled else 'false' }}">
-        <label>
-            <input type="checkbox" role="switch"
+        <span class="text-sm text-gray-700 dark:text-gray-300">{{ key }}</span>
+        <label class="toggle-switch">
+            <input type="checkbox"
                    {% if enabled %}checked{% endif %}
                    data-flag-toggle>
-            {{ key }}
+            <span class="toggle-track"></span>
         </label>
     </form>
     {% endfor %}
-</article>
+</div>
 
-<article>
-    <h3>LLM Configuration</h3>
-    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">LLM Configuration</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}
-    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML">
-        <label>{{ key }}
+    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ key }}</label>
+        <div class="flex gap-2">
             <input type="text" name="value" value="{{ current_value }}"
-                   maxlength="512" pattern="[^\x00-\x1f]*" required>
-        </label>
-        <button type="submit" class="outline">Save</button>
+                   maxlength="512" pattern="[^\x00-\x1f]*" required
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+        </div>
     </form>
     {% endfor %}
-</article>
+</div>
 
-<article>
-    <h3>General</h3>
-    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML">
-        <label>timezone
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-3 text-gray-900 dark:text-white">General</h3>
+    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">timezone</label>
+        <div class="flex gap-2">
             <input type="text" name="value" value="{{ general.timezone }}"
-                   maxlength="64" pattern="[A-Za-z/_\-]+" required>
-        </label>
-        <button type="submit" class="outline">Save</button>
+                   maxlength="64" pattern="[A-Za-z/_\-]+" required
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+        </div>
     </form>
     <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
-        <label>log_level
-            <select name="value">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">log_level</label>
+        <div class="flex gap-2">
+            <select name="value"
+                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
                 <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
                 {% endfor %}
             </select>
-        </label>
-        <button type="submit" class="outline">Save</button>
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+        </div>
     </form>
-</article>
+</div>
 
 {% if caldav_enabled %}
-<article>
-    <h3>CalDAV Kalender</h3>
-    <p><small>Waehle aus, welche Kalender synchronisiert werden sollen. Aenderungen wirken beim naechsten Sync.</small></p>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">CalDAV Kalender</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Waehle aus, welche Kalender synchronisiert werden sollen. Aenderungen wirken beim naechsten Sync.</p>
     <div id="caldav-calendars"
          hx-get="/ui/api/caldav/calendars"
          hx-trigger="load"
          hx-swap="innerHTML">
-        <p aria-busy="true">Kalender werden geladen...</p>
+        <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Kalender werden geladen...
+        </div>
     </div>
-</article>
+</div>
 {% endif %}
 
-<article>
-    <h3>Infrastructure (read-only)</h3>
-    <p><small>Diese Werte koennen nur in der <code>.env</code> Datei geaendert werden (Container-Neustart noetig).</small></p>
-    <table>
-        <tbody>
-            {% for key, value in infra.items() %}
-            <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</article>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Infrastructure (read-only)</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Diese Werte koennen nur in der <code class="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <tbody>
+                {% for key, value in infra.items() %}
+                <tr class="border-b border-gray-100 dark:border-gray-700 last:border-0">
+                    <td class="py-2 pr-4 text-gray-500 dark:text-gray-400 font-mono text-xs">{{ key }}</td>
+                    <td class="py-2 text-gray-900 dark:text-gray-100 font-mono text-xs">{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
