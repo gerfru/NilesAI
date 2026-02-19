@@ -34,6 +34,15 @@ document.body.addEventListener("htmx:beforeRequest", function(evt) {
     }
 });
 
+/* Feature flag toggles -- update hidden value and submit form (CSP-safe, no eval) */
+document.body.addEventListener("change", function(evt) {
+    if (!evt.target.hasAttribute("data-flag-toggle")) return;
+    var form = evt.target.closest("form");
+    var hidden = form.querySelector("input[type='hidden']");
+    hidden.value = evt.target.checked ? "true" : "false";
+    htmx.trigger(form, "submit");
+});
+
 document.body.addEventListener("htmx:afterRequest", function(evt) {
     var btn = evt.detail.elt.querySelector("button[type='submit']");
     if (btn) btn.removeAttribute("aria-busy");
