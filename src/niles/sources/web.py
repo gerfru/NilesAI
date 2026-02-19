@@ -495,6 +495,7 @@ async def chat_send(request: Request, message: str = Form(...)):
 
     chat_id = _user_chat_id(user)
     agent = request.app.state.agent
+    # UTC timestamp for display; DB history.created_at uses PG's NOW() (also UTC)
     now = datetime.now(timezone.utc).strftime("%d.%m. %H:%M")
     event = {
         "type": "web",

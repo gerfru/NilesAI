@@ -199,13 +199,10 @@ class NilesAgent:
         self.caldav_sync = caldav_sync
         self.base_prompt = load_system_prompt()
 
-    async def process_event_stream(self, event: dict):
-        """Async generator: yields status updates + streamed text chunks.
+    async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
+        """Shared setup for process_event and process_event_stream.
 
-        Yields dicts with:
-          {"type": "status", "text": "Tool: find_contact..."}
-          {"type": "chunk",  "text": "partial text"}
-          {"type": "done"}
+        Returns (chat_id, messages, all_tools).
         """
         chat_id = event["from"]
 
@@ -221,6 +218,17 @@ class NilesAgent:
         await self.history.add_message(chat_id, "user", event["content"])
 
         all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        return chat_id, messages, all_tools
+
+    async def process_event_stream(self, event: dict):
+        """Async generator: yields status updates + streamed text chunks.
+
+        Yields dicts with:
+          {"type": "status", "text": "Tool: find_contact..."}
+          {"type": "chunk",  "text": "partial text"}
+          {"type": "done"}
+        """
+        chat_id, messages, all_tools = await self._prepare_messages(event)
 
         # Tool-call loop (non-streaming): resolve all tool calls first
         for _ in range(MAX_TOOL_ROUNDS):
@@ -258,8 +266,10 @@ class NilesAgent:
             yield {"type": "done"}
             return
 
-        # If the non-streaming response already has content, use it
-        # (happens when LLM returns text without needing a streaming call)
+        # Short-circuit: if the tool-call loop's last non-streaming response
+        # already contains text content (common when the LLM resolves without
+        # tool calls or after the final tool round), emit it directly instead
+        # of making a second streaming LLM call.
         if choice.message.content:
             content = choice.message.content
             await self.history.add_message(chat_id, "assistant", content)
@@ -300,27 +310,7 @@ class NilesAgent:
         Returns:
             Response text
         """
-        chat_id = event["from"]
-
-        # Load memory context for system prompt
-        memories = await self.memory.list_all()
-        system_prompt = build_system_prompt(
-            self.base_prompt, memories, timezone=self.config.timezone,
-        )
-
-        # Load conversation history
-        history_messages = await self.history.get_recent(chat_id)
-
-        # Build message list: system + history + current message
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history_messages)
-        messages.append({"role": "user", "content": event["content"]})
-
-        # Save user message to history
-        await self.history.add_message(chat_id, "user", event["content"])
-
-        # Combine built-in tools with MCP tools
-        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        chat_id, messages, all_tools = await self._prepare_messages(event)
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
