@@ -6,21 +6,25 @@
 
 <article>
     <h3>Feature Flags</h3>
+    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
     {% for key, enabled in feature_flags.items() %}
-    <label>
-        <input type="checkbox" role="switch"
-               {% if enabled %}checked{% endif %}
-               hx-post="/ui/api/settings/{{ key }}"
-               hx-target="#toast-container"
-               hx-swap="innerHTML"
-               hx-vals='js:{"value": event.target.checked ? "true" : "false"}'>
-        {{ key }}
-    </label>
+    <form hx-post="/ui/api/settings/{{ key }}"
+          hx-target="#toast-container" hx-swap="innerHTML">
+        <input type="hidden" name="value"
+               value="{{ 'true' if enabled else 'false' }}">
+        <label>
+            <input type="checkbox" role="switch"
+                   {% if enabled %}checked{% endif %}
+                   data-flag-toggle>
+            {{ key }}
+        </label>
+    </form>
     {% endfor %}
 </article>
 
 <article>
     <h3>LLM Configuration</h3>
+    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
     {% for key, current_value in text_settings.items() %}
     <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML">
         <label>{{ key }}
