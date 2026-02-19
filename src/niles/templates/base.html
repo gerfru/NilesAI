@@ -1,36 +1,48 @@
 <!DOCTYPE html>
 <!-- UI language: German (de) -- intentional design choice for the target user (#16) -->
-<html lang="de" data-theme="light">
+<html lang="de" class="">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://*.googleusercontent.com; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+          content="default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
     <title>{% block title %}Niles AI{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"
+            integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
+            integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"
+            integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu"
+            crossorigin="anonymous"></script>
 </head>
-<body>
-    <nav class="container">
-        <ul>
-            <li><strong>Niles AI</strong></li>
-        </ul>
-        <ul>
-            <li><a href="/ui/chat" {% if active_page == 'chat' %}aria-current="page"{% endif %}>Chat</a></li>
-            <li><a href="/ui/settings" {% if active_page == 'settings' %}aria-current="page"{% endif %}>Settings</a></li>
-            {% if user %}
-            <li class="user-info">
-                {% if user.avatar_url %}
-                <img src="{{ user.avatar_url }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+    <nav class="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <a href="/ui/chat" class="text-lg font-bold text-gray-900 dark:text-white no-underline">Niles AI</a>
+            <div class="flex items-center gap-4 text-sm">
+                <a href="/ui/chat"
+                   class="no-underline {% if active_page == 'chat' %}text-blue-600 dark:text-blue-400 font-semibold{% else %}text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white{% endif %}">Chat</a>
+                <a href="/ui/settings"
+                   class="no-underline {% if active_page == 'settings' %}text-blue-600 dark:text-blue-400 font-semibold{% else %}text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white{% endif %}">Settings</a>
+                {% if user %}
+                <div class="flex items-center gap-1.5">
+                    {% if user.avatar_url %}
+                    <img src="{{ user.avatar_url }}" alt="" class="w-7 h-7 rounded-full" referrerpolicy="no-referrer">
+                    {% endif %}
+                    <span class="text-gray-600 dark:text-gray-400 text-xs">{{ user.display_name }}</span>
+                </div>
                 {% endif %}
-                <small>{{ user.display_name }}</small>
-            </li>
-            {% endif %}
-            <li><a href="#" hx-post="/ui/logout" hx-swap="none">Logout</a></li>
-        </ul>
+                <button data-theme-toggle aria-label="Theme wechseln"
+                        class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-transparent border-0 cursor-pointer text-base p-0">&#9681;</button>
+                <a href="#" hx-post="/ui/logout" hx-swap="none"
+                   class="no-underline text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400">Logout</a>
+            </div>
+        </div>
     </nav>
-    <main class="container">
+    <main class="max-w-5xl mx-auto px-4 py-6">
         {% block content %}{% endblock %}
     </main>
     <script src="/static/js/app.js"></script>

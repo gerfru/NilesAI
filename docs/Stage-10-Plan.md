@@ -1,13 +1,15 @@
 # Stage 10: Google OAuth, Multi-User & GUI v2
 
+> **Status:** Abgeschlossen
+
 ## Kontext
 
-Niles hat einen funktionierenden MVP (Stage 9): Chat-UI, Settings, Cookie-Auth mit API-Key. Naechste Schritte:
+Niles hat einen funktionierenden MVP (Stage 9): Chat-UI, Settings, Cookie-Auth mit API-Key. Stage 10 umfasst:
 
 1. **User Management**: Google OAuth statt API-Key fuer Web-UI (automatische User-Erstellung beim ersten Login)
-2. **Bessere GUI**: Streaming-Antworten (SSE) + Design-Verbesserungen (Timestamps, Avatare, Dark Mode, Mobile, Markdown)
+2. **Bessere GUI**: Tailwind CSS (Migration von Pico CSS), SSE Streaming, Timestamps, Rollen-Badges, Dark Mode, Mobile, Markdown
 
-CSS-Framework bleibt Pico CSS v2. API-Key Auth bleibt fuer programmatischen API-Zugriff (WhatsApp-Webhook, `/chat`).
+CSS-Framework wurde von Pico CSS v2 (CDN) auf Tailwind CSS v3.4.17 (Standalone CLI) migriert. API-Key Auth bleibt fuer programmatischen API-Zugriff (WhatsApp-Webhook, `/chat`).
 
 ---
 
@@ -308,36 +310,24 @@ return [{
 
 ### C3. Dark Mode Toggle
 
-**Pico CSS v2 unterstuetzt Dark Mode nativ:**
+**Tailwind CSS Dark Mode via `class="dark"` auf `<html>`:**
 
 ```html
-<!-- base.html: data-theme dynamisch -->
-<html lang="de" data-theme="{{ theme }}">
+<!-- base.html: Dark Mode via CSS class -->
+<html lang="de" class="">
 ```
 
 **Toggle-Button in Nav:**
 
 ```html
-<button onclick="toggleTheme()" class="contrast outline">dark/light</button>
+<button data-theme-toggle class="...">🌙 / ☀️</button>
 ```
 
-**JS:** Speichert Praeferenz in `localStorage`, setzt `data-theme="dark"/"light"`.
+**JS:** Speichert Praeferenz in `localStorage` (`niles_theme`), setzt `classList.add/remove("dark")` auf `<html>`. Theme wird vor DOMContentLoaded angewendet (kein Flash).
 
 ### C4. Mobile Responsiveness
 
-**Aenderung: `src/niles/static/css/style.css`**
-
-```css
-/* Mobile: breitere Bubbles, groessere Touch-Targets */
-@media (max-width: 768px) {
-    .message-content { max-width: 90%; }
-    input, button { min-height: 44px; }
-    #chat-form fieldset[role="group"] { flex-direction: column; }
-}
-
-/* iOS: Zoom bei Input-Focus verhindern */
-input { font-size: 16px; }
-```
+Mobile Responsiveness wird ueber Tailwind Utility Classes direkt in den Templates geloest (z.B. `max-w-[75%]` fuer Bubbles). Keine separaten Media-Query Overrides noetig.
 
 ### C5. Markdown Rendering
 

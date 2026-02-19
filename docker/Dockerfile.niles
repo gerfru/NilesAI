@@ -8,6 +8,15 @@ RUN pip install uv
 # Copy dependency files and install (production only)
 COPY pyproject.toml .
 COPY src/ ./src/
+
+# Download Tailwind standalone CLI and build CSS
+COPY tailwind.config.js .
+RUN python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss')" \
+    && chmod +x /usr/local/bin/tailwindcss \
+    && tailwindcss --minify \
+       -i src/niles/static/css/input.css \
+       -o src/niles/static/css/style.css
+
 RUN uv pip install --system .
 
 # Copy config
