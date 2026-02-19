@@ -1,12 +1,17 @@
 """Calendar event lookup in PostgreSQL."""
 
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import asyncpg
 
 logger = logging.getLogger(__name__)
+
+# Strip control characters except common whitespace (space, tab)
+_CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_MAX_FIELD_LENGTH = 500
 
 
 class CalendarAction:
@@ -74,13 +79,25 @@ class CalendarAction:
             logger.warning("Failed to parse date: %s", value)
             return None
 
+    @staticmethod
+    def _sanitize_field(value: str) -> str:
+        """Sanitize a text field from external calendar data.
+
+        Strips control characters and truncates to prevent prompt injection
+        when event data is passed to the LLM context.
+        """
+        clean = _CONTROL_CHAR_REGEX.sub("", value)
+        if len(clean) > _MAX_FIELD_LENGTH:
+            clean = clean[:_MAX_FIELD_LENGTH] + "..."
+        return clean
+
     def _row_to_dict(self, row: asyncpg.Record) -> dict:
         """Convert a database row to a formatted dict."""
         dtstart = row["dtstart"]
         dtend = row["dtend"]
 
         result = {
-            "summary": row["summary"],
+            "summary": self._sanitize_field(row["summary"]),
             "start": dtstart.astimezone(self.tz).isoformat() if dtstart else None,
             "all_day": row["all_day"],
         }
@@ -88,8 +105,8 @@ class CalendarAction:
         if dtend:
             result["end"] = dtend.astimezone(self.tz).isoformat()
         if row["description"]:
-            result["description"] = row["description"]
+            result["description"] = self._sanitize_field(row["description"])
         if row["location"]:
-            result["location"] = row["location"]
+            result["location"] = self._sanitize_field(row["location"])
 
         return result

@@ -12,6 +12,7 @@ class TestEditableWhitelist:
             "llm_base_url", "llm_model", "timezone", "log_level",
             "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
             "feature_carddav_sync", "feature_caldav_sync",
+            "caldav_calendars",
         }
         assert EDITABLE_SETTINGS == expected
 

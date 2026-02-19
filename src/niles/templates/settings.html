@@ -57,6 +57,19 @@
     </form>
 </article>
 
+{% if caldav_enabled %}
+<article>
+    <h3>CalDAV Kalender</h3>
+    <p><small>Waehle aus, welche Kalender synchronisiert werden sollen. Aenderungen wirken beim naechsten Sync.</small></p>
+    <div id="caldav-calendars"
+         hx-get="/ui/api/caldav/calendars"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <p aria-busy="true">Kalender werden geladen...</p>
+    </div>
+</article>
+{% endif %}
+
 <article>
     <h3>Infrastructure (read-only)</h3>
     <p><small>Diese Werte koennen nur in der <code>.env</code> Datei geaendert werden (Container-Neustart noetig).</small></p>

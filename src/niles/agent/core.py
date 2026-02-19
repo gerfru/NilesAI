@@ -213,7 +213,9 @@ class NilesAgent:
 
         # Load memory context for system prompt
         memories = await self.memory.list_all()
-        system_prompt = build_system_prompt(self.base_prompt, memories)
+        system_prompt = build_system_prompt(
+            self.base_prompt, memories, timezone=self.config.timezone,
+        )
 
         # Load conversation history
         history_messages = await self.history.get_recent(chat_id)
