@@ -5,19 +5,27 @@ WORKDIR /app
 # Install uv for fast dependency management
 RUN pip install uv
 
-# Copy dependency files and install (production only)
+# Install dependencies first (cached layer, only invalidated when pyproject.toml changes)
 COPY pyproject.toml .
+RUN mkdir -p src/niles && touch src/niles/__init__.py \
+    && uv pip install --system . \
+    && rm -rf src/
+
+# Copy source code
 COPY src/ ./src/
 
-# Download Tailwind standalone CLI and build CSS
+# Download Tailwind standalone CLI with SHA256 verification and build CSS
 COPY tailwind.config.js .
-RUN python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss')" \
+RUN python -c "\
+import urllib.request, hashlib; \
+urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss'); \
+digest = hashlib.sha256(open('/usr/local/bin/tailwindcss','rb').read()).hexdigest(); \
+expected = '7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4'; \
+assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
     && chmod +x /usr/local/bin/tailwindcss \
     && tailwindcss --minify \
        -i src/niles/static/css/input.css \
        -o src/niles/static/css/style.css
-
-RUN uv pip install --system .
 
 # Copy config
 COPY config/ ./config/
