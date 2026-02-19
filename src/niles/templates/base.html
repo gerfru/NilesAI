@@ -27,7 +27,7 @@
                 <small>{{ user.display_name }}</small>
             </li>
             {% endif %}
-            <li><a href="/ui/logout">Logout</a></li>
+            <li><a href="#" hx-post="/ui/logout" hx-swap="none">Logout</a></li>
         </ul>
     </nav>
     <main class="container">
