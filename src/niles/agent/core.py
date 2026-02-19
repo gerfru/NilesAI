@@ -203,6 +203,10 @@ class NilesAgent:
     async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
         """Shared setup for process_event and process_event_stream.
 
+        Builds the messages list but does NOT persist the user message to
+        history.  Callers save both user and assistant messages together
+        after a successful LLM response to avoid orphaned records.
+
         Returns (chat_id, messages, all_tools).
         """
         chat_id = event["from"]
@@ -216,7 +220,6 @@ class NilesAgent:
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history_messages)
         messages.append({"role": "user", "content": event["content"]})
-        await self.history.add_message(chat_id, "user", event["content"])
 
         all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
         return chat_id, messages, all_tools
@@ -279,6 +282,7 @@ class NilesAgent:
             # No tool calls → text was already streamed, save and finish
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
                 if full_content:
+                    await self.history.add_message(chat_id, "user", event["content"])
                     await self.history.add_message(chat_id, "assistant", full_content)
                 yield {"type": "done"}
                 return
@@ -351,8 +355,9 @@ class NilesAgent:
                 content = choice.message.content or ""
                 if not content:
                     logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
-                # Save assistant response to history
+                # Save both messages together to avoid orphaned records
                 if content:
+                    await self.history.add_message(chat_id, "user", event["content"])
                     await self.history.add_message(chat_id, "assistant", content)
                 return content
 

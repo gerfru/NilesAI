@@ -495,8 +495,8 @@ async def chat_send(request: Request, message: str = Form(...)):
 
     chat_id = _user_chat_id(user)
     agent = request.app.state.agent
-    # UTC timestamp for display; DB history.created_at uses PG's NOW() (also UTC)
-    now = datetime.now(timezone.utc).strftime("%d.%m. %H:%M")
+    # ISO timestamp for client-side local-time formatting
+    now = datetime.now(timezone.utc).isoformat()
     event = {
         "type": "web",
         "from": chat_id,
@@ -517,13 +517,18 @@ async def chat_send(request: Request, message: str = Form(...)):
         "user_message": message,
         "assistant_message": response_text,
         "user_timestamp": now,
-        "assistant_timestamp": datetime.now(timezone.utc).strftime("%d.%m. %H:%M"),
+        "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
 @router.post("/api/chat/stream")
 async def chat_stream(request: Request, message: str = Form(...)):
-    """Process a chat message via SSE streaming."""
+    """Process a chat message via SSE streaming.
+
+    Uses fetch+ReadableStream on the client (not EventSource), so native SSE
+    reconnect semantics (retry/last-event-id) don't apply.  A dropped
+    connection simply ends the stream; the user re-sends if needed.
+    """
     user, error = _require_auth_and_csrf(request)
     if error:
         return error

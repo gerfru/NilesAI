@@ -117,8 +117,8 @@ class TestConversationHistory:
         assert len(result) == 2
         assert result[0]["role"] == "user"
         assert result[1]["role"] == "assistant"
-        assert result[0]["timestamp"] == "01.01. 10:00"
-        assert result[1]["timestamp"] == "01.01. 10:01"
+        assert result[0]["timestamp"] == "2025-01-01T10:00:00+00:00"
+        assert result[1]["timestamp"] == "2025-01-01T10:01:00+00:00"
 
     async def test_get_recent_empty(self, history, pool):
         pool.fetch.return_value = []

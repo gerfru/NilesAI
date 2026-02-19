@@ -62,7 +62,7 @@ class ConversationHistory:
             {
                 "role": row["role"],
                 "content": row["content"],
-                "timestamp": row["created_at"].strftime("%d.%m. %H:%M")
+                "timestamp": row["created_at"].isoformat()
                 if row["created_at"] else "",
             }
             for row in reversed(rows)
