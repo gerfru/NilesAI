@@ -199,6 +199,97 @@ class NilesAgent:
         self.caldav_sync = caldav_sync
         self.base_prompt = load_system_prompt()
 
+    async def process_event_stream(self, event: dict):
+        """Async generator: yields status updates + streamed text chunks.
+
+        Yields dicts with:
+          {"type": "status", "text": "Tool: find_contact..."}
+          {"type": "chunk",  "text": "partial text"}
+          {"type": "done"}
+        """
+        chat_id = event["from"]
+
+        memories = await self.memory.list_all()
+        system_prompt = build_system_prompt(
+            self.base_prompt, memories, timezone=self.config.timezone,
+        )
+
+        history_messages = await self.history.get_recent(chat_id)
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": event["content"]})
+        await self.history.add_message(chat_id, "user", event["content"])
+
+        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+
+        # Tool-call loop (non-streaming): resolve all tool calls first
+        for _ in range(MAX_TOOL_ROUNDS):
+            try:
+                response = await self.llm.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=all_tools,
+                    temperature=0.7,
+                )
+            except Exception as e:
+                logger.error("LLM call failed: %s", e)
+                yield {"type": "chunk", "text": "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."}
+                yield {"type": "done"}
+                return
+
+            choice = response.choices[0]
+
+            if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
+                break
+
+            messages.append(choice.message.model_dump(exclude_unset=True))
+
+            for tool_call in choice.message.tool_calls:
+                yield {"type": "status", "text": f"{tool_call.function.name}..."}
+                result = await self._execute_tool_call(tool_call)
+                logger.info("Tool result [%s]: %s", tool_call.id, result)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+        else:
+            yield {"type": "chunk", "text": "Ich konnte die Anfrage nicht abschliessen."}
+            yield {"type": "done"}
+            return
+
+        # If the non-streaming response already has content, use it
+        # (happens when LLM returns text without needing a streaming call)
+        if choice.message.content:
+            content = choice.message.content
+            await self.history.add_message(chat_id, "assistant", content)
+            yield {"type": "chunk", "text": content}
+            yield {"type": "done"}
+            return
+
+        # Final response: stream it
+        try:
+            stream = await self.llm.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+                temperature=0.7,
+            )
+            full_response = ""
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    full_response += delta
+                    yield {"type": "chunk", "text": delta}
+
+            if full_response:
+                await self.history.add_message(chat_id, "assistant", full_response)
+        except Exception as e:
+            logger.error("LLM streaming failed: %s", e)
+            yield {"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."}
+
+        yield {"type": "done"}
+
     async def process_event(self, event: dict) -> str:
         """
         Main entry point for all events.

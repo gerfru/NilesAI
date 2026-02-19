@@ -2,7 +2,7 @@
 
 > **Version:** 4.0
 > **Stand:** 2026-02-19
-> **Status:** Stage 1-7, 9-10 implementiert. Stage 8 geplant.
+> **Status:** Stage 1-7, 9-10 abgeschlossen. Stage 8 geplant.
 
 ---
 
@@ -110,17 +110,20 @@ Niles/
 │       ├── mcp/
 │       │   └── client.py             # MCP Server Manager
 │       ├── templates/
-│       │   ├── base.html             # Layout (Nav, CSP, Pico CSS, htmx)
+│       │   ├── base.html             # Layout (Nav, CSP, Tailwind CSS, htmx)
 │       │   ├── login.html            # Login (Google + API-Key Fallback)
-│       │   ├── chat.html             # Chat-UI mit History
+│       │   ├── chat.html             # Chat-UI mit SSE Streaming
 │       │   ├── settings.html         # Settings Dashboard
 │       │   └── fragments/            # htmx-Fragmente
 │       │       ├── message.html
 │       │       ├── history.html
-│       │       └── toast.html
+│       │       ├── toast.html
+│       │       └── calendars.html
 │       └── static/
-│           ├── css/style.css
-│           └── js/app.js
+│           ├── css/
+│           │   ├── input.css         # Tailwind Direktiven + Custom Components
+│           │   └── style.css         # Generierter Tailwind Output
+│           └── js/app.js             # SSE Streaming, Dark Mode, CSRF
 ├── tests/
 │   ├── conftest.py                   # Shared Fixtures (Env-Variablen)
 │   ├── test_config.py
@@ -148,6 +151,7 @@ Niles/
 │   ├── stop.sh                       # Docker stoppen
 │   └── status.sh                     # Service-Status pruefen
 ├── docs/
+├── tailwind.config.js          # Tailwind CSS Konfiguration
 ├── pyproject.toml
 ├── .env
 └── .env.example
@@ -221,8 +225,11 @@ class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
                  mcp_manager, calendar, caldav_sync): ...
     async def process_event(self, event: dict) -> str: ...
+    async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call) -> dict: ...
 ```
+
+`process_event_stream()` ist ein Async-Generator fuer SSE Streaming. Tool-Calls laufen nicht-streaming (yield `{"type": "status"}`), die finale Antwort wird Wort fuer Wort gestreamt (yield `{"type": "chunk"}`). Am Ende yield `{"type": "done"}`.
 
 **Event-Format:**
 
@@ -324,7 +331,7 @@ def build_system_prompt(base_prompt: str, memories: list[dict]) -> str
 
 ### 3.9 Web-UI (`src/niles/sources/web.py`)
 
-htmx-powered Web-Interface mit Jinja2 Templates und Pico CSS:
+Web-Interface mit Jinja2 Templates, Tailwind CSS und htmx. Chat verwendet SSE Streaming (custom JavaScript), Settings/History/Kalender verwenden htmx:
 
 **Authentifizierung (zwei parallele Systeme):**
 
@@ -395,7 +402,8 @@ MCP Server Manager fuer externe Tool-Integrationen. Konfiguration via `config/mc
 - **HTTPS via Caddy:** Alle externen Zugriffe ueber self-signed TLS-Zertifikate (`tls internal`)
 - **Keine exponierten Ports:** PostgreSQL, Niles Core und Evolution API sind nur via Docker-Netzwerk erreichbar
 - **Security Headers (Caddy + Middleware):** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, Server-Header entfernt
-- **CSP:** `default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://*.googleusercontent.com`
+- **CSP:** `default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'`
+- **CDN-Ressourcen** (htmx, marked.js, DOMPurify): SRI-Hashes fuer Integritaetspruefung
 
 ### 4.2 Authentifizierung
 
@@ -470,6 +478,13 @@ WORKDIR /app
 RUN pip install uv
 COPY pyproject.toml .
 COPY src/ ./src/
+# Download Tailwind standalone CLI (via Python, kein curl/wget in slim) und baue CSS
+COPY tailwind.config.js .
+RUN python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss')" \
+    && chmod +x /usr/local/bin/tailwindcss \
+    && tailwindcss --minify \
+       -i src/niles/static/css/input.css \
+       -o src/niles/static/css/style.css
 RUN uv pip install --system .
 COPY config/ ./config/
 RUN groupadd --gid 1000 niles && \
@@ -479,6 +494,8 @@ USER niles
 ENV PYTHONPATH=/app/src
 CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+**Hinweis:** `python:3.12-slim` enthaelt weder `curl` noch `wget`. Tailwind CLI wird daher via Python `urllib.request.urlretrieve` heruntergeladen.
 
 ### 6.2 Docker Compose Services
 
@@ -512,8 +529,8 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | 6 | `stage/6-mcp` | #11 | Abgeschlossen | MCP Integration |
 | 7 | `stage/7-caldav-calendar` | #12 | Abgeschlossen | CalDAV Kalender-Sync |
 | 8 | -- | -- | Geplant | Email als Event-Quelle |
-| 9 | `stage/9-web-gui` | #13 | Abgeschlossen | Web GUI (Chat, Settings, htmx, Pico CSS) |
-| 10 | `stage/10-oauth-gui-v2` | #14 | In Arbeit | Google OAuth, Multi-User, GUI v2 |
+| 9 | `stage/9-web-gui` | #13 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
+| 10 | `stage/10-oauth-gui-v2` | #14 | Abgeschlossen | Google OAuth, Multi-User, Tailwind CSS, SSE Streaming |
 
 ### Roadmap
 
@@ -522,14 +539,16 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 - `src/niles/sources/email.py` -- IMAP Poller (alle 5 min)
 - Neue Agent-Tools: `draft_email`
 
-**Stage 10 -- Verbleibend (GUI v2):**
+**Stage 10 -- Abgeschlossen (GUI v2):**
 
-- Streaming-Antworten (SSE)
-- Message Timestamps
-- Avatare / Rollen-Badges
-- Dark Mode Toggle
+- Tailwind CSS Migration (von Pico CSS, Standalone CLI ohne Node.js)
+- SSE Streaming (Wort-fuer-Wort Antworten)
+- Sofortige User-Bubble bei Senden (kein Server-Roundtrip)
+- Message Timestamps (DD.MM. HH:MM)
+- Rollen-Badges (Du / Niles)
+- Dark Mode Toggle (class="dark" auf html, localStorage)
 - Mobile Responsiveness
-- Markdown Rendering
+- Markdown Rendering (marked.js + DOMPurify, SRI)
 
 ---
 
