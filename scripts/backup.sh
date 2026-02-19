@@ -40,10 +40,13 @@ fi
 echo ""
 echo "Backing up configuration..."
 cp -r docker "$BACKUP_PATH/"
-cp -r Setup "$BACKUP_PATH/" 2>/dev/null || true
+cp -r config "$BACKUP_PATH/" 2>/dev/null || true
 cp -r scripts "$BACKUP_PATH/" 2>/dev/null || true
 if [ -f .env ]; then
     cp .env "$BACKUP_PATH/"
+fi
+if [ -f .env.example ]; then
+    cp .env.example "$BACKUP_PATH/"
 fi
 echo -e "${GREEN}Configuration backed up${NC}"
 
@@ -94,11 +97,14 @@ if [ -d "$BACKUP_DIR/docker" ]; then
     echo ""
     echo "Restoring configuration..."
     cp -r "$BACKUP_DIR/docker" ~/Documents/Niles/
-    if [ -d "$BACKUP_DIR/Setup" ]; then
-        cp -r "$BACKUP_DIR/Setup" ~/Documents/Niles/
+    if [ -d "$BACKUP_DIR/config" ]; then
+        cp -r "$BACKUP_DIR/config" ~/Documents/Niles/
     fi
     if [ -d "$BACKUP_DIR/scripts" ]; then
         cp -r "$BACKUP_DIR/scripts" ~/Documents/Niles/
+    fi
+    if [ -f "$BACKUP_DIR/.env" ]; then
+        cp "$BACKUP_DIR/.env" ~/Documents/Niles/
     fi
     echo "Configuration restored"
 fi
@@ -142,15 +148,16 @@ Docker Version: $(docker --version)
 Contents:
 - WhatsApp sessions (~/.evolution)
 - PostgreSQL Docker volume
-- Configuration files (docker/, Setup/, scripts/)
+- Configuration files (docker/, config/, scripts/, .env)
 - Restore script (restore.sh)
 
 To restore:
 1. Copy this folder to new Mac
 2. Run: ./restore.sh
-3. Follow instructions in Setup/README.md for:
-   - Google Calendar OAuth (needs re-auth)
+3. After restore:
+   - Update .env with correct secrets
    - WhatsApp QR code (needs re-scan)
+   - Google OAuth credentials (if used)
 
 Backup Size: $(du -sh "$BACKUP_PATH" | cut -f1)
 EOF
@@ -188,7 +195,7 @@ echo ""
 echo "Included:"
 echo "   - WhatsApp sessions (~/.evolution)"
 echo "   - PostgreSQL database (Docker volume)"
-echo "   - Configuration files (docker/, scripts/, Setup/)"
+echo "   - Configuration files (docker/, config/, scripts/, .env)"
 echo "   - Restore script"
 echo ""
 echo "To restore on another Mac:"
@@ -197,7 +204,6 @@ echo "   2. Extract: tar -xzf niles-backup-$TIMESTAMP.tar.gz"
 echo "   3. Run: cd $TIMESTAMP && ./restore.sh"
 echo ""
 echo "Manual steps after restore:"
-echo "   - Google Calendar: Re-authenticate OAuth"
 echo "   - LM Studio: Re-download model"
 echo ""
 echo "No QR code scan needed (WhatsApp sessions included)."

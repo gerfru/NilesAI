@@ -30,11 +30,6 @@ echo "Stopping and removing containers..."
 # Remove containers from current docker-compose.yml
 docker compose -f docker/docker-compose.yml --env-file .env down -v 2>/dev/null || true
 
-# Also remove old containers (if they exist)
-echo "Removing old containers..."
-docker stop evolution_api evolution_postgres 2>/dev/null || true
-docker rm evolution_api evolution_postgres 2>/dev/null || true
-
 echo "Keeping user data..."
 if [ -d ~/.evolution ]; then
     echo "    ~/.evolution (WhatsApp sessions)"
@@ -47,4 +42,6 @@ echo ""
 echo "Cleanup complete."
 echo ""
 echo "To start fresh:"
-echo "   ./scripts/setup-interactive.sh"
+echo "   cp .env.example .env  # configure secrets"
+echo "   ./scripts/build.sh"
+echo "   ./scripts/start.sh"
