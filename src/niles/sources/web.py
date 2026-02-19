@@ -7,12 +7,15 @@ import hmac
 import logging
 import secrets
 import time
+import urllib.parse
 from collections import defaultdict
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from ..config import apply_overrides
 
@@ -23,14 +26,20 @@ router = APIRouter(prefix="/ui", tags=["web-ui"])
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
-WEB_CHAT_ID = "web-ui"
-COOKIE_NAME = "niles_api_key"
+# --- Constants ---
+
+SESSION_COOKIE_NAME = "niles_session"
 CSRF_COOKIE_NAME = "niles_csrf"
 COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
 
 _CHAT_PAGE_SIZE = 20
 
-# --- Login rate limiting (#6) ---
+# Google OAuth endpoints
+_GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+# --- Login rate limiting ---
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW = 300.0  # 5 minutes
@@ -60,15 +69,43 @@ def _is_secure_context(request: Request) -> bool:
     )
 
 
-def _verify_cookie(request: Request) -> bool:
-    """Check if the API key cookie is valid (constant-time)."""
-    cookie_key = request.cookies.get(COOKIE_NAME, "")
-    expected = request.app.state.settings.niles_api_key
-    if not cookie_key or len(cookie_key) > 256:
-        # Always run compare_digest to prevent timing leaks (#4)
-        hmac.compare_digest("dummy-constant-value", expected)
-        return False
-    return hmac.compare_digest(cookie_key, expected)
+def _get_serializer(request: Request) -> URLSafeTimedSerializer:
+    """Get the session serializer using niles_api_key as secret."""
+    return URLSafeTimedSerializer(request.app.state.settings.niles_api_key)
+
+
+def _get_session_user(request: Request) -> dict | None:
+    """Verify signed session cookie and return user data or None.
+
+    Returns dict with keys: uid, email, display_name, avatar_url.
+    """
+    token = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if not token or len(token) > 4096:
+        return None
+    try:
+        serializer = _get_serializer(request)
+        return serializer.loads(token, max_age=COOKIE_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def _create_session_cookie(request: Request, response: Response, user: dict) -> None:
+    """Set signed session cookie with user data."""
+    serializer = _get_serializer(request)
+    token = serializer.dumps({
+        "uid": user["id"],
+        "email": user["email"],
+        "display_name": user.get("display_name", user["email"]),
+        "avatar_url": user.get("avatar_url") or "",
+    })
+    is_secure = _is_secure_context(request)
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",  # "lax" needed for OAuth redirect flow
+    )
 
 
 def _verify_csrf(request: Request) -> bool:
@@ -91,13 +128,44 @@ def _ensure_csrf_cookie(request: Request, response: Response) -> None:
         )
 
 
-def _require_auth_and_csrf(request: Request) -> Response | None:
-    """Check auth cookie + CSRF token for POST endpoints. Returns error Response or None."""
-    if not _verify_cookie(request):
-        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+def _set_csrf_cookie(request: Request, response: Response) -> None:
+    """Always set a fresh CSRF cookie (used after login)."""
+    is_secure = _is_secure_context(request)
+    response.set_cookie(
+        CSRF_COOKIE_NAME, secrets.token_urlsafe(32),
+        max_age=COOKIE_MAX_AGE, httponly=False,
+        secure=is_secure, samesite="strict",
+    )
+
+
+def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
+    """Check session + CSRF. Returns (user_dict, None) or (None, error_response)."""
+    user = _get_session_user(request)
+    if user is None:
+        return None, Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
     if not _verify_csrf(request):
-        return Response(status_code=403, headers={"HX-Redirect": "/ui/login"})
-    return None
+        return None, Response(status_code=403, headers={"HX-Redirect": "/ui/login"})
+    return user, None
+
+
+def _user_chat_id(user: dict) -> str:
+    """Per-user chat ID for conversation history."""
+    return f"web-user-{user['uid']}"
+
+
+def _google_configured(request: Request) -> bool:
+    """Check if Google OAuth credentials are configured."""
+    s = request.app.state.settings
+    return bool(s.google_client_id and s.google_client_secret)
+
+
+def _build_redirect_uri(request: Request) -> str:
+    """Build Google OAuth redirect URI from the current request."""
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get(
+        "x-forwarded-host", request.headers.get("host", "localhost"),
+    )
+    return f"{scheme}://{host}/ui/callback/google"
 
 
 def _safe_settings_dict(settings) -> dict:
@@ -137,25 +205,30 @@ def _safe_settings_dict(settings) -> dict:
     }
 
 
-# --- Page routes (return full HTML pages) ---
+# --- Page routes ---
 
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """Show API key login form."""
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    """Login page: Google OAuth button or API-key form (fallback)."""
+    return templates.TemplateResponse(request, "login.html", {
+        "error": None,
+        "google_configured": _google_configured(request),
+    })
 
 
 @router.post("/login")
 async def login_submit(request: Request, api_key: str = Form(...)):
-    """Validate API key and set auth cookie."""
+    """Validate API key and set session cookie (fallback when no Google OAuth)."""
     client_ip = request.client.host if request.client else "unknown"
 
-    # Login rate limiting (#6)
     if not _check_login_rate(client_ip):
         return templates.TemplateResponse(
             request, "login.html",
-            {"error": "Zu viele Anmeldeversuche. Bitte warte 5 Minuten."},
+            {
+                "error": "Zu viele Anmeldeversuche. Bitte warte 5 Minuten.",
+                "google_configured": _google_configured(request),
+            },
             status_code=429,
         )
 
@@ -165,52 +238,183 @@ async def login_submit(request: Request, api_key: str = Form(...)):
     if not api_key or len(api_key) > 256 or not hmac.compare_digest(api_key, expected):
         return templates.TemplateResponse(
             request, "login.html",
-            {"error": "Ungueltiger API-Key"},
+            {
+                "error": "Ungueltiger API-Key",
+                "google_configured": _google_configured(request),
+            },
             status_code=401,
         )
 
-    is_secure = _is_secure_context(request)
+    # Create local admin session (no DB user for API-key login)
+    user = {"id": 0, "email": "admin@local", "display_name": "Admin", "avatar_url": ""}
     response = RedirectResponse(url="/ui/chat", status_code=303)
+    _create_session_cookie(request, response, user)
+    _set_csrf_cookie(request, response)
+    return response
+
+
+# --- Google OAuth routes ---
+
+
+@router.get("/login/google")
+async def login_google(request: Request):
+    """Redirect to Google OAuth consent screen."""
+    if not _google_configured(request):
+        return RedirectResponse(url="/ui/login", status_code=303)
+
+    state = secrets.token_urlsafe(32)
+    redirect_uri = _build_redirect_uri(request)
+    settings = request.app.state.settings
+
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    auth_url = f"{_GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+    response = RedirectResponse(url=auth_url, status_code=303)
     response.set_cookie(
-        COOKIE_NAME, api_key,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        secure=is_secure,
-        samesite="strict",
+        "oauth_state", state,
+        max_age=600, httponly=True,
+        secure=_is_secure_context(request), samesite="lax",
     )
-    # Set CSRF token cookie (#2)
-    response.set_cookie(
-        CSRF_COOKIE_NAME, secrets.token_urlsafe(32),
-        max_age=COOKIE_MAX_AGE,
-        httponly=False,
-        secure=is_secure,
-        samesite="strict",
+    return response
+
+
+@router.get("/callback/google")
+async def callback_google(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    """Handle Google OAuth callback: exchange code, create/find user, set session."""
+    gc = _google_configured(request)
+
+    if error:
+        logger.warning("Google OAuth error: %s", error)
+        return templates.TemplateResponse(request, "login.html", {
+            "error": f"Google Login fehlgeschlagen: {error}",
+            "google_configured": gc,
+        })
+
+    # Verify state parameter (CSRF protection for OAuth)
+    stored_state = request.cookies.get("oauth_state", "")
+    if not state or not stored_state or not hmac.compare_digest(state, stored_state):
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Ungueltiger OAuth-State. Bitte erneut versuchen.",
+            "google_configured": gc,
+        })
+
+    settings = request.app.state.settings
+    redirect_uri = _build_redirect_uri(request)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Exchange authorization code for tokens
+            token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            })
+            if token_resp.status_code != 200:
+                logger.error("Google token exchange failed: %s", token_resp.text)
+                return templates.TemplateResponse(request, "login.html", {
+                    "error": "Token-Austausch fehlgeschlagen.",
+                    "google_configured": gc,
+                })
+            tokens = token_resp.json()
+
+            # Get user info from Google
+            userinfo_resp = await client.get(_GOOGLE_USERINFO_URL, headers={
+                "Authorization": f"Bearer {tokens['access_token']}",
+            })
+            if userinfo_resp.status_code != 200:
+                logger.error("Google userinfo failed: %s", userinfo_resp.text)
+                return templates.TemplateResponse(request, "login.html", {
+                    "error": "Benutzerinformationen konnten nicht abgerufen werden.",
+                    "google_configured": gc,
+                })
+            userinfo = userinfo_resp.json()
+    except httpx.HTTPError as e:
+        logger.error("Google OAuth HTTP error: %s", e)
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Verbindung zu Google fehlgeschlagen.",
+            "google_configured": gc,
+        })
+
+    email = userinfo.get("email", "")
+    if not email:
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Keine E-Mail-Adresse von Google erhalten.",
+            "google_configured": gc,
+        })
+
+    # Check allowed emails whitelist
+    if settings.google_allowed_emails:
+        allowed = [
+            e.strip().lower()
+            for e in settings.google_allowed_emails.split(",")
+            if e.strip()
+        ]
+        if email.lower() not in allowed:
+            logger.warning("Google login rejected for %s (not in allowed list)", email)
+            return templates.TemplateResponse(request, "login.html", {
+                "error": "Diese E-Mail-Adresse ist nicht berechtigt.",
+                "google_configured": gc,
+            })
+
+    # Create or update user in DB
+    user_store = request.app.state.user_store
+    user = await user_store.create_or_update(
+        email=email,
+        display_name=userinfo.get("name", email),
+        avatar_url=userinfo.get("picture"),
     )
+    logger.info("Google login: %s (user_id=%d)", email, user["id"])
+
+    response = RedirectResponse(url="/ui/chat", status_code=303)
+    _create_session_cookie(request, response, user)
+    _set_csrf_cookie(request, response)
+    response.delete_cookie("oauth_state")
     return response
 
 
 @router.get("/logout")
 async def logout():
-    """Clear auth cookie and CSRF cookie, redirect to login."""
+    """Clear session and CSRF cookies, redirect to login."""
     response = RedirectResponse(url="/ui/login", status_code=303)
-    response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)
+    response.delete_cookie("oauth_state")
     return response
 
 
 @router.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request):
-    """Chat page with conversation history (paginated)."""
-    if not _verify_cookie(request):
+    """Chat page with per-user conversation history (paginated)."""
+    user = _get_session_user(request)
+    if user is None:
         return RedirectResponse(url="/ui/login", status_code=303)
+
+    chat_id = _user_chat_id(user)
     history = request.app.state.history
-    messages = await history.get_recent(WEB_CHAT_ID, limit=_CHAT_PAGE_SIZE)
+    messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE)
     has_more = len(messages) == _CHAT_PAGE_SIZE
+
     response = templates.TemplateResponse(request, "chat.html", {
         "messages": messages,
         "has_more": has_more,
         "next_offset": _CHAT_PAGE_SIZE,
         "active_page": "chat",
+        "user": user,
     })
     _ensure_csrf_cookie(request, response)
     return response
@@ -219,12 +423,15 @@ async def chat_page(request: Request):
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """Settings dashboard (safe dict, no __dict__ access)."""
-    if not _verify_cookie(request):
+    user = _get_session_user(request)
+    if user is None:
         return RedirectResponse(url="/ui/login", status_code=303)
+
     safe = _safe_settings_dict(request.app.state.settings)
     response = templates.TemplateResponse(request, "settings.html", {
         **safe,
         "active_page": "settings",
+        "user": user,
     })
     _ensure_csrf_cookie(request, response)
     return response
@@ -239,10 +446,13 @@ async def chat_history(
     offset: int = Query(default=0, ge=0),
 ):
     """Load older chat messages (pagination)."""
-    if not _verify_cookie(request):
+    user = _get_session_user(request)
+    if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    chat_id = _user_chat_id(user)
     history = request.app.state.history
-    messages = await history.get_recent(WEB_CHAT_ID, limit=_CHAT_PAGE_SIZE, offset=offset)
+    messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE, offset=offset)
     has_more = len(messages) == _CHAT_PAGE_SIZE
     return templates.TemplateResponse(request, "fragments/history.html", {
         "messages": messages,
@@ -254,14 +464,15 @@ async def chat_history(
 @router.post("/api/chat", response_class=HTMLResponse)
 async def chat_send(request: Request, message: str = Form(...)):
     """Process a chat message, return HTML fragment with user + assistant bubbles."""
-    error = _require_auth_and_csrf(request)
+    user, error = _require_auth_and_csrf(request)
     if error:
         return error
 
+    chat_id = _user_chat_id(user)
     agent = request.app.state.agent
     event = {
         "type": "web",
-        "from": WEB_CHAT_ID,
+        "from": chat_id,
         "content": message,
         "metadata": {},
     }
@@ -283,19 +494,21 @@ async def chat_send(request: Request, message: str = Form(...)):
 
 @router.post("/api/chat/clear", response_class=HTMLResponse)
 async def chat_clear(request: Request):
-    """Clear chat history, return empty content."""
-    error = _require_auth_and_csrf(request)
+    """Clear chat history for current user."""
+    user, error = _require_auth_and_csrf(request)
     if error:
         return error
+
+    chat_id = _user_chat_id(user)
     history = request.app.state.history
-    await history.clear(WEB_CHAT_ID)
+    await history.clear(chat_id)
     return HTMLResponse("")
 
 
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
 async def update_setting(request: Request, key: str, value: str = Form(...)):
     """Update a single runtime setting."""
-    error = _require_auth_and_csrf(request)
+    _user, error = _require_auth_and_csrf(request)
     if error:
         return error
 

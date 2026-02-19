@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     caldav_user: str = ""
     caldav_password: str = ""
 
+    # Google OAuth (optional -- Web-UI login)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_allowed_emails: str = ""  # Comma-separated, empty = all allowed
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
