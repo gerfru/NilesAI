@@ -1,0 +1,18 @@
+<form hx-post="/ui/api/settings/caldav_calendars"
+      hx-target="#toast-container" hx-swap="innerHTML"
+      id="calendar-form">
+    {% for col in collections %}
+    <label>
+        <input type="checkbox" name="cal" value="{{ col.href }}"
+               {% if selected is none or col.href in selected %}checked{% endif %}>
+        {{ col.name }}
+        <small class="secondary">{{ col.href }}</small>
+    </label>
+    {% endfor %}
+    {% if collections %}
+    <input type="hidden" name="value" id="cal-value">
+    <button type="submit" class="outline" data-calendar-save>Speichern</button>
+    {% else %}
+    <p>Keine Kalender gefunden.</p>
+    {% endif %}
+</form>

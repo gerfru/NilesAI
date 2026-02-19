@@ -173,6 +173,7 @@ async def lifespan(app: FastAPI):
     app.state.history = history
     app.state.settings_store = settings_store
     app.state.user_store = user_store
+    app.state.caldav = caldav_sync if settings.feature_caldav_sync else None
 
     yield
 
