@@ -3,6 +3,7 @@
 import logging
 import re
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -21,34 +22,18 @@ _PROPFIND_BODY = (
     "</D:propfind>"
 )
 
-# Namespace-agnostic regex for href elements containing .ics paths
-_HREF_REGEX = re.compile(
-    r"<(?:[dD]:)?href[^>]*>\s*([^<]*\.ics)\s*</(?:[dD]:)?href>", re.IGNORECASE
-)
-
-# Regex to extract calendar-data from REPORT response
-_CALENDAR_DATA_REGEX = re.compile(
-    r"<(?:CAL:|C:)?calendar-data[^>]*>(.*?)</(?:CAL:|C:)?calendar-data>",
-    re.IGNORECASE | re.DOTALL,
-)
+# XML namespaces used in CalDAV responses
+_NS = {
+    "D": "DAV:",
+    "C": "urn:ietf:params:xml:ns:caldav",
+}
 
 # Sync window: 30 days past, 365 days future
 _SYNC_DAYS_PAST = 30
 _SYNC_DAYS_FUTURE = 365
 
-# Regex for collection hrefs (paths ending with /)
-_COLLECTION_HREF_REGEX = re.compile(
-    r"<(?:[dD]:)?href[^>]*>\s*([^<]+/)\s*</(?:[dD]:)?href>", re.IGNORECASE
-)
-
-# Regex to extract href + displayname from a <D:response> block
-_RESPONSE_BLOCK_REGEX = re.compile(
-    r"<(?:[dD]:)?response[^>]*>(.*?)</(?:[dD]:)?response>",
-    re.IGNORECASE | re.DOTALL,
-)
-_DISPLAYNAME_REGEX = re.compile(
-    r"<(?:[dD]:)?displayname[^>]*>([^<]*)</(?:[dD]:)?displayname>", re.IGNORECASE
-)
+# Maximum response size from CalDAV server (10 MB)
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 # Regex to parse DTSTART/DTEND lines with optional parameters
 _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
@@ -229,17 +214,21 @@ class CalDAVSync:
                 timeout=60,
             )
             response.raise_for_status()
+            if len(response.content) > _MAX_RESPONSE_BYTES:
+                raise ValueError(
+                    f"CalDAV REPORT response too large: {len(response.content)} bytes"
+                )
 
-        xml = response.text
+        xml_text = response.text
         results: list[tuple[str, str]] = []
 
-        for block in _RESPONSE_BLOCK_REGEX.finditer(xml):
-            block_text = block.group(1)
-            href_match = _HREF_REGEX.search(block_text)
-            href = href_match.group(1).strip() if href_match else ""
-            cal_match = _CALENDAR_DATA_REGEX.search(block_text)
-            if cal_match:
-                ics_text = cal_match.group(1).strip()
+        root = ET.fromstring(xml_text)
+        for resp_el in root.findall("D:response", _NS):
+            href_el = resp_el.find("D:href", _NS)
+            href = (href_el.text or "").strip() if href_el is not None else ""
+            cal_el = resp_el.find(".//C:calendar-data", _NS)
+            if cal_el is not None and cal_el.text:
+                ics_text = cal_el.text.strip()
                 if "BEGIN:VCALENDAR" in ics_text:
                     results.append((ics_text, href))
 
@@ -248,21 +237,26 @@ class CalDAVSync:
 
     async def _get_sync_collections(self) -> list[str]:
         """Get collection URLs to sync, respecting caldav_calendars filter."""
-        xml = await self._propfind_request(self.caldav_url)
-        if not xml:
+        xml_text = await self._propfind_request(self.caldav_url)
+        if not xml_text:
             return []
 
+        root = ET.fromstring(xml_text)
+        hrefs = [
+            (el.text or "").strip()
+            for el in root.findall(".//D:response/D:href", _NS)
+            if el.text
+        ]
+
         # Direct calendar URL? (has .ics files directly)
-        if _HREF_REGEX.search(xml):
+        if any(h.endswith(".ics") for h in hrefs):
             return [self.caldav_url]
 
-        # Discover sub-collections
+        # Discover sub-collections (hrefs ending with /)
         root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
-        collection_hrefs = _COLLECTION_HREF_REGEX.findall(xml)
         collections = [
-            h.strip()
-            for h in collection_hrefs
-            if h.strip() != root_path and "schedule-" not in h
+            h for h in hrefs
+            if h.endswith("/") and h != root_path and "schedule-" not in h
         ]
 
         allowed = self._allowed_collections()
@@ -271,35 +265,42 @@ class CalDAVSync:
 
         logger.info("Syncing %d calendar collections", len(collections))
 
-        return [
-            self._base_url + h if not h.startswith("http") else h
-            for h in collections
-        ]
+        # Build full URLs; reject absolute hrefs that don't match our origin (SSRF protection)
+        urls: list[str] = []
+        for h in collections:
+            if h.startswith("http"):
+                if not h.startswith(self._base_url):
+                    logger.warning("Ignoring href with foreign origin: %s", h)
+                    continue
+                urls.append(h)
+            else:
+                urls.append(self._base_url + h)
+        return urls
 
     async def discover_collections(self) -> list[dict]:
         """Discover available calendar collections from the CalDAV root.
 
         Returns list of {"href": "/caldav/abc/", "name": "Kalender"} dicts.
         """
-        xml = await self._propfind_request(self.caldav_url)
-        if not xml:
+        xml_text = await self._propfind_request(self.caldav_url)
+        if not xml_text:
             return []
 
         root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
         collections: list[dict] = []
 
-        for block_match in _RESPONSE_BLOCK_REGEX.finditer(xml):
-            block = block_match.group(1)
-            href_match = _COLLECTION_HREF_REGEX.search(block)
-            if not href_match:
+        root = ET.fromstring(xml_text)
+        for resp_el in root.findall("D:response", _NS):
+            href_el = resp_el.find("D:href", _NS)
+            if href_el is None or not href_el.text:
                 continue
-            href = href_match.group(1).strip()
-            if href == root_path or "schedule-" in href:
+            href = href_el.text.strip()
+            if not href.endswith("/") or href == root_path or "schedule-" in href:
                 continue
 
-            name_match = _DISPLAYNAME_REGEX.search(block)
-            name = name_match.group(1).strip() if name_match else href
-            collections.append({"href": href, "name": name})
+            name_el = resp_el.find(".//D:displayname", _NS)
+            name = (name_el.text or "").strip() if name_el is not None else ""
+            collections.append({"href": href, "name": name or href})
 
         return collections
 
@@ -326,6 +327,10 @@ class CalDAVSync:
                 timeout=30,
             )
             response.raise_for_status()
+            if len(response.content) > _MAX_RESPONSE_BYTES:
+                raise ValueError(
+                    f"CalDAV PROPFIND response too large: {len(response.content)} bytes"
+                )
 
         xml = response.text
         if not xml or len(xml) < 100:

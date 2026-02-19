@@ -32,7 +32,12 @@ def build_system_prompt(
     base_prompt: str, memories: list[dict], timezone: str = "Europe/Vienna",
 ) -> str:
     """Build full system prompt with current datetime and memory context."""
-    tz = ZoneInfo(timezone)
+    try:
+        tz = ZoneInfo(timezone)
+    except (KeyError, ValueError):
+        logger.warning("Invalid timezone '%s', falling back to Europe/Vienna", timezone)
+        timezone = "Europe/Vienna"
+        tz = ZoneInfo(timezone)
     now = datetime.now(tz)
     weekdays_de = [
         "Montag", "Dienstag", "Mittwoch", "Donnerstag",
