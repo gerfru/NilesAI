@@ -46,7 +46,7 @@ def build_system_prompt(
     weekday = weekdays_de[now.weekday()]
 
     time_section = (
-        f"\n\n## Aktuelle Zeit\n"
+        "\n\n## Aktuelle Zeit\n"
         f"Heute ist {weekday}, der {now.strftime('%d.%m.%Y')}. "
         f"Es ist {now.strftime('%H:%M')} Uhr ({timezone})."
     )

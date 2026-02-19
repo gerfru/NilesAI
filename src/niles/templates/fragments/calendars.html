@@ -11,11 +11,7 @@
     {% endfor %}
     {% if collections %}
     <input type="hidden" name="value" id="cal-value">
-    <button type="submit" class="outline" onclick="
-        var boxes = this.form.querySelectorAll('input[name=cal]:checked');
-        var vals = Array.from(boxes).map(function(b){return b.value});
-        this.form.querySelector('#cal-value').value = vals.join(',');
-    ">Speichern</button>
+    <button type="submit" class="outline" data-calendar-save>Speichern</button>
     {% else %}
     <p>Keine Kalender gefunden.</p>
     {% endif %}

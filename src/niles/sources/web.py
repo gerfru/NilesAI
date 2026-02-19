@@ -581,7 +581,7 @@ async def caldav_calendars(request: Request):
         return HTMLResponse("<p>Fehler beim Laden der Kalender.</p>")
 
     # Determine which are currently selected
-    selected = caldav._allowed_collections()
+    selected = caldav.allowed_collections()
 
     return templates.TemplateResponse(request, "fragments/calendars.html", {
         "collections": collections,
