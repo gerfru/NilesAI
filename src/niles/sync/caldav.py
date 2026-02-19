@@ -259,7 +259,7 @@ class CalDAVSync:
             if h.endswith("/") and h != root_path and "schedule-" not in h
         ]
 
-        allowed = self._allowed_collections()
+        allowed = self.allowed_collections()
         if allowed:
             collections = [h for h in collections if h in allowed]
 
@@ -304,13 +304,12 @@ class CalDAVSync:
 
         return collections
 
-    def _allowed_collections(self) -> set[str] | None:
+    def allowed_collections(self) -> set[str] | None:
         """Parse caldav_calendars setting into a set of allowed hrefs, or None for all."""
         raw = self.config.caldav_calendars
         if not raw or not raw.strip():
             return None
         return {h.strip() for h in raw.split(",") if h.strip()}
-
 
     async def _propfind_request(self, url: str) -> str | None:
         """Send a single PROPFIND Depth:1 request, return XML or None."""
