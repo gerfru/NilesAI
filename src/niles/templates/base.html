@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- UI language: German (de) – intentional design choice for the target user (#16) -->
+<html lang="de" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <title>{% block title %}Niles AI{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+    <nav class="container">
+        <ul>
+            <li><strong>Niles AI</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/ui/chat" {% if active_page == 'chat' %}aria-current="page"{% endif %}>Chat</a></li>
+            <li><a href="/ui/settings" {% if active_page == 'settings' %}aria-current="page"{% endif %}>Settings</a></li>
+            <li><a href="/ui/logout">Logout</a></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

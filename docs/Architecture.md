@@ -93,12 +93,12 @@ Schritt-fuer-Schritt-Verarbeitung einer eingehenden WhatsApp-Nachricht:
 
 ## 4. Datenbankschema
 
-Alle Tabellen liegen in der Datenbank `evolution_db` (User `evolution`). Die Tabellen `memory` und `conversations` werden beim Start automatisch erstellt (`CREATE TABLE IF NOT EXISTS`). Die Tabelle `contacts` wird von n8n via CardDAV-Sync befuellt (wird in Stage 4 durch nativen Sync ersetzt).
+Alle Tabellen liegen in der Datenbank `evolution_db` (User `evolution`). Die Tabellen `memory`, `conversations` und `contacts` werden beim Start automatisch erstellt (`CREATE TABLE IF NOT EXISTS`). Die Tabelle `contacts` wird durch den nativen CardDAV-Sync befuellt.
 
 ### contacts
 
 ```sql
--- Erstellt/befuellt durch n8n CardDAV-Sync
+-- Erstellt/befuellt durch nativen CardDAV-Sync
 CREATE TABLE contacts (
     id SERIAL PRIMARY KEY,
     full_name TEXT,
@@ -193,7 +193,7 @@ LLM_MODEL=qwen2.5-coder-7b-instruct-mlx
 | `niles_core` | Build aus `docker/Dockerfile.niles` | 8000 | Niles Python Backend |
 | `niles_evolution_postgres` | `postgres:15-alpine` | 5432 | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | 8080 | WhatsApp Gateway |
-| `niles_n8n` | `n8nio/n8n:latest` | 5678 | Legacy Workflows |
+| `niles_caddy` | `caddy:2-alpine` | 443/8443 | Reverse Proxy (HTTPS) |
 
 ### Netzwerk
 
@@ -210,7 +210,6 @@ Alle Container im Bridge-Netzwerk `niles_network`. Container-Namen dienen als Ho
 |--------|-------|-------|
 | `evolution_postgres` | `/var/lib/postgresql/data` | PostgreSQL-Daten |
 | `~/.evolution/instances` | `/evolution/instances` | WhatsApp-Sessions |
-| `~/.n8n` | `/home/node/.n8n` | n8n-Daten |
 | `../src` | `/app/src` | Live-Reload (Dev) |
 | `../config` | `/app/config:ro` | Agent-Konfiguration |
 

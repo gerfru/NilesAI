@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Settings - Niles AI{% endblock %}
+{% block content %}
+<h2>Settings</h2>
+<div id="toast-container"></div>
+
+<article>
+    <h3>Feature Flags</h3>
+    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
+    {% for key, enabled in feature_flags.items() %}
+    <form hx-post="/ui/api/settings/{{ key }}"
+          hx-target="#toast-container" hx-swap="innerHTML">
+        <input type="hidden" name="value"
+               value="{{ 'true' if enabled else 'false' }}">
+        <label>
+            <input type="checkbox" role="switch"
+                   {% if enabled %}checked{% endif %}
+                   data-flag-toggle>
+            {{ key }}
+        </label>
+    </form>
+    {% endfor %}
+</article>
+
+<article>
+    <h3>LLM Configuration</h3>
+    <p><small>Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</small></p>
+    {% for key, current_value in text_settings.items() %}
+    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>{{ key }}
+            <input type="text" name="value" value="{{ current_value }}"
+                   maxlength="512" pattern="[^\x00-\x1f]*" required>
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+    {% endfor %}
+</article>
+
+<article>
+    <h3>General</h3>
+    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>timezone
+            <input type="text" name="value" value="{{ general.timezone }}"
+                   maxlength="64" pattern="[A-Za-z/_\-]+" required>
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+    <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
+        <label>log_level
+            <select name="value">
+                {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
+                <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit" class="outline">Save</button>
+    </form>
+</article>
+
+<article>
+    <h3>Infrastructure (read-only)</h3>
+    <p><small>Diese Werte koennen nur in der <code>.env</code> Datei geaendert werden (Container-Neustart noetig).</small></p>
+    <table>
+        <tbody>
+            {% for key, value in infra.items() %}
+            <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endblock %}

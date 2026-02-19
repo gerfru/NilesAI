@@ -11,7 +11,7 @@ Stage 1-3 implementiert. Stage 4-6 geplant.
 | 1 | Abgeschlossen | FastAPI Scaffold, Docker, pytest, /health |
 | 2 | Abgeschlossen | WhatsApp empfangen, LLM-Verarbeitung, antworten |
 | 3 | Abgeschlossen | Key-Value Memory, Konversations-Historie |
-| 4 | Geplant | CardDAV Kontakt-Sync (ersetzt n8n) |
+| 4 | Abgeschlossen | CardDAV Kontakt-Sync |
 | 5 | Geplant | MCP Client, externe Tools |
 | 6 | Geplant | IMAP + CalDAV als Event-Quellen |
 
@@ -103,4 +103,4 @@ curl -X POST http://localhost:8000/chat \
 | LLM Inference | LM Studio (MLX) | 1234 |
 | Datenbank | PostgreSQL 15 | 5432 |
 | WhatsApp Gateway | Evolution API v2.3.7 | 8080 |
-| Legacy Workflows | n8n | 5678 |
+| Reverse Proxy | Caddy 2 | 443/8443 |

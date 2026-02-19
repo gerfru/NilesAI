@@ -15,7 +15,6 @@ echo "  - All Docker containers"
 echo "  - All Docker volumes (PostgreSQL data)"
 echo ""
 echo "Will be KEPT as backup:"
-echo "  - n8n workflows & credentials (~/.n8n)"
 echo "  - WhatsApp sessions (~/.evolution)"
 echo ""
 read -p "Are you sure? Type 'yes' to continue: " -r
@@ -33,19 +32,16 @@ docker compose -f docker/docker-compose.yml --env-file .env down -v 2>/dev/null 
 
 # Also remove old containers (if they exist)
 echo "Removing old containers..."
-docker stop n8n evolution_api evolution_postgres 2>/dev/null || true
-docker rm n8n evolution_api evolution_postgres 2>/dev/null || true
+docker stop evolution_api evolution_postgres 2>/dev/null || true
+docker rm evolution_api evolution_postgres 2>/dev/null || true
 
 echo "Keeping user data..."
-if [ -d ~/.n8n ]; then
-    echo "    ~/.n8n (n8n workflows & credentials)"
-fi
 if [ -d ~/.evolution ]; then
     echo "    ~/.evolution (WhatsApp sessions)"
 fi
 echo ""
 echo "To delete manually:"
-echo "    rm -rf ~/.n8n ~/.evolution"
+echo "    rm -rf ~/.evolution"
 
 echo ""
 echo "Cleanup complete."
