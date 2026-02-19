@@ -154,9 +154,9 @@ else
 fi
 
 # Step 4: Docker Services
-echo_step "Step 4/9: Docker Services"
+echo_step "Step 4/7: Docker Services"
 
-if docker ps | grep -q "niles_n8n"; then
+if docker ps | grep -q "niles_core"; then
     echo_success "Docker services are already running"
 else
     echo_info "Starting Docker services..."
@@ -168,13 +168,13 @@ else
 
     echo ""
     echo "Starting services..."
-    docker compose -f docker/docker-compose.yml --env-file .env up -d
+    docker compose -f docker/docker-compose.yml --env-file .env up -d --build
 
     echo ""
     echo "Waiting for services to initialize..."
     sleep 15
 
-    if docker ps | grep -q "niles_n8n"; then
+    if docker ps | grep -q "niles_core"; then
         echo_success "Services started successfully"
     else
         echo_error "Failed to start services"
@@ -184,107 +184,8 @@ else
     fi
 fi
 
-# Step 4: n8n Setup
-echo_step "Step 4/8: n8n Setup"
-
-if curl -s http://localhost:5678 > /dev/null 2>&1; then
-    echo_success "n8n is reachable"
-
-    # Check if user exists (simple check via .n8n directory)
-    if [ -f ~/.n8n/database.sqlite ]; then
-        echo_success "n8n is already configured"
-    else
-        echo_warning "n8n needs initial configuration"
-        echo ""
-        echo "Opening n8n in browser..."
-        sleep 2
-        open http://localhost:5678
-        echo ""
-        echo "Please:"
-        echo "  1. Create your account (stored locally)"
-        echo "  2. Skip the tour if prompted"
-        echo ""
-        echo "Come back here when done."
-        wait_for_user
-
-        if [ -f ~/.n8n/database.sqlite ]; then
-            echo_success "n8n is now configured"
-        else
-            echo_warning "n8n setup skipped - you can do it later"
-        fi
-    fi
-else
-    echo_error "n8n is not reachable"
-    echo "Check: docker compose -f docker/docker-compose.yml --env-file .env logs n8n"
-fi
-
-# Step 5: Google Calendar
-echo_step "Step 5/8: Google Calendar Integration"
-
-echo_info "Checking Google Calendar connection..."
-echo ""
-echo "This requires manual setup in Google Cloud Console."
-echo ""
-echo "Documentation: Setup/03-google-calendar.md"
-echo ""
-echo "Do you want to set up Google Calendar now?"
-read -p "Setup now? (y/n): " -n 1 -r
-echo ""
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "Opening documentation..."
-    open Setup/03-google-calendar.md
-    echo ""
-    echo "Steps:"
-    echo "  1. Go to: https://console.cloud.google.com"
-    echo "  2. Create project: 'Niles AI'"
-    echo "  3. Enable Google Calendar API"
-    echo "  4. Create OAuth Client (Web Application)"
-    echo "  5. Add redirect URI from n8n"
-    echo "  6. Configure in n8n: http://localhost:5678"
-    echo ""
-    echo "This will take 10-15 minutes."
-    echo ""
-    wait_for_user
-    echo_success "Google Calendar setup marked as done"
-else
-    echo_info "Skipping Google Calendar (you can set it up later)"
-fi
-
-# Step 6: mailbox.org CalDAV
-echo_step "Step 6/8: mailbox.org CalDAV"
-
-echo_info "Checking mailbox.org CalDAV..."
-echo ""
-echo "This requires your mailbox.org account."
-echo ""
-echo "Documentation: Setup/03-mailbox-caldav.md"
-echo ""
-echo "Do you want to set up mailbox.org CalDAV now?"
-read -p "Setup now? (y/n): " -n 1 -r
-echo ""
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "Opening documentation..."
-    open Setup/03-mailbox-caldav.md
-    echo ""
-    echo "Steps:"
-    echo "  1. Get CalDAV URL from mailbox.org calendar"
-    echo "  2. Create workflow in n8n"
-    echo "  3. Test calendar event creation"
-    echo ""
-    echo "This will take 5-10 minutes."
-    echo ""
-    wait_for_user
-    echo_success "mailbox.org CalDAV setup marked as done"
-else
-    echo_info "Skipping mailbox.org CalDAV (optional)"
-fi
-
-# Step 7: WhatsApp
-echo_step "Step 7/8: WhatsApp Integration"
+# Step 5: WhatsApp
+echo_step "Step 5/7: WhatsApp Integration"
 
 if curl -s -H "apikey: ${EVOLUTION_API_KEY}" \
     http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1 | \
@@ -340,17 +241,30 @@ else
     fi
 fi
 
-# Step 8: Final Verification
-echo_step "Step 8/8: Final Verification"
+# Step 6: Niles Core
+echo_step "Step 6/7: Niles Core"
+
+if HEALTH=$(curl -sk https://localhost/health 2>&1) && echo "$HEALTH" | grep -q '"status":"ok"'; then
+    echo_success "Niles Core is running (https://localhost)"
+    echo ""
+    echo "Web UI: https://localhost/ui/chat"
+    echo "API Docs: https://localhost/docs"
+else
+    echo_warning "Niles Core is starting up..."
+    echo "Check: docker compose -f docker/docker-compose.yml --env-file .env logs niles_core"
+fi
+
+# Step 7: Final Verification
+echo_step "Step 7/7: Final Verification"
 
 echo "Running status checks..."
 echo ""
 
-# n8n
-if curl -s http://localhost:5678 > /dev/null 2>&1; then
-    echo_success "n8n: Running (http://localhost:5678)"
+# Niles Core
+if HEALTH=$(curl -sk https://localhost/health 2>&1) && echo "$HEALTH" | grep -q '"status":"ok"'; then
+    echo_success "Niles Core: Running (https://localhost)"
 else
-    echo_error "n8n: Not reachable"
+    echo_error "Niles Core: Not reachable"
 fi
 
 # Evolution API
@@ -392,26 +306,16 @@ cat << EOF
 |                                                     |
 +===================================================+
 
-Service URLs:
-   - n8n:               http://localhost:5678
-   - Evolution Manager:  http://localhost:8080/manager
+Service URLs (HTTPS via Caddy, self-signed):
+   - Niles Web UI:       https://localhost/ui/chat
+   - Niles API Docs:     https://localhost/docs
+   - Evolution Manager:  https://localhost:8443/manager
    - LM Studio API:      http://localhost:1234/v1
-
-Documentation:
-   - Setup Guide:        Setup/README.md
-   - Google Calendar:    Setup/03-google-calendar.md
-   - mailbox.org:        Setup/03-mailbox-caldav.md
-   - WhatsApp:           Setup/05-whatsapp-evolution.md
 
 Daily Usage:
    ./scripts/start.sh   - Start all services
    ./scripts/stop.sh    - Stop all services
    ./scripts/status.sh  - Check status
-
-Next Steps:
-   1. Configure remaining integrations
-   2. Create AI Agent workflows
-   3. Read Setup/06-ai-agent.md
 
 EOF
 

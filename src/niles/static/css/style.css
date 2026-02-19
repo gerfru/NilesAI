@@ -1,0 +1,82 @@
+/* Chat layout */
+#chat-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 140px);
+}
+
+#chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 0;
+}
+
+/* Message bubbles */
+.message {
+    margin-bottom: 0.75rem;
+    display: flex;
+}
+
+.message-user {
+    justify-content: flex-end;
+}
+
+.message-assistant {
+    justify-content: flex-start;
+}
+
+.message-content {
+    max-width: 75%;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message-user .message-content {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+}
+
+.message-assistant .message-content {
+    background: var(--pico-secondary-background);
+}
+
+/* Thinking indicator (#15) */
+.thinking-dots span {
+    animation: blink 1.4s infinite both;
+}
+
+.thinking-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.thinking-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40% { opacity: 1; }
+}
+
+/* Toast notifications */
+.toast {
+    padding: 0.75rem 1rem;
+    border-radius: 0.25rem;
+    margin-bottom: 0.5rem;
+    animation: fadeout 4s forwards;
+}
+
+.toast-success {
+    background: var(--pico-ins-color);
+}
+
+.toast-error {
+    background: var(--pico-del-color);
+}
+
+@keyframes fadeout {
+    0%, 75% { opacity: 1; }
+    100% { opacity: 0; }
+}
