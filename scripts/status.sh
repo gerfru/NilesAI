@@ -41,15 +41,6 @@ else
     echo "  Not reachable"
 fi
 
-# Check n8n
-echo ""
-echo "n8n:"
-if curl -sk https://localhost:5678 > /dev/null 2>&1; then
-    echo "  Running on https://localhost:5678"
-else
-    echo "  Not reachable"
-fi
-
 # Check Evolution API (via Caddy HTTPS)
 echo ""
 echo "Evolution API:"
@@ -89,8 +80,7 @@ fi
 
 echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
-echo "  - Niles Core:          https://localhost"
-echo "  - Niles API Docs:      https://localhost/docs"
-echo "  - n8n:                 https://localhost:5678"
-echo "  - Evolution Manager:   https://localhost:8443/manager"
-echo "  - LM Studio API:       http://localhost:1234/v1"
+echo "  - Niles Web UI:         https://localhost/ui/chat"
+echo "  - Niles API Docs:       https://localhost/docs"
+echo "  - Evolution Manager:    https://localhost:8443/manager"
+echo "  - LM Studio API:        http://localhost:1234/v1"
