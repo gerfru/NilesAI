@@ -285,6 +285,7 @@ class NilesAgent:
                     await self.history.add_message(chat_id, "user", event["content"])
                     await self.history.add_message(chat_id, "assistant", full_content)
                 else:
+                    logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
                     yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
                 yield {"type": "done"}
                 return
