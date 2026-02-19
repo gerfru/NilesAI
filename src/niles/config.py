@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     caldav_url: str = "https://dav.mailbox.org/caldav/"
     caldav_user: str = ""
     caldav_password: str = ""
+    caldav_calendars: str = ""  # Comma-separated collection hrefs, empty = all
 
     # Google OAuth (optional -- Web-UI login)
     google_client_id: str = ""

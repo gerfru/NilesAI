@@ -24,6 +24,7 @@ EDITABLE_SETTINGS = {
     "feature_tool_send_whatsapp",
     "feature_carddav_sync",
     "feature_caldav_sync",
+    "caldav_calendars",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
