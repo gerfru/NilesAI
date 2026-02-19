@@ -34,6 +34,59 @@ SAMPLE_PROPFIND_XML = """<?xml version="1.0" encoding="utf-8"?>
   </D:response>
 </D:multistatus>"""
 
+# Root-level response listing calendar collections (no .ics files)
+SAMPLE_PROPFIND_ROOT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:CAL="urn:ietf:params:xml:ns:caldav"
+               xmlns:CS="http://calendarserver.org/ns/">
+  <D:response>
+    <D:href>/caldav/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Calendars</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/caldav/Y2FsOi8vMC8zMQ/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Kalender</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/caldav/Y2FsOi8vMTUvMA/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>SK Sturm Graz</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/caldav/schedule-inbox/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Schedule Inbox</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/caldav/schedule-outbox/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Schedule Outbox</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"""
+
+# Collection-level response with .ics files
+SAMPLE_PROPFIND_COLLECTION_XML = """<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href>/caldav/Y2FsOi8vMC8zMQ/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Kalender</D:displayname></D:prop>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/caldav/Y2FsOi8vMC8zMQ/meeting.ics</D:href>
+    <D:propstat>
+      <D:prop><D:displayname/></D:prop>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"""
+
 SAMPLE_ICS_FULL = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -126,38 +179,55 @@ class TestInitialize:
         assert "idx_events_summary" in calls[2]
 
 
-class TestPropfind:
-    async def test_extracts_ics_urls(self, sync):
-        mock_response = MagicMock()
-        mock_response.text = SAMPLE_PROPFIND_XML
-        mock_response.raise_for_status = MagicMock()
+class TestGetSyncCollections:
+    async def test_direct_calendar_url(self, sync):
+        """When URL has .ics files directly, return that URL."""
+        with patch.object(sync, "_propfind_request", return_value=SAMPLE_PROPFIND_XML):
+            urls = await sync._get_sync_collections()
 
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        assert urls == ["https://dav.mailbox.org/caldav/123/"]
 
-            urls = await sync._propfind()
-
-        assert len(urls) == 2
-        assert "/caldav/123/event1.ics" in urls
-        assert "/caldav/123/event2.ics" in urls
-
-    async def test_returns_empty_on_short_response(self, sync):
-        mock_response = MagicMock()
-        mock_response.text = "<short/>"
-        mock_response.raise_for_status = MagicMock()
-
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            urls = await sync._propfind()
+    async def test_returns_empty_on_no_response(self, sync):
+        with patch.object(sync, "_propfind_request", return_value=None):
+            urls = await sync._get_sync_collections()
 
         assert urls == []
+
+    async def test_discovers_collections_from_root(self, pool):
+        """When URL is root, discover sub-collections."""
+        root_sync = CalDAVSync(pool, Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            caldav_url="https://dav.mailbox.org/caldav/",
+            caldav_user="testuser",
+            caldav_password="testpass",
+        ))
+
+        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
+            urls = await root_sync._get_sync_collections()
+
+        assert len(urls) == 2
+        assert any("Y2FsOi8vMC8zMQ" in u for u in urls)
+        assert any("Y2FsOi8vMTUvMA" in u for u in urls)
+        assert not any("schedule-" in u for u in urls)
+
+    async def test_filters_by_caldav_calendars_setting(self, pool):
+        """When caldav_calendars is set, only matching collections are returned."""
+        root_sync = CalDAVSync(pool, Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            caldav_url="https://dav.mailbox.org/caldav/",
+            caldav_user="testuser",
+            caldav_password="testpass",
+            caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/",
+        ))
+
+        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
+            urls = await root_sync._get_sync_collections()
+
+        assert len(urls) == 1
+        assert "Y2FsOi8vMC8zMQ" in urls[0]
+        assert not any("Y2FsOi8vMTUvMA" in u for u in urls)
 
 
 class TestUnfoldIcs:
@@ -333,26 +403,11 @@ class TestUpsertEvent:
 
 class TestSyncEvents:
     async def test_full_sync_flow(self, sync, pool):
-        with patch.object(sync, "_propfind", return_value=[
-            "/caldav/123/event1.ics",
-        ]) as mock_propfind, \
-            patch.object(sync, "_fetch_ics", return_value=SAMPLE_ICS_FULL), \
-            patch.object(sync, "_upsert_event") as mock_upsert:
-
-            count = await sync.sync_events()
-
-        assert count == 1
-        mock_propfind.assert_called_once()
-        mock_upsert.assert_called_once()
-
-    async def test_sync_skips_invalid_events(self, sync, pool):
-        with patch.object(sync, "_propfind", return_value=[
-            "/caldav/123/good.ics",
-            "/caldav/123/bad.ics",
+        with patch.object(sync, "_get_sync_collections", return_value=[
+            "https://dav.mailbox.org/caldav/123/",
         ]), \
-            patch.object(sync, "_fetch_ics", side_effect=[
-                SAMPLE_ICS_FULL,
-                SAMPLE_ICS_NO_SUMMARY,
+            patch.object(sync, "_report_time_range", return_value=[
+                (SAMPLE_ICS_FULL, "/caldav/123/event1.ics"),
             ]), \
             patch.object(sync, "_upsert_event") as mock_upsert:
 
@@ -361,14 +416,29 @@ class TestSyncEvents:
         assert count == 1
         mock_upsert.assert_called_once()
 
-    async def test_sync_returns_zero_on_propfind_failure(self, sync):
-        with patch.object(sync, "_propfind", side_effect=Exception("Network error")):
+    async def test_sync_skips_invalid_events(self, sync, pool):
+        with patch.object(sync, "_get_sync_collections", return_value=[
+            "https://dav.mailbox.org/caldav/123/",
+        ]), \
+            patch.object(sync, "_report_time_range", return_value=[
+                (SAMPLE_ICS_FULL, "/caldav/123/good.ics"),
+                (SAMPLE_ICS_NO_SUMMARY, "/caldav/123/bad.ics"),
+            ]), \
+            patch.object(sync, "_upsert_event") as mock_upsert:
+
+            count = await sync.sync_events()
+
+        assert count == 1
+        mock_upsert.assert_called_once()
+
+    async def test_sync_returns_zero_on_discovery_failure(self, sync):
+        with patch.object(sync, "_get_sync_collections", side_effect=Exception("Network")):
             count = await sync.sync_events()
 
         assert count == 0
 
-    async def test_sync_returns_zero_when_no_urls(self, sync):
-        with patch.object(sync, "_propfind", return_value=[]):
+    async def test_sync_returns_zero_when_no_collections(self, sync):
+        with patch.object(sync, "_get_sync_collections", return_value=[]):
             count = await sync.sync_events()
 
         assert count == 0

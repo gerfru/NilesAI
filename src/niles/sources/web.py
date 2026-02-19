@@ -206,6 +206,7 @@ def _safe_settings_dict(settings) -> dict:
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
+        "caldav_enabled": settings.feature_caldav_sync,
     }
 
 
@@ -549,7 +550,12 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
 
     try:
         await settings_store.set(key, parsed_value)
-        request.app.state.settings = apply_overrides(settings, {key: parsed_value})
+        new_settings = apply_overrides(settings, {key: parsed_value})
+        request.app.state.settings = new_settings
+        # Keep CalDAV sync config in sync so allowed_collections() reads fresh data
+        caldav = getattr(request.app.state, "caldav", None)
+        if caldav:
+            caldav.config = new_settings
     except ValueError as e:
         return templates.TemplateResponse(request, "fragments/toast.html", {
             "message": str(e),
@@ -559,4 +565,30 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
     return templates.TemplateResponse(request, "fragments/toast.html", {
         "message": f"'{key}' gespeichert",
         "toast_type": "success",
+    })
+
+
+@router.get("/api/caldav/calendars", response_class=HTMLResponse)
+async def caldav_calendars(request: Request):
+    """Discover available CalDAV calendars, return checkboxes fragment."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    caldav = getattr(request.app.state, "caldav", None)
+    if not caldav:
+        return HTMLResponse("<p>CalDAV nicht konfiguriert.</p>")
+
+    try:
+        collections = await caldav.discover_collections()
+    except Exception:
+        logger.exception("CalDAV collection discovery failed")
+        return HTMLResponse("<p>Fehler beim Laden der Kalender.</p>")
+
+    # Determine which are currently selected
+    selected = caldav.allowed_collections()
+
+    return templates.TemplateResponse(request, "fragments/calendars.html", {
+        "collections": collections,
+        "selected": selected,
     })

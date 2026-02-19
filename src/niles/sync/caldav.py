@@ -2,7 +2,9 @@
 
 import logging
 import re
+import time
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -21,10 +23,21 @@ _PROPFIND_BODY = (
     "</D:propfind>"
 )
 
-# Namespace-agnostic regex for href elements containing .ics paths
-_HREF_REGEX = re.compile(
-    r"<(?:[dD]:)?href[^>]*>\s*([^<]*\.ics)\s*</(?:[dD]:)?href>", re.IGNORECASE
-)
+# XML namespaces used in CalDAV responses
+_NS = {
+    "D": "DAV:",
+    "C": "urn:ietf:params:xml:ns:caldav",
+}
+
+# Sync window: 30 days past, 365 days future
+_SYNC_DAYS_PAST = 30
+_SYNC_DAYS_FUTURE = 365
+
+# Maximum response size from CalDAV server (10 MB)
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+# Cache TTL for discover_collections (seconds)
+_DISCOVERY_CACHE_TTL = 60
 
 # Regex to parse DTSTART/DTEND lines with optional parameters
 _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
@@ -105,12 +118,16 @@ class CalDAVSync:
 
     def __init__(self, pool: asyncpg.Pool, config: Settings):
         self.pool = pool
+        self.config = config
         self.caldav_url = config.caldav_url
         self.auth = httpx.BasicAuth(config.caldav_user, config.caldav_password)
         self.tz = ZoneInfo(config.timezone)
         # Base URL for fetching individual .ics files (scheme + host)
         self._base_url = re.match(r"https?://[^/]+", config.caldav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
+        # Cache for discover_collections (avoids PROPFIND on every settings page load)
+        self._collections_cache: list[dict] | None = None
+        self._collections_cache_time: float = 0
 
     async def initialize(self) -> None:
         """Create events table and indexes if they don't exist."""
@@ -138,46 +155,182 @@ class CalDAVSync:
         logger.info("Events table initialized")
 
     async def sync_events(self) -> int:
-        """Run a full CalDAV sync. Returns number of synced events."""
+        """Run a CalDAV sync using REPORT with time-range filter.
+
+        Only syncs events from 30 days ago to 365 days in the future.
+        Uses CalDAV REPORT (RFC 4791) to fetch matching events inline,
+        avoiding thousands of individual GET requests.
+        """
         logger.info("Starting CalDAV event sync...")
 
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=_SYNC_DAYS_PAST)).strftime("%Y%m%dT%H%M%SZ")
+        end = (now + timedelta(days=_SYNC_DAYS_FUTURE)).strftime("%Y%m%dT%H%M%SZ")
+
+        # Discover collections
         try:
-            ics_urls = await self._propfind()
+            collections = await self._get_sync_collections()
         except Exception:
-            logger.exception("PROPFIND failed")
+            logger.exception("Collection discovery failed")
             return 0
 
-        if not ics_urls:
-            logger.warning("No iCalendar URLs found")
+        if not collections:
+            logger.warning("No calendar collections found")
             return 0
-
-        logger.info("Found %d iCalendar URLs", len(ics_urls))
 
         count = 0
-        for url in ics_urls:
+        for col_url in collections:
             try:
-                ics_text = await self._fetch_ics(url)
-                if not ics_text:
-                    continue
-
-                event = self._parse_icalendar(ics_text, url)
-                if not event:
-                    continue
-
-                await self._upsert_event(event)
-                count += 1
+                events = await self._report_time_range(col_url, start, end)
+                for ics_text, href in events:
+                    event = self._parse_icalendar(ics_text, href)
+                    if event:
+                        await self._upsert_event(event)
+                        count += 1
             except Exception:
-                logger.exception("Failed to sync event: %s", url)
+                logger.exception("REPORT failed for %s", col_url)
 
-        logger.info("Synced %d events", count)
+        logger.info("Synced %d events (range: %s to %s)", count, start, end)
         return count
 
-    async def _propfind(self) -> list[str]:
-        """Send PROPFIND request and extract .ics URLs from response."""
+    async def _report_time_range(
+        self, collection_url: str, start: str, end: str,
+    ) -> list[tuple[str, str]]:
+        """Send CalDAV REPORT with time-range filter. Returns [(ics_text, href), ...]."""
+        body = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+            "<D:prop><D:getetag/><C:calendar-data/></D:prop>"
+            "<C:filter><C:comp-filter name=\"VCALENDAR\">"
+            "<C:comp-filter name=\"VEVENT\">"
+            f'<C:time-range start="{start}" end="{end}"/>'
+            "</C:comp-filter></C:comp-filter></C:filter>"
+            "</C:calendar-query>"
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                "REPORT",
+                collection_url,
+                content=body,
+                headers={
+                    "Depth": "1",
+                    "Content-Type": "application/xml; charset=utf-8",
+                },
+                auth=self.auth,
+                timeout=60,
+            )
+            response.raise_for_status()
+            if len(response.content) > _MAX_RESPONSE_BYTES:
+                raise ValueError(
+                    f"CalDAV REPORT response too large: {len(response.content)} bytes"
+                )
+
+        xml_text = response.text
+        results: list[tuple[str, str]] = []
+
+        root = ET.fromstring(xml_text)
+        for resp_el in root.findall("D:response", _NS):
+            href_el = resp_el.find("D:href", _NS)
+            href = (href_el.text or "").strip() if href_el is not None else ""
+            cal_el = resp_el.find(".//C:calendar-data", _NS)
+            if cal_el is not None and cal_el.text:
+                ics_text = cal_el.text.strip()
+                if "BEGIN:VCALENDAR" in ics_text:
+                    results.append((ics_text, href))
+
+        logger.info("  %s: %d events in time range", collection_url, len(results))
+        return results
+
+    async def _get_sync_collections(self) -> list[str]:
+        """Get collection URLs to sync, respecting caldav_calendars filter."""
+        xml_text = await self._propfind_request(self.caldav_url)
+        if not xml_text:
+            return []
+
+        root = ET.fromstring(xml_text)
+        hrefs = [
+            (el.text or "").strip()
+            for el in root.findall(".//D:response/D:href", _NS)
+            if el.text
+        ]
+
+        # Direct calendar URL? (has .ics files directly)
+        if any(h.endswith(".ics") for h in hrefs):
+            return [self.caldav_url]
+
+        # Discover sub-collections (hrefs ending with /)
+        root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
+        collections = [
+            h for h in hrefs
+            if h.endswith("/") and h != root_path and "schedule-" not in h
+        ]
+
+        allowed = self.allowed_collections()
+        if allowed:
+            collections = [h for h in collections if h in allowed]
+
+        logger.info("Syncing %d calendar collections", len(collections))
+
+        # Build full URLs; reject absolute hrefs that don't match our origin (SSRF protection)
+        urls: list[str] = []
+        for h in collections:
+            if h.startswith("http"):
+                if not h.startswith(self._base_url):
+                    logger.warning("Ignoring href with foreign origin: %s", h)
+                    continue
+                urls.append(h)
+            else:
+                urls.append(self._base_url + h)
+        return urls
+
+    async def discover_collections(self) -> list[dict]:
+        """Discover available calendar collections from the CalDAV root.
+
+        Returns list of {"href": "/caldav/abc/", "name": "Kalender"} dicts.
+        Results are cached for 60 seconds to avoid repeated PROPFIND requests.
+        """
+        now = time.monotonic()
+        if self._collections_cache is not None and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL:
+            return self._collections_cache
+
+        xml_text = await self._propfind_request(self.caldav_url)
+        if not xml_text:
+            return []
+
+        root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
+        collections: list[dict] = []
+
+        root = ET.fromstring(xml_text)
+        for resp_el in root.findall("D:response", _NS):
+            href_el = resp_el.find("D:href", _NS)
+            if href_el is None or not href_el.text:
+                continue
+            href = href_el.text.strip()
+            if not href.endswith("/") or href == root_path or "schedule-" in href:
+                continue
+
+            name_el = resp_el.find(".//D:displayname", _NS)
+            name = (name_el.text or "").strip() if name_el is not None else ""
+            collections.append({"href": href, "name": name or href})
+
+        self._collections_cache = collections
+        self._collections_cache_time = time.monotonic()
+        return collections
+
+    def allowed_collections(self) -> set[str] | None:
+        """Parse caldav_calendars setting into a set of allowed hrefs, or None for all."""
+        raw = self.config.caldav_calendars
+        if not raw or not raw.strip():
+            return None
+        return {h.strip() for h in raw.split(",") if h.strip()}
+
+    async def _propfind_request(self, url: str) -> str | None:
+        """Send a single PROPFIND Depth:1 request, return XML or None."""
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 "PROPFIND",
-                self.caldav_url,
+                url,
                 content=_PROPFIND_BODY,
                 headers={
                     "Depth": "1",
@@ -187,31 +340,16 @@ class CalDAVSync:
                 timeout=30,
             )
             response.raise_for_status()
+            if len(response.content) > _MAX_RESPONSE_BYTES:
+                raise ValueError(
+                    f"CalDAV PROPFIND response too large: {len(response.content)} bytes"
+                )
 
         xml = response.text
         if not xml or len(xml) < 100:
-            logger.warning("Empty or too short PROPFIND response")
-            return []
-
-        urls = _HREF_REGEX.findall(xml)
-        return [u.strip() for u in urls if u.strip()]
-
-    async def _fetch_ics(self, url: str) -> str | None:
-        """Fetch a single iCalendar resource by URL."""
-        full_url = self._base_url + url if not url.startswith("http") else url
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                full_url,
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
-
-        text = response.text
-        if "BEGIN:VCALENDAR" not in text:
+            logger.warning("Empty or too short PROPFIND response for %s", url)
             return None
-        return text
+        return xml
 
     def _parse_icalendar(self, ics_text: str, url: str) -> dict | None:
         """Parse iCalendar text into an event dict. Returns None if invalid."""
