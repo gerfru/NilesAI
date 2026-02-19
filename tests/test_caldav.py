@@ -211,6 +211,24 @@ class TestGetSyncCollections:
         assert any("Y2FsOi8vMTUvMA" in u for u in urls)
         assert not any("schedule-" in u for u in urls)
 
+    async def test_filters_by_caldav_calendars_setting(self, pool):
+        """When caldav_calendars is set, only matching collections are returned."""
+        root_sync = CalDAVSync(pool, Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            caldav_url="https://dav.example.com/caldav/",
+            caldav_user="testuser",
+            caldav_password="testpass",
+            caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/",
+        ))
+
+        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
+            urls = await root_sync._get_sync_collections()
+
+        assert len(urls) == 1
+        assert "Y2FsOi8vMC8zMQ" in urls[0]
+        assert not any("Y2FsOi8vMTUvMA" in u for u in urls)
+
 
 class TestUnfoldIcs:
     def test_unfolds_space_continuation(self):
