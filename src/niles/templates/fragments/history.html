@@ -1,0 +1,15 @@
+{% if has_more %}
+<div id="load-more-container">
+    <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
+            hx-target="#load-more-container"
+            hx-swap="outerHTML"
+            class="outline secondary">
+        Aeltere Nachrichten laden
+    </button>
+</div>
+{% endif %}
+{% for msg in messages %}
+<div class="message message-{{ msg.role }}">
+    <div class="message-content">{{ msg.content }}</div>
+</div>
+{% endfor %}
