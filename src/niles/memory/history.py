@@ -21,7 +21,7 @@ class ConversationHistory:
                 chat_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         await self.pool.execute("""

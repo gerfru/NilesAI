@@ -1,10 +1,10 @@
 /* Scroll chat to bottom (throttled via rAF to avoid layout thrashing) */
-var _scrollPending = false;
+let _scrollPending = false;
 function scrollChat() {
     if (_scrollPending) return;
     _scrollPending = true;
     requestAnimationFrame(function() {
-        var el = document.getElementById("chat-messages");
+        const el = document.getElementById("chat-messages");
         if (el) el.scrollTop = el.scrollHeight;
         _scrollPending = false;
     });
@@ -12,7 +12,7 @@ function scrollChat() {
 
 /* Read a cookie value by name */
 function getCookie(name) {
-    var match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
     return match ? decodeURIComponent(match[2]) : "";
 }
 
@@ -28,7 +28,7 @@ function applyTheme(theme) {
 }
 
 function toggleTheme() {
-    var isDark = document.documentElement.classList.contains("dark");
+    const isDark = document.documentElement.classList.contains("dark");
     applyTheme(isDark ? "light" : "dark");
 }
 
@@ -38,7 +38,7 @@ function toggleTheme() {
 
 function renderMarkdown(el) {
     if (!el || el.dataset.rendered) return;
-    var raw = el.textContent;
+    const raw = el.textContent;
     if (typeof marked !== "undefined" && typeof DOMPurify !== "undefined") {
         el.innerHTML = DOMPurify.sanitize(marked.parse(raw));
     }
@@ -46,25 +46,24 @@ function renderMarkdown(el) {
 }
 
 function renderAllMarkdown() {
-    var els = document.querySelectorAll(".markdown:not([data-rendered])");
-    els.forEach(renderMarkdown);
+    document.querySelectorAll(".markdown:not([data-rendered])").forEach(renderMarkdown);
 }
 
 /* --- Timestamp helper --- */
 
 function formatTimestamp() {
-    var now = new Date();
-    var dd = String(now.getDate()).padStart(2, "0");
-    var mm = String(now.getMonth() + 1).padStart(2, "0");
-    var hh = String(now.getHours()).padStart(2, "0");
-    var min = String(now.getMinutes()).padStart(2, "0");
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const min = String(now.getMinutes()).padStart(2, "0");
     return dd + "." + mm + ". " + hh + ":" + min;
 }
 
 /* --- Chat bubble helpers --- */
 
 function createUserBubble(text) {
-    var div = document.createElement("div");
+    const div = document.createElement("div");
     div.className = "flex flex-col mb-3 items-end";
     div.innerHTML =
         '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Du</span>' +
@@ -75,7 +74,7 @@ function createUserBubble(text) {
 }
 
 function createAssistantBubble() {
-    var div = document.createElement("div");
+    const div = document.createElement("div");
     div.className = "flex flex-col mb-3 items-start";
     div.innerHTML =
         '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Niles</span>' +
@@ -86,26 +85,26 @@ function createAssistantBubble() {
 
 /* --- Chat streaming (SSE) --- */
 
-var chatStreaming = false;
-var chatAbortController = null;
+let chatStreaming = false;
+let chatAbortController = null;
 
-function handleChatSubmit(form) {
+async function handleChatSubmit(form) {
     if (chatStreaming) return;
 
-    var input = form.querySelector("input[name='message']");
-    var message = input.value.trim();
+    const input = form.querySelector("input[name='message']");
+    const message = input.value.trim();
     if (!message) return;
 
-    var messages = document.getElementById("chat-messages");
-    var indicator = document.getElementById("thinking-indicator");
-    var submitBtn = form.querySelector("button[type='submit']");
+    const messagesEl = document.getElementById("chat-messages");
+    const indicator = document.getElementById("thinking-indicator");
+    const submitBtn = form.querySelector("button[type='submit']");
 
     /* Remove empty state */
-    var empty = messages.querySelector(".chat-empty");
+    const empty = messagesEl.querySelector(".chat-empty");
     if (empty) empty.remove();
 
     /* Show user bubble immediately */
-    messages.appendChild(createUserBubble(message));
+    messagesEl.appendChild(createUserBubble(message));
     input.value = "";
     scrollChat();
 
@@ -116,89 +115,82 @@ function handleChatSubmit(form) {
     if (submitBtn) submitBtn.disabled = true;
     scrollChat();
 
-    /* Start SSE stream */
-    fetch("/ui/api/chat/stream", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-CSRF-Token": getCookie("niles_csrf"),
-        },
-        body: "message=" + encodeURIComponent(message),
-        signal: chatAbortController.signal,
-    }).then(function(response) {
+    try {
+        const response = await fetch("/ui/api/chat/stream", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-CSRF-Token": getCookie("niles_csrf"),
+            },
+            body: "message=" + encodeURIComponent(message),
+            signal: chatAbortController.signal,
+        });
+
         if (!response.ok) {
             throw new Error("HTTP " + response.status);
         }
 
-        /* Hide thinking indicator, create assistant bubble */
-        if (indicator) indicator.classList.add("hidden");
-        var bubble = createAssistantBubble();
-        messages.appendChild(bubble);
-        var content = bubble.querySelector(".markdown");
-        var rawText = "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let bubble = null;
+        let content = null;
+        let rawText = "";
 
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
+        /* Iterative stream reader (no recursive Promise chain) */
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                if (content) renderMarkdown(content);
+                break;
+            }
 
-        function processStream() {
-            return reader.read().then(function(result) {
-                if (result.done) {
-                    /* Render final markdown */
-                    if (rawText) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); /* Keep incomplete line in buffer */
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line.startsWith("data: ")) continue;
+                try {
+                    const item = JSON.parse(line.slice(6));
+                    if (item.type === "chunk") {
+                        /* Create bubble on first chunk (not earlier) */
+                        if (!bubble) {
+                            if (indicator) indicator.classList.add("hidden");
+                            bubble = createAssistantBubble();
+                            messagesEl.appendChild(bubble);
+                            content = bubble.querySelector(".markdown");
+                        }
+                        rawText += item.text;
                         content.textContent = rawText;
-                        renderMarkdown(content);
+                        scrollChat();
                     }
-                    chatStreaming = false;
-                    chatAbortController = null;
-                    if (submitBtn) submitBtn.disabled = false;
-                    scrollChat();
-                    return;
-                }
-
-                buffer += decoder.decode(result.value, { stream: true });
-                var lines = buffer.split("\n");
-                buffer = lines.pop(); /* Keep incomplete line in buffer */
-
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i];
-                    if (!line.startsWith("data: ")) continue;
-                    try {
-                        var item = JSON.parse(line.slice(6));
-                        if (item.type === "chunk") {
-                            rawText += item.text;
-                            content.textContent = rawText;
-                            scrollChat();
+                    if (item.type === "status") {
+                        if (indicator) {
+                            indicator.querySelector("[data-thinking-text]").textContent = item.text;
+                            indicator.classList.remove("hidden");
                         }
-                        if (item.type === "status") {
-                            if (indicator) {
-                                indicator.querySelector("div > div").textContent = item.text;
-                                indicator.classList.remove("hidden");
-                            }
-                        }
-                        if (item.type === "done") {
-                            content.textContent = rawText;
-                            renderMarkdown(content);
-                        }
-                    } catch (e) { /* ignore parse errors */ }
-                }
-
-                return processStream();
-            });
+                    }
+                    if (item.type === "done") {
+                        if (indicator) indicator.classList.add("hidden");
+                        if (content) renderMarkdown(content);
+                    }
+                } catch (e) { /* ignore parse errors */ }
+            }
         }
-
-        return processStream();
-    }).catch(function(err) {
+    } catch (err) {
         if (err.name === "AbortError") return; /* User cancelled */
         if (indicator) indicator.classList.add("hidden");
-        var bubble = createAssistantBubble();
-        messages.appendChild(bubble);
-        bubble.querySelector(".markdown").textContent = "Entschuldigung, ein Fehler ist aufgetreten.";
+        const errBubble = createAssistantBubble();
+        messagesEl.appendChild(errBubble);
+        errBubble.querySelector(".markdown").textContent = "Entschuldigung, ein Fehler ist aufgetreten.";
+    } finally {
         chatStreaming = false;
         chatAbortController = null;
         if (submitBtn) submitBtn.disabled = false;
         scrollChat();
-    });
+    }
 }
 
 /* --- Init --- */
@@ -208,7 +200,7 @@ document.addEventListener("DOMContentLoaded", function() {
     renderAllMarkdown();
 
     /* Chat form: custom submit handler (not htmx) */
-    var chatForm = document.getElementById("chat-form");
+    const chatForm = document.getElementById("chat-form");
     if (chatForm) {
         chatForm.addEventListener("submit", function(e) {
             e.preventDefault();
@@ -226,7 +218,7 @@ document.body.addEventListener("click", function(evt) {
 
 /* CSRF: include token header on every htmx request (#2) */
 document.body.addEventListener("htmx:configRequest", function(evt) {
-    var token = getCookie("niles_csrf");
+    const token = getCookie("niles_csrf");
     if (token) {
         evt.detail.headers["X-CSRF-Token"] = token;
     }
@@ -234,15 +226,15 @@ document.body.addEventListener("htmx:configRequest", function(evt) {
 
 /* Thinking indicator + loading aria-busy on submit buttons (non-chat htmx) */
 document.body.addEventListener("htmx:beforeRequest", function(evt) {
-    var btn = evt.detail.elt.querySelector("button[type='submit']");
+    const btn = evt.detail.elt.querySelector("button[type='submit']");
     if (btn) btn.setAttribute("aria-busy", "true");
 });
 
 /* Feature flag toggles -- update hidden value and submit form (CSP-safe, no eval) */
 document.body.addEventListener("change", function(evt) {
     if (!evt.target.hasAttribute("data-flag-toggle")) return;
-    var form = evt.target.closest("form");
-    var hidden = form.querySelector("input[type='hidden']");
+    const form = evt.target.closest("form");
+    const hidden = form.querySelector("input[type='hidden']");
     hidden.value = evt.target.checked ? "true" : "false";
     htmx.trigger(form, "submit");
 });
@@ -250,27 +242,27 @@ document.body.addEventListener("change", function(evt) {
 /* Calendar save -- collect checked values into hidden field before submit (CSP-safe) */
 document.body.addEventListener("click", function(evt) {
     if (!evt.target.hasAttribute("data-calendar-save")) return;
-    var form = evt.target.closest("form");
-    var boxes = form.querySelectorAll("input[name=cal]:checked");
+    const form = evt.target.closest("form");
+    const boxes = form.querySelectorAll("input[name=cal]:checked");
     if (boxes.length === 0) {
         evt.preventDefault();
         return;
     }
-    var vals = Array.from(boxes).map(function(b) { return b.value; });
+    const vals = Array.from(boxes).map(function(b) { return b.value; });
     form.querySelector("#cal-value").value = vals.join(",");
 });
 
 /* Calendar checkboxes -- disable save button when nothing is checked */
 document.body.addEventListener("change", function(evt) {
     if (evt.target.name !== "cal") return;
-    var form = evt.target.closest("form");
-    var btn = form.querySelector("[data-calendar-save]");
-    var checked = form.querySelectorAll("input[name=cal]:checked").length;
+    const form = evt.target.closest("form");
+    const btn = form.querySelector("[data-calendar-save]");
+    const checked = form.querySelectorAll("input[name=cal]:checked").length;
     btn.disabled = checked === 0;
 });
 
 document.body.addEventListener("htmx:afterRequest", function(evt) {
-    var btn = evt.detail.elt.querySelector("button[type='submit']");
+    const btn = evt.detail.elt.querySelector("button[type='submit']");
     if (btn) btn.removeAttribute("aria-busy");
 });
 
