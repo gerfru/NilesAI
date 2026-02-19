@@ -218,7 +218,7 @@ class NilesAgent:
 
         history_messages = await self.history.get_recent(chat_id)
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history_messages)
+        messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
         messages.append({"role": "user", "content": event["content"]})
 
         all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
@@ -284,6 +284,8 @@ class NilesAgent:
                 if full_content:
                     await self.history.add_message(chat_id, "user", event["content"])
                     await self.history.add_message(chat_id, "assistant", full_content)
+                else:
+                    yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
                 yield {"type": "done"}
                 return
 
