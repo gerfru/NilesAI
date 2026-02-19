@@ -2,6 +2,7 @@
 
 import json
 import logging
+from types import SimpleNamespace
 
 import httpx
 from openai import AsyncOpenAI
@@ -223,21 +224,25 @@ class NilesAgent:
     async def process_event_stream(self, event: dict):
         """Async generator: yields status updates + streamed text chunks.
 
+        Every LLM call uses stream=True so even simple queries (no tool calls)
+        are delivered word-by-word.  When the LLM requests tool calls, the
+        streamed deltas are accumulated, tools executed, and the loop repeats.
+
         Yields dicts with:
-          {"type": "status", "text": "Tool: find_contact..."}
+          {"type": "status", "text": "find_contact..."}
           {"type": "chunk",  "text": "partial text"}
           {"type": "done"}
         """
         chat_id, messages, all_tools = await self._prepare_messages(event)
 
-        # Tool-call loop (non-streaming): resolve all tool calls first
         for _ in range(MAX_TOOL_ROUNDS):
             try:
-                response = await self.llm.chat.completions.create(
+                stream = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools,
                     temperature=0.7,
+                    stream=True,
                 )
             except Exception as e:
                 logger.error("LLM call failed: %s", e)
@@ -245,15 +250,63 @@ class NilesAgent:
                 yield {"type": "done"}
                 return
 
-            choice = response.choices[0]
+            # Consume the stream, accumulating text content and tool-call deltas
+            full_content = ""
+            tool_calls_by_idx: dict[int, dict] = {}
+            finish_reason = None
 
-            if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
-                break
+            async for chunk in stream:
+                choice = chunk.choices[0]
+                finish_reason = choice.finish_reason or finish_reason
 
-            messages.append(choice.message.model_dump(exclude_unset=True))
+                if choice.delta.content:
+                    full_content += choice.delta.content
+                    yield {"type": "chunk", "text": choice.delta.content}
 
-            for tool_call in choice.message.tool_calls:
-                yield {"type": "status", "text": f"{tool_call.function.name}..."}
+                if choice.delta.tool_calls:
+                    for tc_delta in choice.delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in tool_calls_by_idx:
+                            tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": ""}
+                        if tc_delta.id:
+                            tool_calls_by_idx[idx]["id"] = tc_delta.id
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                tool_calls_by_idx[idx]["name"] += tc_delta.function.name
+                            if tc_delta.function.arguments:
+                                tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
+
+            # No tool calls → text was already streamed, save and finish
+            if finish_reason != "tool_calls" or not tool_calls_by_idx:
+                if full_content:
+                    await self.history.add_message(chat_id, "assistant", full_content)
+                yield {"type": "done"}
+                return
+
+            # Tool calls detected → build assistant message and execute tools
+            assistant_msg = {
+                "role": "assistant",
+                "content": full_content or None,
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                    }
+                    for tc in (tool_calls_by_idx[i] for i in sorted(tool_calls_by_idx))
+                ],
+            }
+            messages.append(assistant_msg)
+
+            for tc_dict in assistant_msg["tool_calls"]:
+                yield {"type": "status", "text": f"{tc_dict['function']['name']}..."}
+                tool_call = SimpleNamespace(
+                    id=tc_dict["id"],
+                    function=SimpleNamespace(
+                        name=tc_dict["function"]["name"],
+                        arguments=tc_dict["function"]["arguments"],
+                    ),
+                )
                 result = await self._execute_tool_call(tool_call)
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
                 messages.append({
@@ -263,40 +316,6 @@ class NilesAgent:
                 })
         else:
             yield {"type": "chunk", "text": "Ich konnte die Anfrage nicht abschliessen."}
-            yield {"type": "done"}
-            return
-
-        # Short-circuit: if the tool-call loop's last non-streaming response
-        # already contains text content (common when the LLM resolves without
-        # tool calls or after the final tool round), emit it directly instead
-        # of making a second streaming LLM call.
-        if choice.message.content:
-            content = choice.message.content
-            await self.history.add_message(chat_id, "assistant", content)
-            yield {"type": "chunk", "text": content}
-            yield {"type": "done"}
-            return
-
-        # Final response: stream it
-        try:
-            stream = await self.llm.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                temperature=0.7,
-            )
-            full_response = ""
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content or ""
-                if delta:
-                    full_response += delta
-                    yield {"type": "chunk", "text": delta}
-
-            if full_response:
-                await self.history.add_message(chat_id, "assistant", full_response)
-        except Exception as e:
-            logger.error("LLM streaming failed: %s", e)
-            yield {"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."}
 
         yield {"type": "done"}
 
