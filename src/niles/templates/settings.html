@@ -6,10 +6,10 @@
 
 <article>
     <h3>Feature Flags</h3>
-    {% for key in ['feature_whatsapp_auto_reply', 'feature_tool_send_whatsapp', 'feature_carddav_sync', 'feature_caldav_sync'] %}
+    {% for key, enabled in feature_flags.items() %}
     <label>
         <input type="checkbox" role="switch"
-               {% if settings.__dict__[key] %}checked{% endif %}
+               {% if enabled %}checked{% endif %}
                hx-post="/ui/api/settings/{{ key }}"
                hx-target="#toast-container"
                hx-swap="innerHTML"
@@ -21,10 +21,11 @@
 
 <article>
     <h3>LLM Configuration</h3>
-    {% for key in ['llm_base_url', 'llm_model'] %}
+    {% for key, current_value in text_settings.items() %}
     <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML">
         <label>{{ key }}
-            <input type="text" name="value" value="{{ settings.__dict__[key] }}">
+            <input type="text" name="value" value="{{ current_value }}"
+                   maxlength="512" pattern="[^\x00-\x1f]*" required>
         </label>
         <button type="submit" class="outline">Save</button>
     </form>
@@ -35,7 +36,8 @@
     <h3>General</h3>
     <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML">
         <label>timezone
-            <input type="text" name="value" value="{{ settings.timezone }}">
+            <input type="text" name="value" value="{{ general.timezone }}"
+                   maxlength="64" pattern="[A-Za-z/_\-]+" required>
         </label>
         <button type="submit" class="outline">Save</button>
     </form>
@@ -43,7 +45,7 @@
         <label>log_level
             <select name="value">
                 {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
-                <option value="{{ level }}" {% if settings.log_level == level %}selected{% endif %}>{{ level }}</option>
+                <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -56,19 +58,9 @@
     <p><small>Diese Werte koennen nur in der <code>.env</code> Datei geaendert werden (Container-Neustart noetig).</small></p>
     <table>
         <tbody>
-            <tr><td>postgres_host</td><td>{{ settings.postgres_host }}</td></tr>
-            <tr><td>postgres_port</td><td>{{ settings.postgres_port }}</td></tr>
-            <tr><td>postgres_db</td><td>{{ settings.postgres_db }}</td></tr>
-            <tr><td>postgres_user</td><td>{{ settings.postgres_user }}</td></tr>
-            <tr><td>postgres_password</td><td>********</td></tr>
-            <tr><td>evolution_api_url</td><td>{{ settings.evolution_api_url }}</td></tr>
-            <tr><td>evolution_api_key</td><td>********</td></tr>
-            <tr><td>carddav_url</td><td>{{ settings.carddav_url }}</td></tr>
-            <tr><td>carddav_user</td><td>{{ settings.carddav_user }}</td></tr>
-            <tr><td>carddav_password</td><td>{% if settings.carddav_password %}********{% else %}(not set){% endif %}</td></tr>
-            <tr><td>caldav_url</td><td>{{ settings.caldav_url }}</td></tr>
-            <tr><td>caldav_user</td><td>{{ settings.caldav_user }}</td></tr>
-            <tr><td>caldav_password</td><td>{% if settings.caldav_password %}********{% else %}(not set){% endif %}</td></tr>
+            {% for key, value in infra.items() %}
+            <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+            {% endfor %}
         </tbody>
     </table>
 </article>

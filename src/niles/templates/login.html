@@ -9,7 +9,8 @@
     <form method="post" action="/ui/login">
         <label for="api_key">API Key</label>
         <input type="password" id="api_key" name="api_key" required
-               placeholder="NILES_API_KEY eingeben" autofocus>
+               placeholder="NILES_API_KEY eingeben" autofocus
+               maxlength="256" minlength="1">
         <button type="submit">Login</button>
     </form>
     <p><small>Den API-Key findest du mit: <code>docker exec niles_core printenv NILES_API_KEY</code></small></p>

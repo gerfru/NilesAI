@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
     await settings_store.initialize()
     overrides = await settings_store.get_all()
     if overrides:
-        apply_overrides(settings, overrides)
+        settings = apply_overrides(settings, overrides)
         logger.info("Applied %d settings override(s) from DB", len(overrides))
 
     # CardDAV Sync
@@ -222,7 +222,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add defence-in-depth security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
+        return response
+
+
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.include_router(whatsapp_router)
 app.include_router(web_router)
@@ -253,8 +268,17 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint with DB pool status."""
+    pool = app.state.pool
+    return {
+        "status": "ok",
+        "db_pool": {
+            "size": pool.get_size(),
+            "free": pool.get_idle_size(),
+            "min": pool.get_min_size(),
+            "max": pool.get_max_size(),
+        },
+    }
 
 
 class ChatRequest(BaseModel):
