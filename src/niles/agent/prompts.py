@@ -1,7 +1,9 @@
 """System prompt loading and building."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -26,21 +28,32 @@ def load_system_prompt(path: str | None = None) -> str:
         return _DEFAULT_PROMPT
 
 
-def build_system_prompt(base_prompt: str, memories: list[dict]) -> str:
-    """Build full system prompt with memory context."""
-    if not memories:
-        return base_prompt
+def build_system_prompt(
+    base_prompt: str, memories: list[dict], timezone: str = "Europe/Vienna",
+) -> str:
+    """Build full system prompt with current datetime and memory context."""
+    tz = ZoneInfo(timezone)
+    now = datetime.now(tz)
+    weekdays_de = [
+        "Montag", "Dienstag", "Mittwoch", "Donnerstag",
+        "Freitag", "Samstag", "Sonntag",
+    ]
+    weekday = weekdays_de[now.weekday()]
 
-    memory_lines = []
-    for entry in memories:
-        key = entry["key"]
-        value = entry["value"]
-        memory_lines.append(f"- {key}: {value}")
-
-    memory_section = (
-        "\n\n## Dein Gedächtnis\n"
-        "Folgende Dinge hast du dir gemerkt:\n"
-        + "\n".join(memory_lines)
+    time_section = (
+        f"\n\n## Aktuelle Zeit\n"
+        f"Heute ist {weekday}, der {now.strftime('%d.%m.%Y')}. "
+        f"Es ist {now.strftime('%H:%M')} Uhr ({timezone})."
     )
 
-    return base_prompt + memory_section
+    prompt = base_prompt + time_section
+
+    if memories:
+        memory_lines = [f"- {e['key']}: {e['value']}" for e in memories]
+        prompt += (
+            "\n\n## Dein Gedächtnis\n"
+            "Folgende Dinge hast du dir gemerkt:\n"
+            + "\n".join(memory_lines)
+        )
+
+    return prompt

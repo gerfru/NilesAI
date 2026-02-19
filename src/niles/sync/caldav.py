@@ -26,6 +26,30 @@ _HREF_REGEX = re.compile(
     r"<(?:[dD]:)?href[^>]*>\s*([^<]*\.ics)\s*</(?:[dD]:)?href>", re.IGNORECASE
 )
 
+# Regex to extract calendar-data from REPORT response
+_CALENDAR_DATA_REGEX = re.compile(
+    r"<(?:CAL:|C:)?calendar-data[^>]*>(.*?)</(?:CAL:|C:)?calendar-data>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Sync window: 30 days past, 365 days future
+_SYNC_DAYS_PAST = 30
+_SYNC_DAYS_FUTURE = 365
+
+# Regex for collection hrefs (paths ending with /)
+_COLLECTION_HREF_REGEX = re.compile(
+    r"<(?:[dD]:)?href[^>]*>\s*([^<]+/)\s*</(?:[dD]:)?href>", re.IGNORECASE
+)
+
+# Regex to extract href + displayname from a <D:response> block
+_RESPONSE_BLOCK_REGEX = re.compile(
+    r"<(?:[dD]:)?response[^>]*>(.*?)</(?:[dD]:)?response>",
+    re.IGNORECASE | re.DOTALL,
+)
+_DISPLAYNAME_REGEX = re.compile(
+    r"<(?:[dD]:)?displayname[^>]*>([^<]*)</(?:[dD]:)?displayname>", re.IGNORECASE
+)
+
 # Regex to parse DTSTART/DTEND lines with optional parameters
 _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
 
@@ -105,6 +129,7 @@ class CalDAVSync:
 
     def __init__(self, pool: asyncpg.Pool, config: Settings):
         self.pool = pool
+        self.config = config
         self.caldav_url = config.caldav_url
         self.auth = httpx.BasicAuth(config.caldav_user, config.caldav_password)
         self.tz = ZoneInfo(config.timezone)
@@ -138,46 +163,160 @@ class CalDAVSync:
         logger.info("Events table initialized")
 
     async def sync_events(self) -> int:
-        """Run a full CalDAV sync. Returns number of synced events."""
+        """Run a CalDAV sync using REPORT with time-range filter.
+
+        Only syncs events from 30 days ago to 365 days in the future.
+        Uses CalDAV REPORT (RFC 4791) to fetch matching events inline,
+        avoiding thousands of individual GET requests.
+        """
         logger.info("Starting CalDAV event sync...")
 
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=_SYNC_DAYS_PAST)).strftime("%Y%m%dT%H%M%SZ")
+        end = (now + timedelta(days=_SYNC_DAYS_FUTURE)).strftime("%Y%m%dT%H%M%SZ")
+
+        # Discover collections
         try:
-            ics_urls = await self._propfind()
+            collections = await self._get_sync_collections()
         except Exception:
-            logger.exception("PROPFIND failed")
+            logger.exception("Collection discovery failed")
             return 0
 
-        if not ics_urls:
-            logger.warning("No iCalendar URLs found")
+        if not collections:
+            logger.warning("No calendar collections found")
             return 0
-
-        logger.info("Found %d iCalendar URLs", len(ics_urls))
 
         count = 0
-        for url in ics_urls:
+        for col_url in collections:
             try:
-                ics_text = await self._fetch_ics(url)
-                if not ics_text:
-                    continue
-
-                event = self._parse_icalendar(ics_text, url)
-                if not event:
-                    continue
-
-                await self._upsert_event(event)
-                count += 1
+                events = await self._report_time_range(col_url, start, end)
+                for ics_text, href in events:
+                    event = self._parse_icalendar(ics_text, href)
+                    if event:
+                        await self._upsert_event(event)
+                        count += 1
             except Exception:
-                logger.exception("Failed to sync event: %s", url)
+                logger.exception("REPORT failed for %s", col_url)
 
-        logger.info("Synced %d events", count)
+        logger.info("Synced %d events (range: %s to %s)", count, start, end)
         return count
 
-    async def _propfind(self) -> list[str]:
-        """Send PROPFIND request and extract .ics URLs from response."""
+    async def _report_time_range(
+        self, collection_url: str, start: str, end: str,
+    ) -> list[tuple[str, str]]:
+        """Send CalDAV REPORT with time-range filter. Returns [(ics_text, href), ...]."""
+        body = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+            "<D:prop><D:getetag/><C:calendar-data/></D:prop>"
+            "<C:filter><C:comp-filter name=\"VCALENDAR\">"
+            "<C:comp-filter name=\"VEVENT\">"
+            f'<C:time-range start="{start}" end="{end}"/>'
+            "</C:comp-filter></C:comp-filter></C:filter>"
+            "</C:calendar-query>"
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                "REPORT",
+                collection_url,
+                content=body,
+                headers={
+                    "Depth": "1",
+                    "Content-Type": "application/xml; charset=utf-8",
+                },
+                auth=self.auth,
+                timeout=60,
+            )
+            response.raise_for_status()
+
+        xml = response.text
+        results: list[tuple[str, str]] = []
+
+        for block in _RESPONSE_BLOCK_REGEX.finditer(xml):
+            block_text = block.group(1)
+            href_match = _HREF_REGEX.search(block_text)
+            href = href_match.group(1).strip() if href_match else ""
+            cal_match = _CALENDAR_DATA_REGEX.search(block_text)
+            if cal_match:
+                ics_text = cal_match.group(1).strip()
+                if "BEGIN:VCALENDAR" in ics_text:
+                    results.append((ics_text, href))
+
+        logger.info("  %s: %d events in time range", collection_url, len(results))
+        return results
+
+    async def _get_sync_collections(self) -> list[str]:
+        """Get collection URLs to sync, respecting caldav_calendars filter."""
+        xml = await self._propfind_request(self.caldav_url)
+        if not xml:
+            return []
+
+        # Direct calendar URL? (has .ics files directly)
+        if _HREF_REGEX.search(xml):
+            return [self.caldav_url]
+
+        # Discover sub-collections
+        root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
+        collection_hrefs = _COLLECTION_HREF_REGEX.findall(xml)
+        collections = [
+            h.strip()
+            for h in collection_hrefs
+            if h.strip() != root_path and "schedule-" not in h
+        ]
+
+        allowed = self._allowed_collections()
+        if allowed:
+            collections = [h for h in collections if h in allowed]
+
+        logger.info("Syncing %d calendar collections", len(collections))
+
+        return [
+            self._base_url + h if not h.startswith("http") else h
+            for h in collections
+        ]
+
+    async def discover_collections(self) -> list[dict]:
+        """Discover available calendar collections from the CalDAV root.
+
+        Returns list of {"href": "/caldav/abc/", "name": "Kalender"} dicts.
+        """
+        xml = await self._propfind_request(self.caldav_url)
+        if not xml:
+            return []
+
+        root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
+        collections: list[dict] = []
+
+        for block_match in _RESPONSE_BLOCK_REGEX.finditer(xml):
+            block = block_match.group(1)
+            href_match = _COLLECTION_HREF_REGEX.search(block)
+            if not href_match:
+                continue
+            href = href_match.group(1).strip()
+            if href == root_path or "schedule-" in href:
+                continue
+
+            name_match = _DISPLAYNAME_REGEX.search(block)
+            name = name_match.group(1).strip() if name_match else href
+            collections.append({"href": href, "name": name})
+
+        return collections
+
+    def _allowed_collections(self) -> set[str] | None:
+        """Parse caldav_calendars setting into a set of allowed hrefs, or None for all."""
+        raw = self.config.caldav_calendars
+        if not raw or not raw.strip():
+            return None
+        return {h.strip() for h in raw.split(",") if h.strip()}
+
+
+    async def _propfind_request(self, url: str) -> str | None:
+        """Send a single PROPFIND Depth:1 request, return XML or None."""
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 "PROPFIND",
-                self.caldav_url,
+                url,
                 content=_PROPFIND_BODY,
                 headers={
                     "Depth": "1",
@@ -190,28 +329,9 @@ class CalDAVSync:
 
         xml = response.text
         if not xml or len(xml) < 100:
-            logger.warning("Empty or too short PROPFIND response")
-            return []
-
-        urls = _HREF_REGEX.findall(xml)
-        return [u.strip() for u in urls if u.strip()]
-
-    async def _fetch_ics(self, url: str) -> str | None:
-        """Fetch a single iCalendar resource by URL."""
-        full_url = self._base_url + url if not url.startswith("http") else url
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                full_url,
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
-
-        text = response.text
-        if "BEGIN:VCALENDAR" not in text:
+            logger.warning("Empty or too short PROPFIND response for %s", url)
             return None
-        return text
+        return xml
 
     def _parse_icalendar(self, ics_text: str, url: str) -> dict | None:
         """Parse iCalendar text into an event dict. Returns None if invalid."""
