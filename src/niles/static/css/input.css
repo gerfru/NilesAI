@@ -44,6 +44,12 @@
     .animate-blink {
         animation: blink 1.4s infinite both;
     }
+    .animation-delay-200 {
+        animation-delay: .2s;
+    }
+    .animation-delay-400 {
+        animation-delay: .4s;
+    }
 }
 
 @keyframes blink {

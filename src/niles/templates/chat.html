@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Chat - Niles AI{% endblock %}
 {% block content %}
-<div class="flex flex-col" style="height:calc(100vh - 140px)">
+<div class="flex flex-col h-[calc(100vh-140px)]">
     <div id="chat-messages" role="log" aria-live="polite" class="flex-1 overflow-y-auto py-4 thin-scrollbar">
         {% if has_more %}
         <div id="load-more-container" class="text-center mb-4">
@@ -28,7 +28,7 @@
     <div id="thinking-indicator" class="hidden" aria-live="assertive">
         <div class="flex flex-col mb-3 items-start">
             <div class="max-w-[75%] px-4 py-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100" data-thinking-text>
-                <span data-thinking-label>Niles denkt nach</span><span class="animate-blink">.</span><span class="animate-blink" style="animation-delay:.2s">.</span><span class="animate-blink" style="animation-delay:.4s">.</span>
+                <span data-thinking-label>Niles denkt nach</span><span class="animate-blink">.</span><span class="animate-blink animation-delay-200">.</span><span class="animate-blink animation-delay-400">.</span>
             </div>
         </div>
     </div>
