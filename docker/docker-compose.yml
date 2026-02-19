@@ -7,8 +7,9 @@ services:
     container_name: niles_evolution_postgres
     image: postgres:15-alpine
     restart: unless-stopped
-    # Port not exposed -- access only via Docker network
-    # For local debugging: ports: ["127.0.0.1:5432:5432"]
+    # Port exposed for local debugging
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
