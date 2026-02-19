@@ -9,6 +9,7 @@ from niles.config import Settings
 from niles.sources.web import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
+    _CHAT_PAGE_SIZE,
     _get_session_user,
     _login_attempts,
     _verify_csrf,
@@ -249,7 +250,7 @@ class TestChatEndpoints:
 
         await chat_page(request)
 
-        history.get_recent.assert_called_once_with("web-user-1", limit=20)
+        history.get_recent.assert_called_once_with("web-user-1", limit=_CHAT_PAGE_SIZE)
 
 
 class TestSettingsEndpoints:
