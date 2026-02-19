@@ -43,6 +43,28 @@ document.body.addEventListener("change", function(evt) {
     htmx.trigger(form, "submit");
 });
 
+/* Calendar save -- collect checked values into hidden field before submit (CSP-safe) */
+document.body.addEventListener("click", function(evt) {
+    if (!evt.target.hasAttribute("data-calendar-save")) return;
+    var form = evt.target.closest("form");
+    var boxes = form.querySelectorAll("input[name=cal]:checked");
+    if (boxes.length === 0) {
+        evt.preventDefault();
+        return;
+    }
+    var vals = Array.from(boxes).map(function(b) { return b.value; });
+    form.querySelector("#cal-value").value = vals.join(",");
+});
+
+/* Calendar checkboxes -- disable save button when nothing is checked */
+document.body.addEventListener("change", function(evt) {
+    if (evt.target.name !== "cal") return;
+    var form = evt.target.closest("form");
+    var btn = form.querySelector("[data-calendar-save]");
+    var checked = form.querySelectorAll("input[name=cal]:checked").length;
+    btn.disabled = checked === 0;
+});
+
 document.body.addEventListener("htmx:afterRequest", function(evt) {
     var btn = evt.detail.elt.querySelector("button[type='submit']");
     if (btn) btn.removeAttribute("aria-busy");
