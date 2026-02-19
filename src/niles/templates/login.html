@@ -6,6 +6,21 @@
     {% if error %}
     <p role="alert">{{ error }}</p>
     {% endif %}
+
+    {% if google_configured %}
+    <a href="/ui/login/google" role="button">Mit Google anmelden</a>
+    <hr>
+    <details>
+        <summary>API-Key Login (alternativ)</summary>
+        <form method="post" action="/ui/login">
+            <label for="api_key">API Key</label>
+            <input type="password" id="api_key" name="api_key" required
+                   placeholder="NILES_API_KEY eingeben"
+                   maxlength="256" minlength="1">
+            <button type="submit">Login</button>
+        </form>
+    </details>
+    {% else %}
     <form method="post" action="/ui/login">
         <label for="api_key">API Key</label>
         <input type="password" id="api_key" name="api_key" required
@@ -14,5 +29,6 @@
         <button type="submit">Login</button>
     </form>
     <p><small>Den API-Key findest du mit: <code>docker exec niles_core printenv NILES_API_KEY</code></small></p>
+    {% endif %}
 </article>
 {% endblock %}

@@ -1,10 +1,8 @@
 # Niles AI Core
 
-Lokaler AI-Butler auf Mac Mini M4. Empfaengt Events aus verschiedenen Quellen (WhatsApp, Email, Kalender), verarbeitet sie mit einem lokalen LLM und fuehrt Aktionen aus.
+Lokaler AI-Butler auf Mac Mini M4. Empfaengt Events aus verschiedenen Quellen (WhatsApp, Web-UI, API), verarbeitet sie mit einem lokalen LLM und fuehrt Aktionen aus.
 
 ## Status
-
-Stage 1-3 implementiert. Stage 4-6 geplant.
 
 | Stage | Status | Beschreibung |
 |-------|--------|-------------|
@@ -12,25 +10,37 @@ Stage 1-3 implementiert. Stage 4-6 geplant.
 | 2 | Abgeschlossen | WhatsApp empfangen, LLM-Verarbeitung, antworten |
 | 3 | Abgeschlossen | Key-Value Memory, Konversations-Historie |
 | 4 | Abgeschlossen | CardDAV Kontakt-Sync |
-| 5 | Geplant | MCP Client, externe Tools |
-| 6 | Geplant | IMAP + CalDAV als Event-Quellen |
+| 5 | Abgeschlossen | Security Hardening (Auth, Rate Limiting, HTTPS) |
+| 6 | Abgeschlossen | MCP Integration |
+| 7 | Abgeschlossen | CalDAV Kalender-Sync |
+| 8 | Geplant | Email als Event-Quelle |
+| 9 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
+| 10 | In Arbeit | Google OAuth, Multi-User, GUI v2 |
 
 ## Architektur
 
 ```
-Event Sources                Niles Core (FastAPI :8000)              External
-                         +--------------------------------+
-WhatsApp --- Webhook --> |  sources/whatsapp.py           |
-                         |         |                      |
-                         |         v                      |
-POST /chat  ----------> |  agent/core.py (NilesAgent)    |--> LM Studio :1234
-                         |    |  Tool-Call Loop (max 5)   |
-                         |    |                           |
-                         |    +- memory/store.py          |--> PostgreSQL :5432
-                         |    +- memory/history.py        |--> PostgreSQL :5432
-                         |    +- actions/contacts.py      |--> PostgreSQL :5432
-                         |    +- actions/whatsapp.py      |--> Evolution API :8080
-                         +--------------------------------+
+Browser / curl / WhatsApp
+    |
+    v  HTTPS (Caddy, self-signed)
++--------------------------------------------------+
+|  Niles Core (FastAPI :8000)                      |
+|                                                  |
+|  /ui/*  ---- sources/web.py (htmx + Jinja2)     |
+|                 |  Google OAuth / API-Key Auth   |
+|                 |  Signed Session Cookies         |
+|                 v                                |
+|  /chat  ---> agent/core.py (NilesAgent) -------> LM Studio :1234
+|                 |  Tool-Call Loop (max 5)        |
+|                 |                                |
+|                 +-- memory/store.py     --------> PostgreSQL :5432
+|                 +-- memory/history.py  --------> PostgreSQL :5432
+|                 +-- actions/contacts.py --------> PostgreSQL :5432
+|                 +-- actions/whatsapp.py --------> Evolution API :8080
+|                 +-- actions/calendar.py --------> PostgreSQL :5432
+|                                                  |
+|  /webhook/whatsapp --- sources/whatsapp.py       |
++--------------------------------------------------+
 ```
 
 ## Projektstruktur
@@ -38,15 +48,21 @@ POST /chat  ----------> |  agent/core.py (NilesAgent)    |--> LM Studio :1234
 ```
 Niles/
 ├── src/niles/                  # Python Backend
-│   ├── main.py                 # FastAPI + Lifespan
+│   ├── main.py                 # FastAPI + Lifespan + Middleware
 │   ├── config.py               # Pydantic Settings
+│   ├── user_store.py           # User-Verwaltung (Google OAuth)
+│   ├── settings_store.py       # Runtime Settings (PostgreSQL)
 │   ├── agent/                  # LLM Agent, Tool-Call-Pipeline
 │   ├── memory/                 # Key-Value Store, Chat-History
-│   ├── actions/                # WhatsApp senden, Kontakt-Lookup
-│   └── sources/                # Webhook-Handler
+│   ├── actions/                # WhatsApp, Kontakte, Kalender
+│   ├── sources/                # Webhook-Handler, Web-UI
+│   ├── sync/                   # CardDAV, CalDAV Sync
+│   ├── mcp/                    # MCP Client
+│   ├── templates/              # Jinja2 HTML Templates
+│   └── static/                 # CSS, JavaScript
 ├── tests/                      # pytest Tests
 ├── config/                     # soul.md (Agent-Persoenlichkeit)
-├── docker/                     # Dockerfile, docker-compose.yml
+├── docker/                     # Dockerfile, docker-compose.yml, Caddyfile
 ├── scripts/                    # dev.sh, test.sh, start.sh, stop.sh, status.sh
 ├── docs/                       # Technische Dokumentation
 ├── pyproject.toml
@@ -66,6 +82,7 @@ Niles/
 ```bash
 cp .env.example .env
 # Pflichtfelder setzen: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY
+# Optional: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET fuer Web-UI Login
 ```
 
 ### 2. Services starten
@@ -80,10 +97,20 @@ cp .env.example .env
 ./scripts/status.sh
 ```
 
-### 4. Testen
+### 4. Web-UI oeffnen
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+# Browser oeffnen:
+# https://localhost/ui/login
+```
+
+Login via Google OAuth (wenn konfiguriert) oder API-Key.
+
+### 5. API testen
+
+```bash
+curl -k -X POST https://localhost/chat \
+  -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Hallo Niles!"}'
 ```
@@ -100,6 +127,7 @@ curl -X POST http://localhost:8000/chat \
 | Komponente | Technologie | Port |
 |------------|-------------|------|
 | Niles Core | FastAPI (Python) | 8000 |
+| Web UI | Jinja2 + htmx + Pico CSS | via /ui/* |
 | LLM Inference | LM Studio (MLX) | 1234 |
 | Datenbank | PostgreSQL 15 | 5432 |
 | WhatsApp Gateway | Evolution API v2.3.7 | 8080 |

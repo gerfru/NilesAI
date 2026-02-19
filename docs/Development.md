@@ -1,13 +1,13 @@
 # Niles AI Core -- Development Guide
 
-> **Stand:** 2026-02-18
+> **Stand:** 2026-02-19
 
 ---
 
 ## 1. Voraussetzungen
 
 | Software | Version | Zweck |
-|----------|---------|-------|
+| -------- | ------- | ----- |
 | Python | >= 3.11 | Runtime |
 | Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
 | LM Studio | aktuell | Lokale LLM Inference |
@@ -45,7 +45,20 @@ EVOLUTION_POSTGRES_PASSWORD=<passwort>
 EVOLUTION_API_KEY=<api-key>
 ```
 
-Siehe [Architecture.md](Architecture.md#5-konfiguration) fuer alle Konfigurationsoptionen.
+Optionale Felder fuer Web-UI und Google OAuth:
+
+```bash
+# Fuer stabile Sessions ueber Container-Restarts:
+SESSION_SECRET=<zufaelliger-string>
+
+# Fuer Google OAuth Login:
+GOOGLE_CLIENT_ID=<client-id>
+GOOGLE_CLIENT_SECRET=<client-secret>
+GOOGLE_ALLOWED_EMAILS=user1@gmail.com
+BASE_URL=https://niles.example.com
+```
+
+Siehe [Architecture.md](Architecture.md#7-konfiguration) fuer alle Konfigurationsoptionen.
 
 ### LM Studio
 
@@ -83,6 +96,8 @@ curl -k -X POST https://localhost/chat \
   -d '{"message": "Test"}'
 ```
 
+**Web-UI:** `https://localhost/ui/login` im Browser oeffnen.
+
 Alternativ direkt ueber den Docker-internen Port (ohne TLS): `docker exec niles_core curl http://localhost:8000/health`
 
 ### Status pruefen
@@ -116,13 +131,20 @@ python -m pytest tests/ -v
 
 ### Teststruktur
 
-```
+```text
 tests/
-├── conftest.py          # Shared Fixtures (Environment-Variablen)
-├── test_config.py       # Settings-Validierung
-├── test_contacts.py     # ContactsAction, normalize_phone
-├── test_health.py       # GET /health Endpoint
-└── test_memory.py       # MemoryStore, ConversationHistory
+├── conftest.py              # Shared Fixtures (Environment-Variablen)
+├── test_config.py           # Settings-Validierung
+├── test_contacts.py         # ContactsAction, normalize_phone
+├── test_health.py           # GET /health Endpoint
+├── test_memory.py           # MemoryStore, ConversationHistory
+├── test_features.py         # Feature Flags + Webhook Auth
+├── test_carddav.py          # CardDAV Sync
+├── test_caldav.py           # CalDAV Sync
+├── test_mcp.py              # MCP Integration
+├── test_security.py         # API Auth, Rate Limiting
+├── test_settings_store.py   # Runtime Settings Store
+└── test_web.py              # Web-UI, Google OAuth, Sessions, CSRF
 ```
 
 ### Konventionen
@@ -133,6 +155,7 @@ tests/
 - `conftest.py` setzt Pflicht-Environment-Variablen via `monkeypatch`
 - Testdateien: `tests/test_<modul>.py`
 - Testklassen: `class Test<Klasse>:`
+- Web-UI Tests verwenden signierte Session-Tokens via `itsdangerous.URLSafeTimedSerializer` mit separatem `_TEST_SESSION_SECRET`
 
 ---
 
@@ -195,6 +218,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 - **Code:** Englisch (Variablen, Funktionen, Kommentare, Docstrings)
 - **Agent-Prompts:** Deutsch (soul.md, Tool-Beschreibungen)
 - **Dokumentation:** Deutsch
+- **Web-UI Labels:** Deutsch (Zielsprache des End-Users)
 
 ### Async
 
@@ -206,6 +230,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 ### Fehlerbehandlung
 
 - Webhook-Handler: Exceptions fangen und loggen, immer HTTP 200 zurueckgeben
+- Web-UI: Agent-Fehler abfangen, Fehlermeldung im Chat anzeigen
 - LLM-Fehler: Fehlermeldung an User, kein Exception-Propagation
 - Tool-Call-Fehler: `{"error": "..."}` als Tool-Result zurueck an LLM
 - Startup: `ValidationError` bei fehlenden Pflicht-Variablen -> `sys.exit(1)`
