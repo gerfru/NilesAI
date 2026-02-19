@@ -1,5 +1,6 @@
 """Tests for web GUI router."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 from itsdangerous import URLSafeTimedSerializer
@@ -8,12 +9,14 @@ from niles.config import Settings
 from niles.sources.web import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
+    _CHAT_PAGE_SIZE,
     _get_session_user,
     _login_attempts,
     _verify_csrf,
     chat_clear,
     chat_page,
     chat_send,
+    chat_stream,
     login_submit,
     logout,
     settings_page,
@@ -247,7 +250,7 @@ class TestChatEndpoints:
 
         await chat_page(request)
 
-        history.get_recent.assert_called_once_with("web-user-1", limit=20)
+        history.get_recent.assert_called_once_with("web-user-1", limit=_CHAT_PAGE_SIZE)
 
 
 class TestSettingsEndpoints:
@@ -333,3 +336,76 @@ class TestSettingsEndpoints:
 
         body = response.body.decode()
         assert "(not set)" in body
+
+
+class TestChatStreamEndpoint:
+    async def test_stream_returns_sse_response(self):
+        async def fake_stream(event):
+            yield {"type": "chunk", "text": "Hello"}
+            yield {"type": "done"}
+
+        agent = AsyncMock()
+        agent.process_event_stream = fake_stream
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            agent=agent,
+        )
+
+        response = await chat_stream(request, message="Hi")
+
+        assert response.media_type == "text/event-stream"
+        assert response.headers.get("X-Accel-Buffering") == "no"
+
+        # Collect SSE body
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk.encode() if isinstance(chunk, str) else chunk
+
+        lines = body.decode().strip().split("\n\n")
+        events = [json.loads(line.removeprefix("data: ")) for line in lines]
+        assert events[0] == {"type": "chunk", "text": "Hello"}
+        assert events[1] == {"type": "done"}
+
+    async def test_stream_rejects_without_auth(self):
+        request = _make_request(cookies={})
+        response = await chat_stream(request, message="test")
+        assert response.status_code == 401
+
+    async def test_stream_rejects_without_csrf(self):
+        request = _make_request(cookies=_session_only_cookies())
+        response = await chat_stream(request, message="test")
+        assert response.status_code == 403
+
+    async def test_stream_rejects_long_message(self):
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+        )
+        response = await chat_stream(request, message="x" * 2001)
+        assert response.status_code == 400
+
+    async def test_stream_handles_agent_error(self):
+        async def failing_stream(event):
+            raise RuntimeError("LLM down")
+            yield  # make it a generator  # noqa: E303
+
+        agent = AsyncMock()
+        agent.process_event_stream = failing_stream
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            agent=agent,
+        )
+
+        response = await chat_stream(request, message="hello")
+
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk.encode() if isinstance(chunk, str) else chunk
+
+        events = [json.loads(line.removeprefix("data: "))
+                  for line in body.decode().strip().split("\n\n")]
+        # Should contain error message and done event
+        assert any("Fehler" in e.get("text", "") for e in events)
+        assert events[-1]["type"] == "done"

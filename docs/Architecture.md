@@ -77,14 +77,16 @@ src/niles/
 ├── mcp/
 │   └── client.py        # MCP Server Manager
 ├── templates/
-│   ├── base.html        # Layout (Nav, CSP, Pico CSS, htmx)
+│   ├── base.html        # Layout (Nav, CSP, Tailwind CSS, htmx)
 │   ├── login.html       # Login (Google OAuth + API-Key Fallback)
-│   ├── chat.html        # Chat-UI mit History
+│   ├── chat.html        # Chat-UI mit SSE Streaming
 │   ├── settings.html    # Settings Dashboard
-│   └── fragments/       # htmx-Fragmente (message, history, toast)
+│   └── fragments/       # htmx-Fragmente (message, history, toast, calendars)
 └── static/
-    ├── css/style.css    # Custom Styles
-    └── js/app.js        # htmx CSRF-Injection, Chat-Logik
+    ├── css/
+    │   ├── input.css    # Tailwind Direktiven + Custom Components
+    │   └── style.css    # Generierter Tailwind Output
+    └── js/app.js        # SSE Chat-Streaming, Dark Mode, CSRF
 ```
 
 ### agent/
@@ -109,7 +111,7 @@ Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert K
 
 ### templates/ & static/
 
-Jinja2 Templates fuer die Web-UI. `base.html` definiert das Layout (Pico CSS, htmx, Navigation mit User-Avatar). Fragments werden von htmx-Endpoints zurueckgegeben. CSS und JavaScript liegen in `static/`.
+Jinja2 Templates fuer die Web-UI. `base.html` definiert das Layout (Tailwind CSS, htmx, Navigation mit User-Avatar). Templates verwenden Tailwind Utility Classes fuer Styling. Dark Mode via `class="dark"` auf `<html>`. Chat-Antworten werden via SSE gestreamt (Wort fuer Wort), Markdown client-seitig gerendert (marked.js + DOMPurify). `static/css/input.css` enthaelt Tailwind-Direktiven und Custom Components (Toggle-Switch, Animationen), `style.css` ist der generierte Output (via Tailwind CLI).
 
 ---
 
@@ -133,18 +135,23 @@ Jinja2 Templates fuer die Web-UI. `base.html` definiert das Layout (Pico CSS, ht
 8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
 ```
 
-## 4. Datenfluss: Web-UI Chat
+## 4. Datenfluss: Web-UI Chat (SSE Streaming)
 
 ```text
 1. User oeffnet /ui/chat (GET)
 2. sources/web.py prueft signierte Session-Cookie (itsdangerous)
 3. Laedt per-User Chat-History (chat_id = "web-user-{uid}")
 4. Rendert chat.html mit Jinja2, setzt CSRF-Cookie
-5. User sendet Nachricht via htmx POST an /ui/api/chat
-6. sources/web.py prueft Session + CSRF (Double-Submit Pattern)
-7. Erstellt Event: {"type": "web", "from": "web-user-1", "content": "..."}
-8. Ruft agent.process_event(event) auf (gleiche Pipeline wie WhatsApp)
-9. Gibt HTML-Fragment (message.html) zurueck -> htmx fuegt es in DOM ein
+5. User sendet Nachricht (Enter/Senden-Button)
+6. JavaScript: User-Bubble sofort anzeigen, Input leeren, "Niles denkt nach..." anzeigen
+7. fetch() POST an /ui/api/chat/stream (SSE)
+8. sources/web.py prueft Session + CSRF (Double-Submit Pattern)
+9. Erstellt Event: {"type": "web", "from": "web-user-1", "content": "..."}
+10. Ruft agent.process_event_stream(event) auf
+    10a. Tool-Calls laufen nicht-streaming (yield status updates)
+    10b. Finale Antwort wird gestreamt (yield chunks Wort fuer Wort)
+11. JavaScript: Assistant-Bubble erstellen, Text chunk-weise einfuegen
+12. Nach Stream-Ende: Markdown rendern (marked.js + DOMPurify)
 ```
 
 ## 5. Datenfluss: Google OAuth Login
@@ -370,7 +377,8 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 | Config | pydantic-settings | >= 2.13.0 |
 | Templates | Jinja2 | >= 3.1.0 |
 | Session Signing | itsdangerous | >= 2.0 |
-| CSS Framework | Pico CSS | v2 (CDN) |
+| CSS Framework | Tailwind CSS | v3.4.17 (Standalone CLI) |
+| Markdown Rendering | marked.js + DOMPurify | CDN (SRI) |
 | Frontend Interaktion | htmx | 2.0.4 (CDN) |
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
