@@ -80,7 +80,6 @@ fi
 
 echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
-echo "  - Niles Web UI:         https://localhost/ui/chat"
-echo "  - Niles API Docs:       https://localhost/docs"
+echo "  - Niles Web UI:         https://localhost/ui/login"
 echo "  - Evolution Manager:    https://localhost:8443/manager"
 echo "  - LM Studio API:        http://localhost:1234/v1"
