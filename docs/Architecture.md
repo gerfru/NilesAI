@@ -1,29 +1,49 @@
 # Niles AI Core -- Architektur
 
-> **Stand:** 2026-02-17
+> **Stand:** 2026-02-19
 
 ---
 
 ## 1. Systemuebersicht
 
-```
+```text
+Browser / curl / WhatsApp
+    |
+    v  HTTPS (Caddy, self-signed)
+┌──────────────────────────────────────────────────┐
+│  Caddy Reverse Proxy                             │
+│  :443  -> niles_core:8000                        │
+│  :8443 -> evolution_api:8080                     │
+│  Security Headers, Access Logs                   │
+└──────────────┬───────────────────────────────────┘
+               | HTTP (intern)
+               v
 Event Sources                Niles Core (FastAPI :8000)              External
-                         +--------------------------------+
-WhatsApp --- Webhook --> |  sources/whatsapp.py           |
-                         |         |                      |
-                         |         v                      |
-POST /chat  ----------> |  agent/core.py (NilesAgent)    |--> LM Studio :1234
-                         |    |  Tool-Call Loop (max 5)   |
-                         |    |                           |
-                         |    +- memory/store.py          |--> PostgreSQL :5432
-                         |    +- memory/history.py        |--> PostgreSQL :5432
-                         |    +- actions/contacts.py      |--> PostgreSQL :5432
-                         |    +- actions/whatsapp.py      |--> Evolution API :8080
-                         |                                |
-                         |  GET  /health                  |
-                         |  POST /chat                    |
-                         |  POST /webhook/whatsapp        |
-                         +--------------------------------+
+                         ┌────────────────────────────────┐
+WhatsApp ─── Webhook ──> │  sources/whatsapp.py           │
+                         │         │                      │
+Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
+                         │    │ Google OAuth + Sessions    │
+                         │    │                           │
+                         │         v                      │
+POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> LM Studio :1234
+                         │    │  Tool-Call Loop (max 5)   │
+                         │    │                           │
+                         │    ├─ memory/store.py          │──> PostgreSQL :5432
+                         │    ├─ memory/history.py        │──> PostgreSQL :5432
+                         │    ├─ actions/contacts.py      │──> PostgreSQL :5432
+                         │    ├─ actions/whatsapp.py      │──> Evolution API :8080
+                         │    └─ actions/calendar.py      │──> PostgreSQL :5432
+                         │                                │
+                         │  Middleware:                    │
+                         │    SecurityHeadersMiddleware    │
+                         │    RateLimitMiddleware (60/min) │
+                         │                                │
+                         │  GET  /health (unauthenticated) │
+                         │  POST /chat (API Key)          │
+                         │  POST /webhook/whatsapp (token) │
+                         │  /ui/* (Session Cookie / OAuth) │
+                         └────────────────────────────────┘
 ```
 
 Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). LM Studio laeuft nativ auf dem Host und ist ueber `host.docker.internal:1234` erreichbar.
@@ -32,10 +52,12 @@ Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`
 
 ## 2. Modulstruktur
 
-```
+```text
 src/niles/
-├── main.py              # FastAPI App, Lifespan, Endpoints
-├── config.py            # Pydantic Settings
+├── main.py              # FastAPI App, Lifespan, Middleware, /chat, /health
+├── config.py            # Pydantic Settings + apply_overrides()
+├── user_store.py        # User-Verwaltung (Google OAuth, PostgreSQL)
+├── settings_store.py    # Runtime Settings Overrides (PostgreSQL)
 ├── agent/
 │   ├── core.py          # NilesAgent, Tool-Call-Pipeline
 │   └── prompts.py       # System Prompt laden/bauen
@@ -44,9 +66,25 @@ src/niles/
 │   └── history.py       # Konversations-Historie (PostgreSQL)
 ├── actions/
 │   ├── whatsapp.py      # WhatsApp senden (Evolution API)
-│   └── contacts.py      # Kontakt-Lookup (PostgreSQL)
-└── sources/
-    └── whatsapp.py      # Webhook-Handler (Evolution API)
+│   ├── contacts.py      # Kontakt-Lookup (PostgreSQL)
+│   └── calendar.py      # Kalender-Abfragen (PostgreSQL)
+├── sources/
+│   ├── whatsapp.py      # Webhook-Handler (Evolution API)
+│   └── web.py           # Web-UI Router (htmx, Google OAuth, Sessions)
+├── sync/
+│   ├── carddav.py       # CardDAV Kontakt-Sync
+│   └── caldav.py        # CalDAV Kalender-Sync
+├── mcp/
+│   └── client.py        # MCP Server Manager
+├── templates/
+│   ├── base.html        # Layout (Nav, CSP, Pico CSS, htmx)
+│   ├── login.html       # Login (Google OAuth + API-Key Fallback)
+│   ├── chat.html        # Chat-UI mit History
+│   ├── settings.html    # Settings Dashboard
+│   └── fragments/       # htmx-Fragmente (message, history, toast)
+└── static/
+    ├── css/style.css    # Custom Styles
+    └── js/app.js        # htmx CSRF-Injection, Chat-Logik
 ```
 
 ### agent/
@@ -59,19 +97,25 @@ Persistente Datenhaltung fuer den Agent. `MemoryStore` ist ein Key-Value Store (
 
 ### actions/
 
-Ausfuehrbare Aktionen, die der Agent ueber Tool-Calls triggern kann. `WhatsAppAction` sendet Nachrichten ueber die Evolution API. `ContactsAction` sucht Kontakte in PostgreSQL.
+Ausfuehrbare Aktionen, die der Agent ueber Tool-Calls triggern kann. `WhatsAppAction` sendet Nachrichten ueber die Evolution API. `ContactsAction` sucht Kontakte in PostgreSQL. `CalendarAction` fragt Kalender-Events ab.
 
 ### sources/
 
-Event-Quellen, die eingehende Nachrichten empfangen und an den Agent weiterleiten. `whatsapp.py` ist ein FastAPI-Router fuer Evolution API Webhooks.
+Event-Quellen, die eingehende Nachrichten empfangen und an den Agent weiterleiten. `whatsapp.py` ist ein FastAPI-Router fuer Evolution API Webhooks. `web.py` ist der Web-UI Router mit Google OAuth, Session Management und htmx-Endpoints.
+
+### sync/
+
+Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events. Beide laufen als Cronjobs via APScheduler.
+
+### templates/ & static/
+
+Jinja2 Templates fuer die Web-UI. `base.html` definiert das Layout (Pico CSS, htmx, Navigation mit User-Avatar). Fragments werden von htmx-Endpoints zurueckgegeben. CSS und JavaScript liegen in `static/`.
 
 ---
 
 ## 3. Datenfluss: WhatsApp-Nachricht
 
-Schritt-fuer-Schritt-Verarbeitung einer eingehenden WhatsApp-Nachricht:
-
-```
+```text
 1. Evolution API empfaengt WhatsApp-Nachricht
 2. Evolution API sendet Webhook POST an /webhook/whatsapp
 3. sources/whatsapp.py filtert auf messages.upsert, ignoriert fromMe
@@ -89,16 +133,61 @@ Schritt-fuer-Schritt-Verarbeitung einer eingehenden WhatsApp-Nachricht:
 8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
 ```
 
+## 4. Datenfluss: Web-UI Chat
+
+```text
+1. User oeffnet /ui/chat (GET)
+2. sources/web.py prueft signierte Session-Cookie (itsdangerous)
+3. Laedt per-User Chat-History (chat_id = "web-user-{uid}")
+4. Rendert chat.html mit Jinja2, setzt CSRF-Cookie
+5. User sendet Nachricht via htmx POST an /ui/api/chat
+6. sources/web.py prueft Session + CSRF (Double-Submit Pattern)
+7. Erstellt Event: {"type": "web", "from": "web-user-1", "content": "..."}
+8. Ruft agent.process_event(event) auf (gleiche Pipeline wie WhatsApp)
+9. Gibt HTML-Fragment (message.html) zurueck -> htmx fuegt es in DOM ein
+```
+
+## 5. Datenfluss: Google OAuth Login
+
+```text
+1. User klickt "Mit Google anmelden" auf /ui/login
+2. Redirect zu Google OAuth (/ui/login/google)
+   - State-Token als Cookie gesetzt (CSRF-Schutz)
+   - Redirect URI aus BASE_URL (oder Request Headers als Fallback)
+3. Google zeigt Consent Screen (openid email profile)
+4. Google Callback an /ui/callback/google mit Auth-Code
+5. Server prueft State-Token, tauscht Code gegen Access-Token
+6. Server ruft Google Userinfo API auf (Email, Name, Avatar)
+7. Prueft email_verified und GOOGLE_ALLOWED_EMAILS Whitelist
+8. user_store.create_or_update() -> INSERT ON CONFLICT UPDATE
+9. Signierte Session-Cookie setzen (itsdangerous, 30 Tage)
+10. Redirect zu /ui/chat
+```
+
 ---
 
-## 4. Datenbankschema
+## 6. Datenbankschema
 
-Alle Tabellen liegen in der Datenbank `evolution_db` (User `evolution`). Die Tabellen `memory`, `conversations` und `contacts` werden beim Start automatisch erstellt (`CREATE TABLE IF NOT EXISTS`). Die Tabelle `contacts` wird durch den nativen CardDAV-Sync befuellt.
+Alle Tabellen liegen in der Datenbank `evolution_db` (User `evolution`). Tabellen werden beim Start automatisch erstellt (`CREATE TABLE IF NOT EXISTS`).
+
+### users
+
+```sql
+-- Erstellt durch UserStore (Google OAuth)
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    avatar_url TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP DEFAULT NOW()
+);
+```
 
 ### contacts
 
 ```sql
--- Erstellt/befuellt durch nativen CardDAV-Sync
+-- Erstellt/befuellt durch CardDAV-Sync
 CREATE TABLE contacts (
     id SERIAL PRIMARY KEY,
     full_name TEXT,
@@ -140,16 +229,27 @@ CREATE INDEX IF NOT EXISTS idx_conversations_chat
 ON conversations (chat_id, created_at);
 ```
 
+### settings_overrides
+
+```sql
+-- Runtime Settings, editierbar ueber Web-UI
+CREATE TABLE IF NOT EXISTS settings_overrides (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
 ---
 
-## 5. Konfiguration
+## 7. Konfiguration
 
 ### Settings (`src/niles/config.py`)
 
 Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ignore"` verhindert Fehler bei unbekannten Variablen.
 
 | Feld | Default | Env-Variable | Pflicht |
-|------|---------|-------------|---------|
+| ---- | ------- | ------------ | ------- |
 | `log_level` | `"INFO"` | `LOG_LEVEL` | Nein |
 | `llm_base_url` | `"http://host.docker.internal:1234/v1"` | `LLM_BASE_URL` | Nein |
 | `llm_model` | `"qwen2.5-coder-7b-instruct-mlx"` | `LLM_MODEL` | Nein |
@@ -161,11 +261,33 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 | `evolution_api_url` | `"http://evolution_api:8080"` | `EVOLUTION_API_URL` | Nein |
 | `evolution_api_key` | -- | `EVOLUTION_API_KEY` | Ja |
 | `evolution_instance` | `"niles-whatsapp"` | `EVOLUTION_INSTANCE` | Nein |
+| `niles_api_key` | auto-generiert | `NILES_API_KEY` | Nein |
+| `session_secret` | auto-generiert | `SESSION_SECRET` | Nein |
+| `base_url` | `""` | `BASE_URL` | Nein* |
+| `timezone` | `"Europe/Vienna"` | `TIMEZONE` | Nein |
+| `feature_whatsapp_auto_reply` | `false` | `FEATURE_WHATSAPP_AUTO_REPLY` | Nein |
+| `feature_tool_send_whatsapp` | `true` | `FEATURE_TOOL_SEND_WHATSAPP` | Nein |
+| `feature_carddav_sync` | `false` | `FEATURE_CARDDAV_SYNC` | Nein |
+| `feature_caldav_sync` | `false` | `FEATURE_CALDAV_SYNC` | Nein |
 | `carddav_url` | `"https://dav.example.com/carddav/32"` | `CARDDAV_URL` | Nein |
 | `carddav_user` | `""` | `CARDDAV_USER` | Nein |
 | `carddav_password` | `""` | `CARDDAV_PASSWORD` | Nein |
+| `caldav_url` | `"https://dav.example.com/caldav/"` | `CALDAV_URL` | Nein |
+| `caldav_user` | `""` | `CALDAV_USER` | Nein |
+| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein |
+| `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | Nein** |
+| `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | Nein** |
+| `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | Nein |
+
+\* `base_url` wird empfohlen wenn Google OAuth hinter einem Reverse Proxy laeuft (verhindert Redirect-URI aus untrusted Headers).
+
+\*\* Pflicht wenn Google OAuth gewuenscht. Ohne Google OAuth wird API-Key Login verwendet.
 
 `postgres_password` verwendet `validation_alias="EVOLUTION_POSTGRES_PASSWORD"` -- die Env-Variable heisst anders als das Python-Feld, weil die bestehende PostgreSQL-Instanz bereits diese Variable erwartet.
+
+### Runtime Settings Overrides
+
+Feature-Flags und ausgewaehlte Text-Settings (siehe `EDITABLE_SETTINGS` in `settings_store.py`) koennen ueber die Web-UI geaendert werden. Aenderungen werden in der `settings_overrides` Tabelle persistiert und beim Start geladen via `apply_overrides()`.
 
 ### .env
 
@@ -174,22 +296,30 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 EVOLUTION_POSTGRES_PASSWORD=<passwort>
 EVOLUTION_API_KEY=<api-key>
 
+# Session (empfohlen fuer stabile Sessions ueber Container-Restarts)
+SESSION_SECRET=<zufaelliger-string>
+BASE_URL=https://niles.example.com
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=<client-id>
+GOOGLE_CLIENT_SECRET=<client-secret>
+GOOGLE_ALLOWED_EMAILS=user1@gmail.com,user2@gmail.com
+
 # Optional
+NILES_API_KEY=<api-key>
 CARDDAV_USER=<user>
 CARDDAV_PASSWORD=<passwort>
 LOG_LEVEL=INFO
-LLM_BASE_URL=http://host.docker.internal:1234/v1
-LLM_MODEL=qwen2.5-coder-7b-instruct-mlx
 ```
 
 ---
 
-## 6. Docker
+## 8. Docker
 
 ### Container
 
 | Container | Image | Port | Zweck |
-|-----------|-------|------|-------|
+| --------- | ----- | ---- | ----- |
 | `niles_core` | Build aus `docker/Dockerfile.niles` | 8000 | Niles Python Backend |
 | `niles_evolution_postgres` | `postgres:15-alpine` | 5432 | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | 8080 | WhatsApp Gateway |
@@ -207,8 +337,10 @@ Alle Container im Bridge-Netzwerk `niles_network`. Container-Namen dienen als Ho
 ### Volumes
 
 | Volume | Mount | Zweck |
-|--------|-------|-------|
+| ------ | ----- | ----- |
 | `evolution_postgres` | `/var/lib/postgresql/data` | PostgreSQL-Daten |
+| `caddy_data` | `/data` | TLS-Zertifikate |
+| `caddy_config` | `/config` | Caddy-Konfiguration |
 | `~/.evolution/instances` | `/evolution/instances` | WhatsApp-Sessions |
 | `../src` | `/app/src` | Live-Reload (Dev) |
 | `../config` | `/app/config:ro` | Agent-Konfiguration |
@@ -225,10 +357,10 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 
 ---
 
-## 7. Technologie-Stack
+## 9. Technologie-Stack
 
 | Komponente | Technologie | Version |
-|------------|-------------|---------|
+| ---------- | ----------- | ------- |
 | Runtime | Python | >= 3.11 |
 | Web Framework | FastAPI | >= 0.129.0 |
 | ASGI Server | uvicorn | >= 0.41.0 |
@@ -236,13 +368,18 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 | PostgreSQL Driver | asyncpg | >= 0.31.0 |
 | LLM Client | openai (Python SDK) | >= 2.21.0 |
 | Config | pydantic-settings | >= 2.13.0 |
+| Templates | Jinja2 | >= 3.1.0 |
+| Session Signing | itsdangerous | >= 2.0 |
+| CSS Framework | Pico CSS | v2 (CDN) |
+| Frontend Interaktion | htmx | 2.0.4 (CDN) |
+| Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
 | LLM Inference | LM Studio (MLX) | lokal |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 
 ---
 
-## 8. Weitere Dokumentation
+## 10. Weitere Dokumentation
 
 - [Technische Spezifikation](Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
 - [API Reference](API.md) -- Endpoints, Payloads, Beispiele

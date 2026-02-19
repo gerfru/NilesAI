@@ -46,11 +46,6 @@ wait_for_user() {
 # Change to Niles root directory
 cd "$(dirname "$0")/.."
 
-# Load environment variables if .env exists
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
-
 # Header
 clear
 echo -e "${BLUE}"
@@ -71,7 +66,7 @@ echo ""
 wait_for_user
 
 # Step 1: Check Docker
-echo_step "Step 1/8: Docker"
+echo_step "Step 1/6: Docker"
 
 if docker info > /dev/null 2>&1; then
     echo_success "Docker is running"
@@ -93,7 +88,7 @@ else
 fi
 
 # Step 2: LM Studio
-echo_step "Step 2/8: LM Studio"
+echo_step "Step 2/6: LM Studio"
 
 if [ -d "/Applications/LM Studio.app" ]; then
     echo_success "LM Studio is installed"
@@ -122,31 +117,44 @@ else
 fi
 
 # Step 3: Environment Configuration
-echo_step "Step 3/9: Environment Configuration"
+echo_step "Step 3/6: Environment Configuration"
 
 if [ -f .env ]; then
     echo_success ".env file already exists"
+
+    # Load environment variables
+    set -a
+    source .env
+    set +a
 else
     echo_info "Creating .env file from template..."
     echo ""
 
     if [ -f .env.example ]; then
         cp .env.example .env
-        echo_success ".env file created"
+        echo_success ".env file created from .env.example"
         echo ""
-        echo "Default credentials configured:"
-        echo "  - Evolution API Key: niles-secure-key-2026"
-        echo "  - PostgreSQL Password: evolution_secure_2026"
+        echo_warning "IMPORTANT: Edit .env and set your secrets!"
         echo ""
-        echo_warning "IMPORTANT: Change these credentials in production!"
-        echo "  Edit: nano .env"
+        echo "Required:"
+        echo "  EVOLUTION_POSTGRES_PASSWORD=<your-password>"
+        echo "  EVOLUTION_API_KEY=<your-api-key>"
+        echo ""
+        echo "Optional (for Google OAuth login):"
+        echo "  GOOGLE_CLIENT_ID=<from Google Cloud Console>"
+        echo "  GOOGLE_CLIENT_SECRET=<from Google Cloud Console>"
+        echo "  GOOGLE_ALLOWED_EMAILS=user@gmail.com"
+        echo "  SESSION_SECRET=<random-string>"
+        echo "  BASE_URL=https://your-host.example.com"
+        echo ""
+        echo "Opening .env in editor..."
+        ${EDITOR:-nano} .env
         echo ""
 
-        # Set default values
-        echo "EVOLUTION_API_KEY=niles-secure-key-2026" > .env
-        echo "EVOLUTION_POSTGRES_PASSWORD=evolution_secure_2026" >> .env
-
-        wait_for_user
+        # Load after editing
+        set -a
+        source .env
+        set +a
     else
         echo_error ".env.example not found!"
         exit 1
@@ -154,7 +162,7 @@ else
 fi
 
 # Step 4: Docker Services
-echo_step "Step 4/7: Docker Services"
+echo_step "Step 4/6: Docker Services"
 
 if docker ps | grep -q "niles_core"; then
     echo_success "Docker services are already running"
@@ -162,12 +170,7 @@ else
     echo_info "Starting Docker services..."
     echo ""
 
-    # Pull images first
-    echo "Pulling Docker images (this may take a few minutes)..."
-    docker compose -f docker/docker-compose.yml --env-file .env pull
-
-    echo ""
-    echo "Starting services..."
+    echo "Building and starting services (this may take a few minutes)..."
     docker compose -f docker/docker-compose.yml --env-file .env up -d --build
 
     echo ""
@@ -184,78 +187,20 @@ else
     fi
 fi
 
-# Step 5: WhatsApp
-echo_step "Step 5/7: WhatsApp Integration"
-
-if curl -s -H "apikey: ${EVOLUTION_API_KEY}" \
-    http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1 | \
-    grep -q '"state":"open"'; then
-    echo_success "WhatsApp is connected"
-else
-    echo_info "WhatsApp needs setup"
-    echo ""
-    echo "Do you want to set up WhatsApp now?"
-    read -p "Setup now? (y/n): " -n 1 -r
-    echo ""
-
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "Creating WhatsApp instance..."
-
-        # Create instance
-        RESPONSE=$(curl -s -X POST http://localhost:8080/instance/create \
-            -H "apikey: ${EVOLUTION_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d '{"instanceName":"niles-whatsapp","qrcode":true,"integration":"WHATSAPP-BAILEYS"}')
-
-        if echo "$RESPONSE" | grep -q "instanceName"; then
-            echo_success "Instance created"
-            echo ""
-            echo "Opening Evolution Manager..."
-            sleep 2
-            open http://localhost:8080/manager
-            echo ""
-            echo "In the Manager:"
-            echo "  1. Login with API Key: ${EVOLUTION_API_KEY}"
-            echo "  2. Click on 'niles-whatsapp'"
-            echo "  3. Scan QR code with WhatsApp app"
-            echo "     (WhatsApp -> Settings -> Linked Devices)"
-            echo ""
-            wait_for_user
-
-            # Check if connected
-            if curl -s -H "apikey: ${EVOLUTION_API_KEY}" \
-                http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1 | \
-                grep -q '"state":"open"'; then
-                echo_success "WhatsApp is now connected!"
-            else
-                echo_warning "WhatsApp not connected yet"
-                echo "You can scan the QR code later at: http://localhost:8080/manager"
-            fi
-        else
-            echo_error "Failed to create instance"
-            echo "Details: $RESPONSE"
-        fi
-    else
-        echo_info "Skipping WhatsApp (you can set it up later)"
-    fi
-fi
-
-# Step 6: Niles Core
-echo_step "Step 6/7: Niles Core"
+# Step 5: Verify Niles Core
+echo_step "Step 5/6: Niles Core"
 
 if HEALTH=$(curl -sk https://localhost/health 2>&1) && echo "$HEALTH" | grep -q '"status":"ok"'; then
     echo_success "Niles Core is running (https://localhost)"
     echo ""
-    echo "Web UI: https://localhost/ui/chat"
-    echo "API Docs: https://localhost/docs"
+    echo "Web UI: https://localhost/ui/login"
 else
     echo_warning "Niles Core is starting up..."
     echo "Check: docker compose -f docker/docker-compose.yml --env-file .env logs niles_core"
 fi
 
-# Step 7: Final Verification
-echo_step "Step 7/7: Final Verification"
+# Step 6: Final Verification
+echo_step "Step 6/6: Final Verification"
 
 echo "Running status checks..."
 echo ""
@@ -267,24 +212,26 @@ else
     echo_error "Niles Core: Not reachable"
 fi
 
-# Evolution API
-if curl -s http://localhost:8080 > /dev/null 2>&1 | grep -q "Welcome"; then
-    echo_success "Evolution API: Running (http://localhost:8080)"
+# Evolution API (via Caddy)
+if RESPONSE=$(curl -sk https://localhost:8443/ 2>&1) && echo "$RESPONSE" | grep -q "Welcome"; then
+    echo_success "Evolution API: Running (https://localhost:8443)"
 else
-    echo_error "Evolution API: Not reachable"
+    echo_warning "Evolution API: Not reachable via Caddy"
 fi
 
 # WhatsApp
-if curl -s -H "apikey: ${EVOLUTION_API_KEY}" \
-    http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1 | \
-    grep -q '"state":"open"'; then
-    echo_success "WhatsApp: Connected"
-elif curl -s -H "apikey: ${EVOLUTION_API_KEY}" \
-    http://localhost:8080/instance/connectionState/niles-whatsapp 2>&1 | \
-    grep -q '"state":"connecting"'; then
-    echo_warning "WhatsApp: Connecting (scan QR code)"
-else
-    echo_warning "WhatsApp: Not configured"
+if [ -n "${EVOLUTION_API_KEY:-}" ]; then
+    if INSTANCE=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://localhost:8443/instance/connectionState/niles-whatsapp 2>&1); then
+        if echo "$INSTANCE" | grep -q '"state":"open"'; then
+            echo_success "WhatsApp: Connected"
+        elif echo "$INSTANCE" | grep -q '"state":"connecting"'; then
+            echo_warning "WhatsApp: Connecting (scan QR code at https://localhost:8443/manager)"
+        else
+            echo_warning "WhatsApp: Not configured (setup via https://localhost:8443/manager)"
+        fi
+    else
+        echo_warning "WhatsApp: Instance not found"
+    fi
 fi
 
 # LM Studio
@@ -292,6 +239,13 @@ if nc -z localhost 1234 2>/dev/null; then
     echo_success "LM Studio: Server running"
 else
     echo_warning "LM Studio: Not running (start manually)"
+fi
+
+# Google OAuth
+if [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
+    echo_success "Google OAuth: Configured"
+else
+    echo_info "Google OAuth: Not configured (API-Key login as fallback)"
 fi
 
 # Summary
@@ -307,8 +261,7 @@ cat << EOF
 +===================================================+
 
 Service URLs (HTTPS via Caddy, self-signed):
-   - Niles Web UI:       https://localhost/ui/chat
-   - Niles API Docs:     https://localhost/docs
+   - Niles Web UI:       https://localhost/ui/login
    - Evolution Manager:  https://localhost:8443/manager
    - LM Studio API:      http://localhost:1234/v1
 
@@ -316,17 +269,9 @@ Daily Usage:
    ./scripts/start.sh   - Start all services
    ./scripts/stop.sh    - Stop all services
    ./scripts/status.sh  - Check status
+   ./scripts/backup.sh  - Backup all data
 
 EOF
-
-echo ""
-echo "Would you like to see the status now?"
-read -p "Run status check? (y/n): " -n 1 -r
-echo ""
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./scripts/status.sh
-fi
 
 echo ""
 echo_success "Setup script finished."
