@@ -106,14 +106,19 @@ class TestConversationHistory:
 
     async def test_get_recent_returns_chronological(self, history, pool):
         # DB returns newest first (DESC), get_recent should reverse
+        from datetime import datetime, timezone
+        ts1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        ts2 = datetime(2025, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
         pool.fetch.return_value = [
-            {"role": "assistant", "content": "Hi!"},
-            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!", "created_at": ts2},
+            {"role": "user", "content": "Hello", "created_at": ts1},
         ]
         result = await history.get_recent("user123", limit=10)
         assert len(result) == 2
         assert result[0]["role"] == "user"
         assert result[1]["role"] == "assistant"
+        assert result[0]["timestamp"] == "2025-01-01T10:00:00+00:00"
+        assert result[1]["timestamp"] == "2025-01-01T10:01:00+00:00"
 
     async def test_get_recent_empty(self, history, pool):
         pool.fetch.return_value = []

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from types import SimpleNamespace
 
 import httpx
 from openai import AsyncOpenAI
@@ -199,6 +200,132 @@ class NilesAgent:
         self.caldav_sync = caldav_sync
         self.base_prompt = load_system_prompt()
 
+    async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
+        """Shared setup for process_event and process_event_stream.
+
+        Builds the messages list but does NOT persist the user message to
+        history.  Callers save both user and assistant messages together
+        after a successful LLM response to avoid orphaned records.
+
+        Returns (chat_id, messages, all_tools).
+        """
+        chat_id = event["from"]
+
+        memories = await self.memory.list_all()
+        system_prompt = build_system_prompt(
+            self.base_prompt, memories, timezone=self.config.timezone,
+        )
+
+        history_messages = await self.history.get_recent(chat_id)
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
+        messages.append({"role": "user", "content": event["content"]})
+
+        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        return chat_id, messages, all_tools
+
+    async def process_event_stream(self, event: dict):
+        """Async generator: yields status updates + streamed text chunks.
+
+        Every LLM call uses stream=True so even simple queries (no tool calls)
+        are delivered word-by-word.  When the LLM requests tool calls, the
+        streamed deltas are accumulated, tools executed, and the loop repeats.
+
+        Yields dicts with:
+          {"type": "status", "text": "find_contact..."}
+          {"type": "chunk",  "text": "partial text"}
+          {"type": "done"}
+        """
+        chat_id, messages, all_tools = await self._prepare_messages(event)
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            try:
+                stream = await self.llm.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=all_tools,
+                    temperature=0.7,
+                    stream=True,
+                )
+            except Exception as e:
+                logger.error("LLM call failed: %s", e)
+                yield {"type": "chunk", "text": "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."}
+                yield {"type": "done"}
+                return
+
+            # Consume the stream, accumulating text content and tool-call deltas
+            full_content = ""
+            tool_calls_by_idx: dict[int, dict] = {}
+            finish_reason = None
+
+            async for chunk in stream:
+                choice = chunk.choices[0]
+                finish_reason = choice.finish_reason or finish_reason
+
+                if choice.delta.content:
+                    full_content += choice.delta.content
+                    yield {"type": "chunk", "text": choice.delta.content}
+
+                if choice.delta.tool_calls:
+                    for tc_delta in choice.delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in tool_calls_by_idx:
+                            tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": ""}
+                        if tc_delta.id:
+                            tool_calls_by_idx[idx]["id"] = tc_delta.id
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                tool_calls_by_idx[idx]["name"] += tc_delta.function.name
+                            if tc_delta.function.arguments:
+                                tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
+
+            # No tool calls → text was already streamed, save and finish
+            if finish_reason != "tool_calls" or not tool_calls_by_idx:
+                if full_content:
+                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "assistant", full_content)
+                else:
+                    logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
+                    yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
+                yield {"type": "done"}
+                return
+
+            # Tool calls detected → build assistant message and execute tools
+            assistant_msg = {
+                "role": "assistant",
+                "content": full_content or None,
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                    }
+                    for tc in (tool_calls_by_idx[i] for i in sorted(tool_calls_by_idx))
+                ],
+            }
+            messages.append(assistant_msg)
+
+            for tc_dict in assistant_msg["tool_calls"]:
+                yield {"type": "status", "text": f"{tc_dict['function']['name']}..."}
+                tool_call = SimpleNamespace(
+                    id=tc_dict["id"],
+                    function=SimpleNamespace(
+                        name=tc_dict["function"]["name"],
+                        arguments=tc_dict["function"]["arguments"],
+                    ),
+                )
+                result = await self._execute_tool_call(tool_call)
+                logger.info("Tool result [%s]: %s", tool_call.id, result)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+        else:
+            yield {"type": "chunk", "text": "Ich konnte die Anfrage nicht abschliessen."}
+
+        yield {"type": "done"}
+
     async def process_event(self, event: dict) -> str:
         """
         Main entry point for all events.
@@ -209,27 +336,7 @@ class NilesAgent:
         Returns:
             Response text
         """
-        chat_id = event["from"]
-
-        # Load memory context for system prompt
-        memories = await self.memory.list_all()
-        system_prompt = build_system_prompt(
-            self.base_prompt, memories, timezone=self.config.timezone,
-        )
-
-        # Load conversation history
-        history_messages = await self.history.get_recent(chat_id)
-
-        # Build message list: system + history + current message
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history_messages)
-        messages.append({"role": "user", "content": event["content"]})
-
-        # Save user message to history
-        await self.history.add_message(chat_id, "user", event["content"])
-
-        # Combine built-in tools with MCP tools
-        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        chat_id, messages, all_tools = await self._prepare_messages(event)
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
@@ -251,8 +358,9 @@ class NilesAgent:
                 content = choice.message.content or ""
                 if not content:
                     logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
-                # Save assistant response to history
+                # Save both messages together to avoid orphaned records
                 if content:
+                    await self.history.add_message(chat_id, "user", event["content"])
                     await self.history.add_message(chat_id, "assistant", content)
                 return content
 

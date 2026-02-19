@@ -4,16 +4,18 @@ UI language: German (de) -- intentional design choice for the target user.
 """
 
 import hmac
+import json
 import logging
 import secrets
 import time
 import urllib.parse
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
@@ -488,8 +490,13 @@ async def chat_send(request: Request, message: str = Form(...)):
     if error:
         return error
 
+    if len(message) > 2000:
+        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
+
     chat_id = _user_chat_id(user)
     agent = request.app.state.agent
+    # ISO timestamp for client-side local-time formatting
+    now = datetime.now(timezone.utc).isoformat()
     event = {
         "type": "web",
         "from": chat_id,
@@ -509,7 +516,51 @@ async def chat_send(request: Request, message: str = Form(...)):
     return templates.TemplateResponse(request, "fragments/message.html", {
         "user_message": message,
         "assistant_message": response_text,
+        "user_timestamp": now,
+        "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
     })
+
+
+@router.post("/api/chat/stream")
+async def chat_stream(request: Request, message: str = Form(...)):
+    """Process a chat message via SSE streaming.
+
+    Uses fetch+ReadableStream on the client (not EventSource), so native SSE
+    reconnect semantics (retry/last-event-id) don't apply.  A dropped
+    connection simply ends the stream; the user re-sends if needed.
+    """
+    user, error = _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if len(message) > 2000:
+        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
+
+    chat_id = _user_chat_id(user)
+    agent = request.app.state.agent
+    event = {
+        "type": "web",
+        "from": chat_id,
+        "content": message,
+        "metadata": {},
+    }
+
+    async def event_generator():
+        try:
+            async for item in agent.process_event_stream(event):
+                data = json.dumps(item, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+        except Exception:
+            logger.exception("Agent streaming error")
+            err = json.dumps({"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."})
+            yield f"data: {err}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 @router.post("/api/chat/clear", response_class=HTMLResponse)

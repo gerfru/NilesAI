@@ -12,6 +12,7 @@
 | Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
 | LM Studio | aktuell | Lokale LLM Inference |
 | Git | aktuell | Versionskontrolle |
+| Tailwind CSS CLI | v3.4.17 | CSS Build (Standalone Binary, kein Node.js) |
 
 ---
 
@@ -68,7 +69,38 @@ Siehe [Architecture.md](Architecture.md#7-konfiguration) fuer alle Konfiguration
 
 ---
 
-## 3. Entwicklung starten
+## 3. Tailwind CSS (Frontend-Styling)
+
+Templates verwenden Tailwind CSS Utility Classes. Die generierte `style.css` wird von FastAPI als statische Datei serviert.
+
+### Tailwind CLI (Standalone, kein Node.js)
+
+```bash
+# macOS ARM64:
+curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-macos-arm64
+chmod +x tailwindcss-macos-arm64
+mv tailwindcss-macos-arm64 tailwindcss
+```
+
+### CSS bauen
+
+```bash
+# Einmaliger Build:
+./tailwindcss --minify -i src/niles/static/css/input.css -o src/niles/static/css/style.css
+
+# Watch-Modus (bei Template-Aenderungen):
+./tailwindcss --watch -i src/niles/static/css/input.css -o src/niles/static/css/style.css
+```
+
+### Docker Build
+
+Im Dockerfile wird Tailwind CLI automatisch heruntergeladen und CSS gebaut (`python urllib.request.urlretrieve`). Bei Aenderungen an Templates oder `input.css` muss das Docker-Image neu gebaut werden -- oder `style.css` lokal gebaut und via Volume-Mount bereitgestellt werden.
+
+**Konfiguration:** `tailwind.config.js` im Projekt-Root definiert Content-Pfade und Dark Mode (`class`).
+
+---
+
+## 4. Entwicklung starten
 
 ### Variante A: Lokal (ohne Docker)
 
@@ -122,7 +154,7 @@ Dann: `psql -h 127.0.0.1 -U evolution -d evolution_db`
 
 ---
 
-## 4. Tests
+## 5. Tests
 
 ### Ausfuehren
 
@@ -167,7 +199,7 @@ tests/
 
 ---
 
-## 5. Docker-Workflow
+## 6. Docker-Workflow
 
 ### Build
 
@@ -195,7 +227,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ---
 
-## 6. Neue Komponente hinzufuegen
+## 7. Neue Komponente hinzufuegen
 
 ### Neues Tool (Agent-Faehigkeit)
 
@@ -219,7 +251,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ---
 
-## 7. Konventionen
+## 8. Konventionen
 
 ### Sprache
 
@@ -251,7 +283,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ---
 
-## 8. Weitere Dokumentation
+## 9. Weitere Dokumentation
 
 - [Technische Spezifikation](Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
 - [Architektur](Architecture.md) -- Systemuebersicht, Module, Datenfluss

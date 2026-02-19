@@ -15,7 +15,7 @@ Lokaler AI-Butler auf Mac Mini M4. Empfaengt Events aus verschiedenen Quellen (W
 | 7 | Abgeschlossen | CalDAV Kalender-Sync |
 | 8 | Geplant | Email als Event-Quelle |
 | 9 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
-| 10 | In Arbeit | Google OAuth, Multi-User, GUI v2 |
+| 10 | Abgeschlossen | Google OAuth, Multi-User, Tailwind CSS, SSE Streaming |
 
 ## Architektur
 
@@ -28,7 +28,8 @@ Browser / curl / WhatsApp
 |                                                  |
 |  /ui/*  ---- sources/web.py (htmx + Jinja2)     |
 |                 |  Google OAuth / API-Key Auth   |
-|                 |  Signed Session Cookies         |
+|                 |  Signed Session Cookies        |
+|                 |  SSE Streaming (/api/chat/stream)|
 |                 v                                |
 |  /chat  ---> agent/core.py (NilesAgent) -------> LM Studio :1234
 |                 |  Tool-Call Loop (max 5)        |
@@ -55,16 +56,17 @@ Niles/
 │   ├── agent/                  # LLM Agent, Tool-Call-Pipeline
 │   ├── memory/                 # Key-Value Store, Chat-History
 │   ├── actions/                # WhatsApp, Kontakte, Kalender
-│   ├── sources/                # Webhook-Handler, Web-UI
+│   ├── sources/                # Webhook-Handler, Web-UI (SSE Streaming)
 │   ├── sync/                   # CardDAV, CalDAV Sync
 │   ├── mcp/                    # MCP Client
-│   ├── templates/              # Jinja2 HTML Templates
-│   └── static/                 # CSS, JavaScript
+│   ├── templates/              # Jinja2 HTML Templates (Tailwind CSS)
+│   └── static/                 # CSS (Tailwind), JavaScript
 ├── tests/                      # pytest Tests
 ├── config/                     # soul.md (Agent-Persoenlichkeit)
 ├── docker/                     # Dockerfile, docker-compose.yml, Caddyfile
 ├── scripts/                    # dev.sh, test.sh, start.sh, stop.sh, status.sh
 ├── docs/                       # Technische Dokumentation
+├── tailwind.config.js          # Tailwind CSS Konfiguration
 ├── pyproject.toml
 └── .env                        # Secrets (nicht in Git)
 ```
@@ -127,7 +129,7 @@ curl -k -X POST https://localhost/chat \
 | Komponente | Technologie | Port |
 |------------|-------------|------|
 | Niles Core | FastAPI (Python) | 8000 |
-| Web UI | Jinja2 + htmx + Pico CSS | via /ui/* |
+| Web UI | Jinja2 + htmx + Tailwind CSS + SSE Streaming | via /ui/* |
 | LLM Inference | LM Studio (MLX) | 1234 |
 | Datenbank | PostgreSQL 15 | 5432 |
 | WhatsApp Gateway | Evolution API v2.3.7 | 8080 |
