@@ -2,13 +2,14 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from itsdangerous import URLSafeTimedSerializer
+
 from niles.config import Settings
 from niles.sources.web import (
-    COOKIE_NAME,
     CSRF_COOKIE_NAME,
-    WEB_CHAT_ID,
+    SESSION_COOKIE_NAME,
+    _get_session_user,
     _login_attempts,
-    _verify_cookie,
     _verify_csrf,
     chat_clear,
     chat_page,
@@ -20,6 +21,15 @@ from niles.sources.web import (
 )
 
 CSRF_TOKEN = "test-csrf-token"
+_TEST_NILES_KEY = "test-niles-key"
+_TEST_SESSION_SECRET = "test-session-secret"
+_TEST_USER = {"uid": 1, "email": "test@example.com", "display_name": "Test User", "avatar_url": ""}
+
+
+def _make_session_token(user=None, secret=_TEST_SESSION_SECRET):
+    """Create a signed session token for testing."""
+    serializer = URLSafeTimedSerializer(secret)
+    return serializer.dumps(user or _TEST_USER)
 
 
 def _make_settings(**overrides):
@@ -27,14 +37,16 @@ def _make_settings(**overrides):
         _env_file=None,
         postgres_password="test",
         evolution_api_key="test",
-        niles_api_key="test-niles-key",
+        niles_api_key=_TEST_NILES_KEY,
+        session_secret=_TEST_SESSION_SECRET,
     )
     defaults.update(overrides)
     return Settings(**defaults)
 
 
 def _make_request(*, cookies=None, settings=None, agent=None, history=None,
-                  settings_store=None, headers=None, client_ip="127.0.0.1"):
+                  settings_store=None, user_store=None, headers=None,
+                  client_ip="127.0.0.1"):
     """Build a mock Request with app.state."""
     request = MagicMock()
     request.cookies = cookies or {}
@@ -43,14 +55,20 @@ def _make_request(*, cookies=None, settings=None, agent=None, history=None,
     request.app.state.agent = agent or AsyncMock()
     request.app.state.history = history or AsyncMock()
     request.app.state.settings_store = settings_store or AsyncMock()
+    request.app.state.user_store = user_store or AsyncMock()
     request.client.host = client_ip
     request.url.scheme = "http"
     return request
 
 
 def _auth_cookies():
-    """Cookies for an authenticated request with CSRF token."""
-    return {COOKIE_NAME: "test-niles-key", CSRF_COOKIE_NAME: CSRF_TOKEN}
+    """Cookies for an authenticated request with signed session + CSRF token."""
+    return {SESSION_COOKIE_NAME: _make_session_token(), CSRF_COOKIE_NAME: CSRF_TOKEN}
+
+
+def _session_only_cookies():
+    """Cookies with only the session (no CSRF)."""
+    return {SESSION_COOKIE_NAME: _make_session_token()}
 
 
 def _csrf_headers():
@@ -59,21 +77,29 @@ def _csrf_headers():
 
 
 class TestWebAuth:
-    def test_verify_cookie_valid(self):
-        request = _make_request(cookies={COOKIE_NAME: "test-niles-key"})
-        assert _verify_cookie(request) is True
+    def test_get_session_user_valid(self):
+        request = _make_request(cookies={SESSION_COOKIE_NAME: _make_session_token()})
+        user = _get_session_user(request)
+        assert user is not None
+        assert user["uid"] == 1
+        assert user["email"] == "test@example.com"
 
-    def test_verify_cookie_invalid(self):
-        request = _make_request(cookies={COOKIE_NAME: "wrong-key"})
-        assert _verify_cookie(request) is False
+    def test_get_session_user_invalid(self):
+        request = _make_request(cookies={SESSION_COOKIE_NAME: "invalid-token"})
+        assert _get_session_user(request) is None
 
-    def test_verify_cookie_missing(self):
+    def test_get_session_user_missing(self):
         request = _make_request(cookies={})
-        assert _verify_cookie(request) is False
+        assert _get_session_user(request) is None
 
-    def test_verify_cookie_too_long(self):
-        request = _make_request(cookies={COOKIE_NAME: "x" * 300})
-        assert _verify_cookie(request) is False
+    def test_get_session_user_too_long(self):
+        request = _make_request(cookies={SESSION_COOKIE_NAME: "x" * 5000})
+        assert _get_session_user(request) is None
+
+    def test_get_session_user_wrong_secret(self):
+        token = _make_session_token(secret="wrong-secret")
+        request = _make_request(cookies={SESSION_COOKIE_NAME: token})
+        assert _get_session_user(request) is None
 
     def test_verify_csrf_valid(self):
         request = _make_request(
@@ -99,7 +125,7 @@ class TestWebAuth:
 
     async def test_login_submit_valid_key(self):
         request = _make_request()
-        response = await login_submit(request, api_key="test-niles-key")
+        response = await login_submit(request, api_key=_TEST_NILES_KEY)
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/chat"
 
@@ -120,8 +146,15 @@ class TestWebAuth:
         assert response.status_code == 429
         _login_attempts.clear()
 
-    async def test_logout_clears_cookie(self):
-        response = await logout()
+    async def test_logout_redirects_via_htmx(self):
+        request = _make_request(headers={"hx-request": "true"})
+        response = await logout(request)
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/ui/login"
+
+    async def test_logout_redirects_without_htmx(self):
+        request = _make_request()
+        response = await logout(request)
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/login"
 
@@ -153,7 +186,7 @@ class TestChatEndpoints:
         agent.process_event.assert_called_once()
         event = agent.process_event.call_args[0][0]
         assert event["type"] == "web"
-        assert event["from"] == WEB_CHAT_ID
+        assert event["from"] == "web-user-1"
         assert event["content"] == "Hi there"
 
     async def test_chat_send_rejects_without_cookie(self):
@@ -163,9 +196,7 @@ class TestChatEndpoints:
         assert response.headers.get("HX-Redirect") == "/ui/login"
 
     async def test_chat_send_rejects_without_csrf(self):
-        request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
-        )
+        request = _make_request(cookies=_session_only_cookies())
         response = await chat_send(request, message="test")
         assert response.status_code == 403
 
@@ -191,7 +222,7 @@ class TestChatEndpoints:
 
         await chat_clear(request)
 
-        history.clear.assert_called_once_with(WEB_CHAT_ID)
+        history.clear.assert_called_once_with("web-user-1")
 
     async def test_chat_clear_rejects_without_cookie(self):
         request = _make_request(cookies={})
@@ -199,9 +230,7 @@ class TestChatEndpoints:
         assert response.status_code == 401
 
     async def test_chat_clear_rejects_without_csrf(self):
-        request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
-        )
+        request = _make_request(cookies=_session_only_cookies())
         response = await chat_clear(request)
         assert response.status_code == 403
 
@@ -212,13 +241,13 @@ class TestChatEndpoints:
             {"role": "assistant", "content": "Hi there"},
         ]
         request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
+            cookies={SESSION_COOKIE_NAME: _make_session_token()},
             history=history,
         )
 
         await chat_page(request)
 
-        history.get_recent.assert_called_once_with(WEB_CHAT_ID, limit=20)
+        history.get_recent.assert_called_once_with("web-user-1", limit=20)
 
 
 class TestSettingsEndpoints:
@@ -275,16 +304,14 @@ class TestSettingsEndpoints:
         assert response.status_code == 401
 
     async def test_update_rejects_without_csrf(self):
-        request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
-        )
+        request = _make_request(cookies=_session_only_cookies())
         response = await update_setting(request, key="llm_model", value="test")
         assert response.status_code == 403
 
     async def test_settings_page_masks_passwords(self):
         settings = _make_settings(carddav_password="secret123", caldav_password="secret456")
         request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
+            cookies={SESSION_COOKIE_NAME: _make_session_token()},
             settings=settings,
         )
 
@@ -298,7 +325,7 @@ class TestSettingsEndpoints:
     async def test_settings_page_shows_not_set_for_empty_passwords(self):
         settings = _make_settings(carddav_password="", caldav_password="")
         request = _make_request(
-            cookies={COOKIE_NAME: "test-niles-key"},
+            cookies={SESSION_COOKIE_NAME: _make_session_token()},
             settings=settings,
         )
 
