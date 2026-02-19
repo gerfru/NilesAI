@@ -42,7 +42,7 @@ fi
 
 echo "Starting uvicorn with auto-reload..."
 echo "   http://localhost:8000"
-echo "   http://localhost:8000/docs (OpenAPI)"
+echo "   http://localhost:8000/ui/login (Web UI)"
 echo "   http://localhost:8000/health"
 echo ""
 echo "   Press Ctrl+C to stop"

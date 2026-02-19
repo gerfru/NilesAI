@@ -36,6 +36,15 @@ class Settings(BaseSettings):
         default_factory=lambda: secrets.token_urlsafe(32),
     )
 
+    # Session signing secret (separate from API key for security)
+    session_secret: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(64),
+    )
+
+    # Base URL for OAuth redirect URI (e.g. https://niles.example.ts.net)
+    # If empty, derived from request headers (less secure)
+    base_url: str = ""
+
     # Timezone (used by CalDAV sync and calendar actions)
     timezone: str = "Europe/Vienna"
 
@@ -54,6 +63,11 @@ class Settings(BaseSettings):
     caldav_url: str = "https://dav.example.com/caldav/"
     caldav_user: str = ""
     caldav_password: str = ""
+
+    # Google OAuth (optional -- Web-UI login)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_allowed_emails: str = ""  # Comma-separated, empty = all allowed
 
     model_config = {
         "env_file": ".env",

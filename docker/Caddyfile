@@ -16,7 +16,7 @@
 }
 
 # Niles Core API (:443)
-https://localhost, https://192.168.1.x, https://192.168.1.x {
+https://localhost, https://192.168.1.x, https://192.168.1.x, https://niles.example.ts.net {
 	tls internal
 	import security_headers
 	log {
