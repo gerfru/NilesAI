@@ -28,6 +28,7 @@ from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
+from .user_store import UserStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
 from .sync.carddav import CardDAVSync
@@ -93,6 +94,10 @@ async def lifespan(app: FastAPI):
     await memory.initialize()
     history = ConversationHistory(pool)
     await history.initialize()
+
+    # User store (Google OAuth users)
+    user_store = UserStore(pool)
+    await user_store.initialize()
 
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool)
@@ -167,6 +172,7 @@ async def lifespan(app: FastAPI):
     app.state.whatsapp_action = whatsapp_action
     app.state.history = history
     app.state.settings_store = settings_store
+    app.state.user_store = user_store
 
     yield
 
