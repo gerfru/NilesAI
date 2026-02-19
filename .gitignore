@@ -55,3 +55,7 @@ yarn-error.log*
 # Backups
 *.bak
 *.backup
+
+# Tailwind CSS standalone CLI binary (local dev)
+tailwindcss
+tailwindcss-*
