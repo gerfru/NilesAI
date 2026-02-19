@@ -550,7 +550,12 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
 
     try:
         await settings_store.set(key, parsed_value)
-        request.app.state.settings = apply_overrides(settings, {key: parsed_value})
+        new_settings = apply_overrides(settings, {key: parsed_value})
+        request.app.state.settings = new_settings
+        # Keep CalDAV sync config in sync so allowed_collections() reads fresh data
+        caldav = getattr(request.app.state, "caldav", None)
+        if caldav:
+            caldav.config = new_settings
     except ValueError as e:
         return templates.TemplateResponse(request, "fragments/toast.html", {
             "message": str(e),
