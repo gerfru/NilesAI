@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import asyncpg
 
@@ -74,6 +75,22 @@ class SettingsStore:
         _validate_key(key)
         if key not in EDITABLE_SETTINGS:
             raise ValueError(f"Setting '{key}' is not editable at runtime")
+
+        # Value length guard for string settings
+        if isinstance(value, str) and len(value) > 4096:
+            raise ValueError(
+                f"Value for '{key}' exceeds maximum length of 4096 characters"
+            )
+
+        # Validate timezone is a valid IANA identifier
+        if key == "timezone" and isinstance(value, str):
+            try:
+                ZoneInfo(value)
+            except (KeyError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid timezone: '{value}' is not a valid IANA timezone"
+                ) from exc
+
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
