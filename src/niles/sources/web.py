@@ -70,8 +70,8 @@ def _is_secure_context(request: Request) -> bool:
 
 
 def _get_serializer(request: Request) -> URLSafeTimedSerializer:
-    """Get the session serializer using niles_api_key as secret."""
-    return URLSafeTimedSerializer(request.app.state.settings.niles_api_key)
+    """Get the session serializer using dedicated session_secret."""
+    return URLSafeTimedSerializer(request.app.state.settings.session_secret)
 
 
 def _get_session_user(request: Request) -> dict | None:
@@ -160,7 +160,11 @@ def _google_configured(request: Request) -> bool:
 
 
 def _build_redirect_uri(request: Request) -> str:
-    """Build Google OAuth redirect URI from the current request."""
+    """Build Google OAuth redirect URI. Uses base_url if configured, else request headers."""
+    base_url = request.app.state.settings.base_url
+    if base_url:
+        return f"{base_url.rstrip('/')}/ui/callback/google"
+    # Fallback: derive from request headers (less secure behind reverse proxy)
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get(
         "x-forwarded-host", request.headers.get("host", "localhost"),
@@ -272,7 +276,6 @@ async def login_google(request: Request):
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
-        "access_type": "offline",
         "prompt": "select_account",
     }
     auth_url = f"{_GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
@@ -298,8 +301,14 @@ async def callback_google(
 
     if error:
         logger.warning("Google OAuth error: %s", error)
+        # Map known error codes to safe user-facing messages
+        error_messages = {
+            "access_denied": "Zugriff verweigert.",
+            "invalid_scope": "Ungueltige Berechtigungen.",
+        }
+        safe_msg = error_messages.get(error, "Bitte erneut versuchen.")
         return templates.TemplateResponse(request, "login.html", {
-            "error": f"Google Login fehlgeschlagen: {error}",
+            "error": f"Google Login fehlgeschlagen: {safe_msg}",
             "google_configured": gc,
         })
 
@@ -357,6 +366,12 @@ async def callback_google(
             "google_configured": gc,
         })
 
+    if not userinfo.get("email_verified", False):
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "E-Mail-Adresse nicht verifiziert.",
+            "google_configured": gc,
+        })
+
     # Check allowed emails whitelist
     if settings.google_allowed_emails:
         allowed = [
@@ -387,10 +402,14 @@ async def callback_google(
     return response
 
 
-@router.get("/logout")
-async def logout():
-    """Clear session and CSRF cookies, redirect to login."""
-    response = RedirectResponse(url="/ui/login", status_code=303)
+@router.post("/logout")
+async def logout(request: Request):
+    """Clear session and CSRF cookies (POST to prevent logout CSRF)."""
+    # htmx requests need HX-Redirect header; regular requests get 303
+    if request.headers.get("hx-request"):
+        response = Response(status_code=200, headers={"HX-Redirect": "/ui/login"})
+    else:
+        response = RedirectResponse(url="/ui/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)
     response.delete_cookie("oauth_state")
@@ -514,6 +533,13 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
 
     settings_store = request.app.state.settings_store
     settings = request.app.state.settings
+
+    # Validate key exists on settings before touching DB
+    if not hasattr(settings, key):
+        return templates.TemplateResponse(request, "fragments/toast.html", {
+            "message": f"Unbekannte Einstellung: '{key}'",
+            "toast_type": "error",
+        })
 
     # Convert value to appropriate type
     if key.startswith("feature_"):

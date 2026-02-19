@@ -22,10 +22,11 @@ from niles.sources.web import (
 
 CSRF_TOKEN = "test-csrf-token"
 _TEST_NILES_KEY = "test-niles-key"
+_TEST_SESSION_SECRET = "test-session-secret"
 _TEST_USER = {"uid": 1, "email": "test@example.com", "display_name": "Test User", "avatar_url": ""}
 
 
-def _make_session_token(user=None, secret=_TEST_NILES_KEY):
+def _make_session_token(user=None, secret=_TEST_SESSION_SECRET):
     """Create a signed session token for testing."""
     serializer = URLSafeTimedSerializer(secret)
     return serializer.dumps(user or _TEST_USER)
@@ -37,6 +38,7 @@ def _make_settings(**overrides):
         postgres_password="test",
         evolution_api_key="test",
         niles_api_key=_TEST_NILES_KEY,
+        session_secret=_TEST_SESSION_SECRET,
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -144,8 +146,15 @@ class TestWebAuth:
         assert response.status_code == 429
         _login_attempts.clear()
 
-    async def test_logout_clears_cookie(self):
-        response = await logout()
+    async def test_logout_redirects_via_htmx(self):
+        request = _make_request(headers={"hx-request": "true"})
+        response = await logout(request)
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/ui/login"
+
+    async def test_logout_redirects_without_htmx(self):
+        request = _make_request()
+        response = await logout(request)
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/login"
 
