@@ -3,11 +3,27 @@
 {% block content %}
 <div id="chat-container">
     <div id="chat-messages">
+        {% if has_more %}
+        <div id="load-more-container">
+            <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
+                    hx-target="#load-more-container"
+                    hx-swap="outerHTML"
+                    class="outline secondary">
+                Aeltere Nachrichten laden
+            </button>
+        </div>
+        {% endif %}
         {% for msg in messages %}
         <div class="message message-{{ msg.role }}">
             <div class="message-content">{{ msg.content }}</div>
         </div>
         {% endfor %}
+    </div>
+
+    <div id="thinking-indicator" class="thinking" style="display:none;">
+        <div class="message message-assistant">
+            <div class="message-content thinking-dots">Niles denkt nach<span>.</span><span>.</span><span>.</span></div>
+        </div>
     </div>
 
     <form id="chat-form"
@@ -18,7 +34,7 @@
           hx-on::after-request="this.reset(); scrollChat();">
         <fieldset role="group">
             <input type="text" name="message" placeholder="Nachricht eingeben..."
-                   required autocomplete="off" autofocus>
+                   required autocomplete="off" autofocus maxlength="2000">
             <button type="submit">Senden</button>
         </fieldset>
     </form>

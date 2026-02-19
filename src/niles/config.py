@@ -62,9 +62,11 @@ class Settings(BaseSettings):
     }
 
 
-def apply_overrides(settings: Settings, overrides: dict) -> None:
-    """Apply runtime overrides to a Settings instance (in-place)."""
-    for key, value in overrides.items():
-        if hasattr(settings, key):
-            object.__setattr__(settings, key, value)
-            logger.debug("Applied setting override: %s", key)
+def apply_overrides(settings: Settings, overrides: dict) -> Settings:
+    """Apply runtime overrides, returning a new Settings instance via model_copy."""
+    valid = {k: v for k, v in overrides.items() if hasattr(settings, k)}
+    if not valid:
+        return settings
+    for k in valid:
+        logger.debug("Applied setting override: %s", k)
+    return settings.model_copy(update=valid)
