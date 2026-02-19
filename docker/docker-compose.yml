@@ -1,21 +1,7 @@
 # Niles AI - Complete Docker Setup
-# All services: n8n + Evolution API + PostgreSQL
+# Services: Niles Core + Evolution API + PostgreSQL + Caddy
 
 services:
-  # n8n Workflow Automation
-  n8n:
-    container_name: niles_n8n
-    image: n8nio/n8n:latest
-    restart: unless-stopped
-    # No port exposed -- access only via Caddy reverse proxy (HTTPS :5678)
-    environment:
-      - N8N_SECURE_COOKIE=false
-      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
-    volumes:
-      - ~/.n8n:/home/node/.n8n
-    networks:
-      - niles_network
-
   # PostgreSQL for Evolution API
   evolution_postgres:
     container_name: niles_evolution_postgres
@@ -74,7 +60,6 @@ services:
     ports:
       - "443:443"
       - "8443:8443"
-      - "5678:5678"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -84,7 +69,6 @@ services:
     depends_on:
       - niles_core
       - evolution_api
-      - n8n
 
   # Niles AI Core
   niles_core:

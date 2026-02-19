@@ -1,9 +1,12 @@
 """Niles configuration via Pydantic Settings."""
 
+import logging
 import secrets
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -57,3 +60,13 @@ class Settings(BaseSettings):
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
+
+
+def apply_overrides(settings: Settings, overrides: dict) -> Settings:
+    """Apply runtime overrides, returning a new Settings instance via model_copy."""
+    valid = {k: v for k, v in overrides.items() if hasattr(settings, k)}
+    if not valid:
+        return settings
+    for k in valid:
+        logger.debug("Applied setting override: %s", k)
+    return settings.model_copy(update=valid)

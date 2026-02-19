@@ -1,5 +1,4 @@
 # User data (should stay local)
-.n8n/
 .evolution/
 
 # Environment variables

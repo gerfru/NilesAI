@@ -9,7 +9,7 @@
 | Software | Version | Zweck |
 |----------|---------|-------|
 | Python | >= 3.11 | Runtime |
-| Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, n8n) |
+| Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
 | LM Studio | aktuell | Lokale LLM Inference |
 | Git | aktuell | Versionskontrolle |
 
@@ -71,7 +71,7 @@ Startet uvicorn mit Auto-Reload auf `http://127.0.0.1:8000`. Setzt voraus, dass 
 ./scripts/start.sh
 ```
 
-Startet alle Container (PostgreSQL, Evolution API, n8n, Niles Core, Caddy). Niles Core laeuft mit Volume-Mount und `--reload` fuer Live-Reload bei Code-Aenderungen.
+Startet alle Container (PostgreSQL, Evolution API, Niles Core, Caddy). Niles Core laeuft mit Volume-Mount und `--reload` fuer Live-Reload bei Code-Aenderungen.
 
 **HTTPS:** Caddy terminiert TLS mit self-signed Zertifikaten. Fuer lokales Testen `--insecure` bei curl verwenden:
 
