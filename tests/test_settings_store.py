@@ -1,7 +1,9 @@
 """Tests for runtime settings store and apply_overrides."""
 
+import pytest
+
 from niles.config import Settings, apply_overrides
-from niles.settings_store import EDITABLE_SETTINGS
+from niles.settings_store import EDITABLE_SETTINGS, _validate_key
 
 
 class TestEditableWhitelist:
@@ -21,15 +23,53 @@ class TestEditableWhitelist:
         assert forbidden.isdisjoint(EDITABLE_SETTINGS)
 
 
+class TestKeyValidation:
+    def test_valid_keys_pass(self):
+        for key in ["llm_model", "feature_caldav_sync", "log_level"]:
+            _validate_key(key)  # Should not raise
+
+    def test_rejects_uppercase(self):
+        with pytest.raises(ValueError, match="Invalid settings key"):
+            _validate_key("LLM_MODEL")
+
+    def test_rejects_special_chars(self):
+        with pytest.raises(ValueError, match="Invalid settings key"):
+            _validate_key("key; DROP TABLE")
+
+    def test_rejects_too_long(self):
+        with pytest.raises(ValueError, match="Invalid settings key"):
+            _validate_key("a" * 65)
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="Invalid settings key"):
+            _validate_key("")
+
+    def test_rejects_starts_with_number(self):
+        with pytest.raises(ValueError, match="Invalid settings key"):
+            _validate_key("1_bad_key")
+
+
 class TestApplyOverrides:
+    def test_returns_new_instance(self):
+        settings = Settings(
+            _env_file=None,
+            postgres_password="test",
+            evolution_api_key="test",
+        )
+        result = apply_overrides(settings, {"llm_model": "new-model"})
+        assert result is not settings
+        assert result.llm_model == "new-model"
+        # Original unchanged
+        assert settings.llm_model != "new-model"
+
     def test_applies_string_override(self):
         settings = Settings(
             _env_file=None,
             postgres_password="test",
             evolution_api_key="test",
         )
-        apply_overrides(settings, {"llm_model": "new-model"})
-        assert settings.llm_model == "new-model"
+        result = apply_overrides(settings, {"llm_model": "new-model"})
+        assert result.llm_model == "new-model"
 
     def test_applies_bool_override(self):
         settings = Settings(
@@ -38,8 +78,8 @@ class TestApplyOverrides:
             evolution_api_key="test",
         )
         assert settings.feature_whatsapp_auto_reply is False
-        apply_overrides(settings, {"feature_whatsapp_auto_reply": True})
-        assert settings.feature_whatsapp_auto_reply is True
+        result = apply_overrides(settings, {"feature_whatsapp_auto_reply": True})
+        assert result.feature_whatsapp_auto_reply is True
 
     def test_ignores_unknown_keys(self):
         settings = Settings(
@@ -47,8 +87,9 @@ class TestApplyOverrides:
             postgres_password="test",
             evolution_api_key="test",
         )
-        apply_overrides(settings, {"nonexistent_key": "value"})
-        assert not hasattr(settings, "nonexistent_key")
+        result = apply_overrides(settings, {"nonexistent_key": "value"})
+        assert result is settings  # No change, returns same instance
+        assert not hasattr(result, "nonexistent_key")
 
     def test_applies_multiple_overrides(self):
         settings = Settings(
@@ -56,9 +97,9 @@ class TestApplyOverrides:
             postgres_password="test",
             evolution_api_key="test",
         )
-        apply_overrides(settings, {
+        result = apply_overrides(settings, {
             "timezone": "US/Eastern",
             "log_level": "DEBUG",
         })
-        assert settings.timezone == "US/Eastern"
-        assert settings.log_level == "DEBUG"
+        assert result.timezone == "US/Eastern"
+        assert result.log_level == "DEBUG"
