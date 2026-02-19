@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,9 @@ _SYNC_DAYS_FUTURE = 365
 
 # Maximum response size from CalDAV server (10 MB)
 _MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+# Cache TTL for discover_collections (seconds)
+_DISCOVERY_CACHE_TTL = 60
 
 # Regex to parse DTSTART/DTEND lines with optional parameters
 _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
@@ -121,6 +125,9 @@ class CalDAVSync:
         # Base URL for fetching individual .ics files (scheme + host)
         self._base_url = re.match(r"https?://[^/]+", config.caldav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
+        # Cache for discover_collections (avoids PROPFIND on every settings page load)
+        self._collections_cache: list[dict] | None = None
+        self._collections_cache_time: float = 0
 
     async def initialize(self) -> None:
         """Create events table and indexes if they don't exist."""
@@ -281,7 +288,12 @@ class CalDAVSync:
         """Discover available calendar collections from the CalDAV root.
 
         Returns list of {"href": "/caldav/abc/", "name": "Kalender"} dicts.
+        Results are cached for 60 seconds to avoid repeated PROPFIND requests.
         """
+        now = time.monotonic()
+        if self._collections_cache is not None and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL:
+            return self._collections_cache
+
         xml_text = await self._propfind_request(self.caldav_url)
         if not xml_text:
             return []
@@ -302,6 +314,8 @@ class CalDAVSync:
             name = (name_el.text or "").strip() if name_el is not None else ""
             collections.append({"href": href, "name": name or href})
 
+        self._collections_cache = collections
+        self._collections_cache_time = time.monotonic()
         return collections
 
     def allowed_collections(self) -> set[str] | None:
