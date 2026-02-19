@@ -202,9 +202,26 @@ Laed aeltere Chat-Nachrichten (Pagination). Query-Parameter: `offset` (default: 
 
 Gibt ein HTML-Fragment (htmx) zurueck.
 
+### POST /ui/api/chat/stream
+
+Sendet eine Chat-Nachricht und streamt die Antwort via SSE (Server-Sent Events). Erwartet `message` als Form-Feld + CSRF-Token.
+
+**Ablauf:**
+
+1. User-Nachricht wird sofort im Browser als Chat-Bubble angezeigt (client-seitig, kein Server-Roundtrip)
+2. SSE-Stream liefert Events:
+   - `{"type": "status", "text": "find_contact..."}` -- Tool-Call laeuft
+   - `{"type": "chunk", "text": "partial text"}` -- Antwort-Text (Wort fuer Wort)
+   - `{"type": "done"}` -- Stream beendet
+3. Markdown wird nach Abschluss client-seitig gerendert (marked.js + DOMPurify)
+
+**Validierung:** Nachrichten ueber 2000 Zeichen werden mit HTTP 400 abgelehnt.
+
+**Response:** `Content-Type: text/event-stream` mit `X-Accel-Buffering: no` Header.
+
 ### POST /ui/api/chat
 
-Sendet eine Chat-Nachricht. Erwartet `message` als Form-Feld + CSRF-Token.
+Fallback-Endpoint (nicht-streaming). Sendet eine Chat-Nachricht. Erwartet `message` als Form-Feld + CSRF-Token.
 
 Verarbeitet die Nachricht ueber den Agent (gleiche Pipeline wie `/chat` und WhatsApp). Gibt HTML-Fragment mit User- und Assistant-Nachricht zurueck.
 
@@ -382,6 +399,8 @@ curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
 | Web-UI: Session ungueltig | Redirect zu /ui/login |
 | Web-UI: CSRF ungueltig | 403, Redirect zu /ui/login (via HX-Redirect) |
 | Web-UI: Agent-Fehler | Fehlermeldung im Chat-Fragment angezeigt |
+| Web-UI: SSE Stream-Fehler | Fehlermeldung als Assistant-Bubble angezeigt |
+| Web-UI: Nachricht zu lang (>2000) | HTTP 400, Nachricht nicht gesendet |
 
 ---
 

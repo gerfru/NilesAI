@@ -21,7 +21,7 @@ class ConversationHistory:
                 chat_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         await self.pool.execute("""
@@ -48,7 +48,7 @@ class ConversationHistory:
         """Get the most recent messages for a chat (with optional offset for pagination)."""
         rows = await self.pool.fetch(
             """
-            SELECT role, content FROM conversations
+            SELECT role, content, created_at FROM conversations
             WHERE chat_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
@@ -58,7 +58,15 @@ class ConversationHistory:
             offset,
         )
         # Reverse to get chronological order
-        return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+        return [
+            {
+                "role": row["role"],
+                "content": row["content"],
+                "timestamp": row["created_at"].isoformat()
+                if row["created_at"] else "",
+            }
+            for row in reversed(rows)
+        ]
 
     async def clear(self, chat_id: str) -> int:
         """Clear all history for a chat. Returns number of deleted messages."""

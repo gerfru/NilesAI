@@ -1,3 +1,4 @@
-<div role="alert" class="toast toast-{{ toast_type }}">
+<div role="alert"
+     class="px-4 py-3 rounded-lg mb-2 text-sm text-white animate-fadeout {% if toast_type == 'success' %}bg-green-500{% else %}bg-red-500{% endif %}">
     {{ message }}
 </div>
