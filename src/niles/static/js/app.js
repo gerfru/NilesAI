@@ -49,15 +49,31 @@ function renderAllMarkdown() {
     document.querySelectorAll(".markdown:not([data-rendered])").forEach(renderMarkdown);
 }
 
-/* --- Timestamp helper --- */
+/* --- Timestamp helpers --- */
+
+function formatLocalTime(d) {
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return dd + "." + mm + ". " + hh + ":" + min;
+}
 
 function formatTimestamp() {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, "0");
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const hh = String(now.getHours()).padStart(2, "0");
-    const min = String(now.getMinutes()).padStart(2, "0");
-    return dd + "." + mm + ". " + hh + ":" + min;
+    return formatLocalTime(new Date());
+}
+
+function formatISOToLocal(isoStr) {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return formatLocalTime(d);
+}
+
+function convertTimestamps() {
+    document.querySelectorAll("[data-iso]:not([data-converted])").forEach(function(el) {
+        el.textContent = formatISOToLocal(el.dataset.iso);
+        el.dataset.converted = "1";
+    });
 }
 
 /* --- Chat bubble helpers --- */
@@ -167,8 +183,9 @@ async function handleChatSubmit(form) {
                         scrollChat();
                     }
                     if (item.type === "status") {
-                        if (indicator) {
-                            indicator.querySelector("[data-thinking-text]").textContent = item.text;
+                        /* Only show status while no bubble exists yet (fix #2) */
+                        if (!bubble && indicator) {
+                            indicator.querySelector("[data-thinking-label]").textContent = item.text;
                             indicator.classList.remove("hidden");
                         }
                     }
@@ -197,6 +214,7 @@ async function handleChatSubmit(form) {
 
 document.addEventListener("DOMContentLoaded", function() {
     scrollChat();
+    convertTimestamps();
     renderAllMarkdown();
 
     /* Chat form: custom submit handler (not htmx) */
@@ -266,7 +284,8 @@ document.body.addEventListener("htmx:afterRequest", function(evt) {
     if (btn) btn.removeAttribute("aria-busy");
 });
 
-/* Render markdown in content loaded via htmx (history pagination) */
+/* Render markdown + convert timestamps in content loaded via htmx (history pagination) */
 document.body.addEventListener("htmx:afterSettle", function() {
+    convertTimestamps();
     renderAllMarkdown();
 });
