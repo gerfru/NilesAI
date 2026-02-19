@@ -1,7 +1,13 @@
-/* Scroll chat to bottom */
+/* Scroll chat to bottom (throttled via rAF to avoid layout thrashing) */
+var _scrollPending = false;
 function scrollChat() {
-    var el = document.getElementById("chat-messages");
-    if (el) el.scrollTop = el.scrollHeight;
+    if (_scrollPending) return;
+    _scrollPending = true;
+    requestAnimationFrame(function() {
+        var el = document.getElementById("chat-messages");
+        if (el) el.scrollTop = el.scrollHeight;
+        _scrollPending = false;
+    });
 }
 
 /* Read a cookie value by name */
@@ -26,13 +32,7 @@ function toggleTheme() {
     applyTheme(isDark ? "light" : "dark");
 }
 
-/* Apply saved theme immediately (before DOMContentLoaded to avoid flash) */
-(function() {
-    var saved = localStorage.getItem("niles_theme");
-    if (saved === "dark") {
-        document.documentElement.classList.add("dark");
-    }
-})();
+/* Theme is applied early in theme.js (loaded in <head>) to prevent FOUC */
 
 /* --- Markdown rendering --- */
 
@@ -87,6 +87,7 @@ function createAssistantBubble() {
 /* --- Chat streaming (SSE) --- */
 
 var chatStreaming = false;
+var chatAbortController = null;
 
 function handleChatSubmit(form) {
     if (chatStreaming) return;
@@ -110,6 +111,7 @@ function handleChatSubmit(form) {
 
     /* Show thinking indicator + disable button */
     chatStreaming = true;
+    chatAbortController = new AbortController();
     if (indicator) indicator.classList.remove("hidden");
     if (submitBtn) submitBtn.disabled = true;
     scrollChat();
@@ -122,6 +124,7 @@ function handleChatSubmit(form) {
             "X-CSRF-Token": getCookie("niles_csrf"),
         },
         body: "message=" + encodeURIComponent(message),
+        signal: chatAbortController.signal,
     }).then(function(response) {
         if (!response.ok) {
             throw new Error("HTTP " + response.status);
@@ -147,6 +150,7 @@ function handleChatSubmit(form) {
                         renderMarkdown(content);
                     }
                     chatStreaming = false;
+                    chatAbortController = null;
                     if (submitBtn) submitBtn.disabled = false;
                     scrollChat();
                     return;
@@ -166,6 +170,12 @@ function handleChatSubmit(form) {
                             content.textContent = rawText;
                             scrollChat();
                         }
+                        if (item.type === "status") {
+                            if (indicator) {
+                                indicator.querySelector("div > div").textContent = item.text;
+                                indicator.classList.remove("hidden");
+                            }
+                        }
                         if (item.type === "done") {
                             content.textContent = rawText;
                             renderMarkdown(content);
@@ -179,11 +189,13 @@ function handleChatSubmit(form) {
 
         return processStream();
     }).catch(function(err) {
+        if (err.name === "AbortError") return; /* User cancelled */
         if (indicator) indicator.classList.add("hidden");
         var bubble = createAssistantBubble();
         messages.appendChild(bubble);
         bubble.querySelector(".markdown").textContent = "Entschuldigung, ein Fehler ist aufgetreten.";
         chatStreaming = false;
+        chatAbortController = null;
         if (submitBtn) submitBtn.disabled = false;
         scrollChat();
     });

@@ -5,8 +5,4 @@ module.exports = {
     "./src/niles/static/js/*.js",
   ],
   darkMode: "class",
-  theme: {
-    extend: {},
-  },
-  plugins: [],
 }
