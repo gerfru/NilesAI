@@ -121,8 +121,8 @@ class TestProcessEventStream:
         assert calls[0].args == ("test-chat", "user", "Hello")
         assert calls[1].args == ("test-chat", "assistant", "Response")
 
-    async def test_no_save_on_empty_response(self):
-        """No history saved when LLM returns empty content."""
+    async def test_empty_response_yields_fallback(self):
+        """Fallback chunk yielded and no history saved when LLM returns empty."""
         history = AsyncMock()
         history.get_recent = AsyncMock(return_value=[])
         history.add_message = AsyncMock()
@@ -135,8 +135,10 @@ class TestProcessEventStream:
         agent.llm.chat.completions.create = AsyncMock(return_value=_aiter(chunks))
 
         event = {"type": "web", "from": "test-chat", "content": "Hello"}
-        await _collect(agent.process_event_stream(event))
+        events = await _collect(agent.process_event_stream(event))
 
+        assert any("keine Antwort" in e.get("text", "") for e in events)
+        assert events[-1] == {"type": "done"}
         history.add_message.assert_not_called()
 
     async def test_no_save_on_llm_error(self):
@@ -200,6 +202,12 @@ class TestProcessEventStream:
 
         # LLM called twice (tool round + final response)
         assert create_mock.call_count == 2
+
+        # Both user and assistant messages saved after tool resolution
+        calls = agent.history.add_message.call_args_list
+        assert len(calls) == 2
+        assert calls[0].args == ("test-chat", "user", "What is foo?")
+        assert calls[1].args == ("test-chat", "assistant", "The value is bar")
 
     async def test_max_tool_rounds_reached(self):
         """Yields error when MAX_TOOL_ROUNDS is exhausted."""

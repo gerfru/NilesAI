@@ -25,7 +25,8 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
     && chmod +x /usr/local/bin/tailwindcss \
     && tailwindcss --minify \
        -i src/niles/static/css/input.css \
-       -o src/niles/static/css/style.css
+       -o src/niles/static/css/style.css \
+    && rm /usr/local/bin/tailwindcss
 
 # Copy config
 COPY config/ ./config/
