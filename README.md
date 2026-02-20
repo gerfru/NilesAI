@@ -31,7 +31,7 @@ Browser / curl / WhatsApp
 |                 |  Signed Session Cookies        |
 |                 |  SSE Streaming (/api/chat/stream)|
 |                 v                                |
-|  /chat  ---> agent/core.py (NilesAgent) -------> LM Studio :1234
+|  /chat  ---> agent/core.py (NilesAgent) -------> Ollama :11434
 |                 |  Tool-Call Loop (max 5)        |
 |                 |                                |
 |                 +-- memory/store.py     --------> PostgreSQL :5432
@@ -77,7 +77,7 @@ Niles/
 
 - Python >= 3.11
 - Docker Desktop
-- LM Studio (mit geladenem MLX-Modell auf Port 1234)
+- Ollama (laeuft nativ auf dem Host fuer volle GPU-Leistung, Port 11434)
 
 ### 1. Environment konfigurieren
 
@@ -130,7 +130,7 @@ curl -k -X POST https://localhost/chat \
 |------------|-------------|------|
 | Niles Core | FastAPI (Python) | 8000 |
 | Web UI | Jinja2 + htmx + Tailwind CSS + SSE Streaming | via /ui/* |
-| LLM Inference | LM Studio (MLX) | 1234 |
+| LLM Inference | Ollama (nativ auf Host) | 11434 |
 | Datenbank | PostgreSQL 15 | 5432 |
 | WhatsApp Gateway | Evolution API v2.3.7 | 8080 |
 | Reverse Proxy | Caddy 2 | 443/8443 |
