@@ -3,6 +3,7 @@
 UI language: German (de) -- intentional design choice for the target user.
 """
 
+import asyncio
 import hmac
 import json
 import logging
@@ -10,7 +11,6 @@ import secrets
 import time
 import urllib.parse
 from collections import defaultdict
-import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,6 +23,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from openai import AsyncOpenAI
 
 from ..config import apply_overrides
+from ..sync.google_auth import GOOGLE_TOKEN_URL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,6 @@ _CHAT_PAGE_SIZE = 20
 
 # Google OAuth endpoints
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 # --- Login rate limiting ---
@@ -331,7 +331,7 @@ async def callback_google(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Exchange authorization code for tokens
-            token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
+            token_resp = await client.post(GOOGLE_TOKEN_URL, data={
                 "client_id": settings.google_client_id,
                 "client_secret": settings.google_client_secret,
                 "code": code,
@@ -445,11 +445,16 @@ async def chat_page(request: Request):
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
+async def settings_page(request: Request, error: str = Query(default="")):
     """Settings dashboard (safe dict, no __dict__ access)."""
     user = _get_session_user(request)
     if user is None:
         return RedirectResponse(url="/ui/login", status_code=303)
+
+    # Map error codes to user-visible messages
+    error_msg = ""
+    if error == "calendar_connect_failed":
+        error_msg = "Google Kalender-Verbindung fehlgeschlagen. Bitte erneut versuchen."
 
     safe = _safe_settings_dict(request.app.state.settings)
     response = templates.TemplateResponse(request, "settings.html", {
@@ -457,6 +462,7 @@ async def settings_page(request: Request):
         "active_page": "settings",
         "user": user,
         "google_configured": _google_configured(request),
+        "calendar_error": error_msg,
     })
     _ensure_csrf_cookie(request, response)
     return response
@@ -791,6 +797,12 @@ _GOOGLE_CALENDAR_LIST_URL = (
 _GCAL_OAUTH_COOKIE = "gcal_oauth_state"
 
 
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Done-callback for fire-and-forget tasks: log exceptions instead of losing them."""
+    if not task.cancelled() and task.exception():
+        logger.error("Background task failed: %s", task.exception())
+
+
 @router.get("/api/calendar/google/connect")
 async def google_calendar_connect(request: Request):
     """Redirect to Google OAuth with Calendar scope."""
@@ -837,22 +849,29 @@ async def callback_google_calendar(
     Exchanges code for tokens, discovers calendars via Google Calendar API,
     and creates calendar_sources entries for each discovered calendar.
     """
+    _fail_url = "/ui/settings?error=calendar_connect_failed"
+
+    # Verify user session (match connect endpoint auth requirement)
+    user = _get_session_user(request)
+    if user is None:
+        return RedirectResponse(url="/ui/login", status_code=303)
+
     # Validate OAuth state
     stored_state = request.cookies.get(_GCAL_OAUTH_COOKIE, "")
     if not state or not stored_state or not hmac.compare_digest(state, stored_state):
         logger.warning("Google Calendar OAuth: invalid state parameter")
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     if error or not code:
         logger.warning("Google Calendar OAuth error: %s", error or "no code")
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     settings = request.app.state.settings
     redirect_uri = _build_redirect_uri(request, "/ui/callback/google/calendar")
 
     # Exchange authorization code for tokens
     async with httpx.AsyncClient() as client:
-        token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
+        token_resp = await client.post(GOOGLE_TOKEN_URL, data={
             "client_id": settings.google_client_id,
             "client_secret": settings.google_client_secret,
             "code": code,
@@ -862,7 +881,7 @@ async def callback_google_calendar(
 
     if token_resp.status_code != 200:
         logger.error("Google Calendar token exchange failed: %d", token_resp.status_code)
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     tokens = token_resp.json()
     access_token = tokens.get("access_token")
@@ -872,7 +891,7 @@ async def callback_google_calendar(
     if not access_token or not refresh_token:
         logger.error("Google Calendar OAuth: missing tokens (refresh_token=%s)",
                       "present" if refresh_token else "absent")
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
@@ -886,12 +905,12 @@ async def callback_google_calendar(
 
     if cal_resp.status_code != 200:
         logger.error("Google Calendar list failed: %d", cal_resp.status_code)
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     calendars = cal_resp.json().get("items", [])
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return RedirectResponse(url="/ui/settings", status_code=303)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     added = 0
     for cal in calendars:
@@ -914,14 +933,17 @@ async def callback_google_calendar(
                 google_token_expiry=token_expiry,
             )
             added += 1
+        except asyncpg.UniqueViolationError:
+            logger.debug("Skipping calendar %s (already exists)", cal_id)
         except Exception:
-            logger.debug("Skipping calendar %s (may already exist)", cal_id)
+            logger.warning("Failed to add calendar %s", cal_id, exc_info=True)
 
     logger.info("Google Calendar OAuth: added %d calendar(s)", added)
 
-    # Trigger initial sync in background
+    # Trigger initial sync in background (store reference to prevent GC)
     if added > 0:
-        asyncio.create_task(manager.sync_all())
+        task = asyncio.create_task(manager.sync_all())
+        task.add_done_callback(_log_task_exception)
 
     response = RedirectResponse(url="/ui/settings", status_code=303)
     response.delete_cookie(_GCAL_OAUTH_COOKIE)
