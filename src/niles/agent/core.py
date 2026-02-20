@@ -210,6 +210,52 @@ class NilesAgent:
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
         self._source_names_ts: float = 0.0
+        # Pending phone choice: chat_id → {phones, text, contact_name}
+        self._pending_phone_choices: dict[str, dict] = {}
+
+    async def _resolve_wa_instance(self, chat_id: str) -> str | None:
+        """Look up per-user WhatsApp instance from chat_id."""
+        if self.wa_store and chat_id.startswith("web-user-"):
+            try:
+                uid = int(chat_id.split("-", 2)[2])
+                session = await self.wa_store.get_session(uid)
+                if session and session["status"] == "connected":
+                    return session["instance_name"]
+            except (ValueError, IndexError):
+                pass
+        return None
+
+    async def _handle_phone_choice(self, chat_id: str, content: str) -> str | None:
+        """If user is responding to a phone choice prompt, send directly.
+
+        Returns the reply text if handled, or None if not a pending choice.
+        """
+        if chat_id not in self._pending_phone_choices:
+            return None
+
+        # Accept "1", "2", "1.", "2." etc.
+        stripped = content.strip().rstrip(".")
+        if not stripped.isdigit():
+            # Not a number selection — clear pending state and let LLM handle
+            del self._pending_phone_choices[chat_id]
+            return None
+
+        choice_idx = int(stripped) - 1
+        pending = self._pending_phone_choices.pop(chat_id)
+
+        if choice_idx < 0 or choice_idx >= len(pending["phones"]):
+            count = len(pending["phones"])
+            return f"Ungültige Auswahl. Bitte wähle 1 bis {count}."
+
+        phone = pending["phones"][choice_idx]["number"]
+        instance = await self._resolve_wa_instance(chat_id)
+
+        result = await self.whatsapp.send_message(
+            to=phone, text=pending["text"], instance=instance,
+        )
+        if "error" not in result:
+            return f"Nachricht an {pending['contact_name']} (00{phone}) gesendet."
+        return f"Fehler beim Senden: {result['error']}"
 
     async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
         """Shared setup for process_event and process_event_stream.
@@ -271,6 +317,17 @@ class NilesAgent:
           {"type": "chunk",  "text": "partial text"}
           {"type": "done"}
         """
+        chat_id = event["from"]
+
+        # Intercept pending phone choice (bypass LLM entirely)
+        reply = await self._handle_phone_choice(chat_id, event["content"])
+        if reply is not None:
+            await self.history.add_message(chat_id, "user", event["content"])
+            await self.history.add_message(chat_id, "assistant", reply)
+            yield {"type": "chunk", "text": reply}
+            yield {"type": "done"}
+            return
+
         chat_id, messages, all_tools = await self._prepare_messages(event)
 
         for _ in range(MAX_TOOL_ROUNDS):
@@ -351,6 +408,16 @@ class NilesAgent:
                 )
                 result = await self._execute_tool_call(tool_call, chat_id)
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
+
+                # choose_phone → bypass LLM, send list directly to user
+                if isinstance(result, dict) and "choose_phone" in result:
+                    text = result["choose_phone"]
+                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "assistant", text)
+                    yield {"type": "chunk", "text": text}
+                    yield {"type": "done"}
+                    return
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -371,6 +438,15 @@ class NilesAgent:
         Returns:
             Response text
         """
+        chat_id = event["from"]
+
+        # Intercept pending phone choice (bypass LLM entirely)
+        reply = await self._handle_phone_choice(chat_id, event["content"])
+        if reply is not None:
+            await self.history.add_message(chat_id, "user", event["content"])
+            await self.history.add_message(chat_id, "assistant", reply)
+            return reply
+
         chat_id, messages, all_tools = await self._prepare_messages(event)
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
@@ -406,6 +482,14 @@ class NilesAgent:
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call, chat_id)
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
+
+                # choose_phone → bypass LLM, send list directly to user
+                if isinstance(result, dict) and "choose_phone" in result:
+                    text = result["choose_phone"]
+                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "assistant", text)
+                    return text
+
                 messages.append(
                     {
                         "role": "tool",
@@ -448,7 +532,12 @@ class NilesAgent:
                     return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
                 phones = contact.get("phones", [])
                 if len(phones) > 1:
-                    # Multiple numbers — ask user to choose
+                    # Multiple numbers — store state and ask user to choose
+                    self._pending_phone_choices[chat_id] = {
+                        "phones": phones,
+                        "text": text,
+                        "contact_name": contact["full_name"],
+                    }
                     lines = [f"Es gibt mehrere Nummern für {contact['full_name']}:"]
                     for i, p in enumerate(phones, 1):
                         lines.append(f"{i}. 00{p['number']} ({p['type']})")
@@ -457,16 +546,7 @@ class NilesAgent:
                     return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
                 to = contact["phone"]
 
-            # Look up per-user WhatsApp instance from chat_id
-            instance = None
-            if self.wa_store and chat_id.startswith("web-user-"):
-                try:
-                    uid = int(chat_id.split("-", 2)[2])
-                    session = await self.wa_store.get_session(uid)
-                    if session and session["status"] == "connected":
-                        instance = session["instance_name"]
-                except (ValueError, IndexError):
-                    pass
+            instance = await self._resolve_wa_instance(chat_id)
 
             result = await self.whatsapp.send_message(
                 to=to, text=text, instance=instance,
