@@ -1,17 +1,18 @@
+{% from "macros/chat_bubble.html" import user_bubble, assistant_bubble %}
 {% if has_more %}
 <div id="load-more-container" class="text-center mb-4">
     <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
             hx-target="#load-more-container"
             hx-swap="outerHTML"
-            class="text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-gray-800 cursor-pointer">
+            class="text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150">
         Aeltere Nachrichten laden
     </button>
 </div>
 {% endif %}
 {% for msg in messages %}
-<div class="flex flex-col mb-3 {% if msg.role == 'user' %}items-end{% else %}items-start{% endif %}">
-    <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">{% if msg.role == 'user' %}Du{% else %}Niles{% endif %}</span>
-    <div class="max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words {% if msg.role == 'user' %}bg-blue-600 text-white{% else %}bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100{% endif %}{% if msg.role == 'assistant' %} markdown{% endif %}">{{ msg.content }}</div>
-    {% if msg.timestamp %}<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-</div>
+{% if msg.role == 'user' %}
+{{ user_bubble(msg.content, msg.timestamp, user) }}
+{% else %}
+{{ assistant_bubble(msg.content, msg.timestamp) }}
+{% endif %}
 {% endfor %}

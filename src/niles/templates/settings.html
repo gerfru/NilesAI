@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Settings - Niles AI{% endblock %}
 {% block content %}
-<h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Settings</h2>
+<h2 class="text-2xl font-bold mb-4 text-zinc-900 dark:text-white">Settings</h2>
 <div id="toast-container"></div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Feature Flags</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Feature Flags</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, enabled in feature_flags.items() %}
     <form hx-post="/ui/api/settings/{{ key }}"
           hx-target="#toast-container" hx-swap="innerHTML"
-          class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+          class="flex items-center justify-between py-2 border-b border-zinc-100 dark:border-zinc-700 last:border-0">
         <input type="hidden" name="value"
                value="{{ 'true' if enabled else 'false' }}">
-        <span class="text-sm text-gray-700 dark:text-gray-300">{{ key }}</span>
+        <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ key }}</span>
         <label class="toggle-switch">
             <input type="checkbox"
                    {% if enabled %}checked{% endif %}
@@ -24,111 +24,118 @@
     {% endfor %}
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">LLM Configuration</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}
     <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ key }}</label>
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">{{ key }}</label>
         <div class="flex gap-2">
             <input type="text" name="value" value="{{ current_value }}"
                    maxlength="512" pattern="[^\x00-\x1f]*" required
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
         </div>
     </form>
     {% endfor %}
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-3 text-gray-900 dark:text-white">General</h3>
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">General</h3>
     <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">timezone</label>
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
         <div class="flex gap-2">
             <input type="text" name="value" value="{{ general.timezone }}"
                    maxlength="64" pattern="[A-Za-z/_\-]+" required
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
         </div>
     </form>
     <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">log_level</label>
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">log_level</label>
         <div class="flex gap-2">
             <select name="value"
-                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
                 <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
                 {% endfor %}
             </select>
             <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Save</button>
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
         </div>
     </form>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Kalenderquellen</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">ICS-Abonnements (nur lesen), CalDAV-Kalender (lesen + schreiben) und Google Kalender (via OAuth). Termine erscheinen in der Kalendersuche.</p>
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kalenderquellen</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">ICS-Abonnements (nur lesen), CalDAV-Kalender (lesen + schreiben) und Google Kalender (via OAuth). Termine erscheinen in der Kalendersuche.</p>
 
     {% if calendar_error is defined and calendar_error %}
     <p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ calendar_error }}</p>
     {% endif %}
 
     {% if google_configured is defined and google_configured %}
-    <div class="mb-4">
-        <a href="/ui/api/calendar/google/connect"
-           class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg no-underline">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
-            Google Kalender verbinden
-        </a>
-    </div>
+    <a href="/ui/api/calendar/google/connect"
+       class="inline-flex items-center gap-2.5 px-4 py-2.5 mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-600 shadow-sm no-underline transition-colors">
+        <svg class="w-[18px] h-[18px] shrink-0" width="18" height="18" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Google Kalender verbinden
+    </a>
     {% endif %}
 
     <div class="mb-4" id="calendar-add-form">
-        <div class="flex gap-2 mb-2">
-            <select id="cal-source-type"
-                    class="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="ics">ICS</option>
-                <option value="caldav">CalDAV</option>
-            </select>
-            <input type="text" id="cal-source-name" placeholder="Name (optional)"
-                   maxlength="200"
-                   class="w-1/4 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="url" id="cal-source-url" placeholder="https://..."
-                   maxlength="2048" required
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div class="flex flex-col sm:flex-row gap-2 mb-2">
+            <div class="flex gap-2">
+                <select id="cal-source-type"
+                        class="w-28 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <option value="ics">ICS</option>
+                    <option value="caldav">CalDAV</option>
+                </select>
+                <input type="text" id="cal-source-name" placeholder="Name (optional)"
+                       maxlength="200"
+                       class="flex-1 sm:w-36 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            </div>
+            <div class="flex gap-2 flex-1">
+                <input type="url" id="cal-source-url" placeholder="https://..."
+                       maxlength="2048" required
+                       class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                <form hx-post="/ui/api/calendar/sources"
+                      hx-target="#calendar-sources-container"
+                      hx-swap="innerHTML" class="contents">
+                    <input type="hidden" name="source_type" id="cal-form-type" value="ics">
+                    <input type="hidden" name="name" id="cal-form-name" value="">
+                    <input type="hidden" name="url" id="cal-form-url" value="">
+                    <input type="hidden" name="auth_user" id="cal-form-user" value="">
+                    <input type="hidden" name="auth_password" id="cal-form-password" value="">
+                    <button type="submit" data-calendar-add
+                            class="px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg cursor-pointer shrink-0">Hinzufuegen</button>
+                </form>
+            </div>
         </div>
-        <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2">
+        <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2 sm:pl-[7.5rem]">
             <input type="text" id="cal-source-user" placeholder="Benutzername"
                    maxlength="256"
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <input type="password" id="cal-source-password" placeholder="Passwort"
                    maxlength="256"
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
         </div>
-        <form hx-post="/ui/api/calendar/sources"
-              hx-target="#calendar-sources-container"
-              hx-swap="innerHTML">
-            <input type="hidden" name="source_type" id="cal-form-type" value="ics">
-            <input type="hidden" name="name" id="cal-form-name" value="">
-            <input type="hidden" name="url" id="cal-form-url" value="">
-            <input type="hidden" name="auth_user" id="cal-form-user" value="">
-            <input type="hidden" name="auth_password" id="cal-form-password" value="">
-            <button type="submit" data-calendar-add
-                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Hinzufuegen</button>
-        </form>
     </div>
 
     <div id="calendar-sources-container"
          hx-get="/ui/api/calendar/sources"
          hx-trigger="load"
          hx-swap="innerHTML">
-        <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
-            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+        <div class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 text-sm">
+            <svg class="animate-spin h-4 w-4" width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
@@ -137,16 +144,16 @@
     </div>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Infrastructure (read-only)</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Diese Werte koennen nur in der <code class="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Infrastructure (read-only)</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Diese Werte koennen nur in der <code class="bg-zinc-100 dark:bg-zinc-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <tbody>
                 {% for key, value in infra.items() %}
-                <tr class="border-b border-gray-100 dark:border-gray-700 last:border-0">
-                    <td class="py-2 pr-4 text-gray-500 dark:text-gray-400 font-mono text-xs">{{ key }}</td>
-                    <td class="py-2 text-gray-900 dark:text-gray-100 font-mono text-xs">{{ value }}</td>
+                <tr class="border-b border-zinc-100 dark:border-zinc-700 last:border-0">
+                    <td class="py-2 pr-4 text-zinc-500 dark:text-zinc-400 font-mono text-xs">{{ key }}</td>
+                    <td class="py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs">{{ value }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

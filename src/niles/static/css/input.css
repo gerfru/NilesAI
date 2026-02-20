@@ -11,7 +11,7 @@
         @apply sr-only;
     }
     .toggle-switch .toggle-track {
-        @apply absolute inset-0 rounded-full bg-gray-300 dark:bg-gray-600
+        @apply absolute inset-0 rounded-full bg-zinc-300 dark:bg-zinc-600
                transition-colors duration-200;
     }
     .toggle-switch input:checked + .toggle-track {
@@ -57,6 +57,23 @@
     40% { opacity: 1; }
 }
 
+/* Chat textarea auto-grow (CSP-safe: CSS grid mirror, no inline styles) */
+.chat-input-grow {
+    display: grid;
+}
+.chat-input-grow > textarea,
+.chat-input-grow > [data-autogrow-mirror] {
+    grid-area: 1 / 1;
+    @apply py-2 text-base;
+    font: inherit;
+    word-break: break-word;
+}
+.chat-input-grow > textarea {
+    min-height: 2.5rem;
+    max-height: 10rem;
+    overflow-y: auto;
+}
+
 /* Thin scrollbar */
 .thin-scrollbar {
     scrollbar-width: thin;
@@ -67,7 +84,7 @@
 }
 
 .thin-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-gray-600 rounded;
+    @apply bg-zinc-300 dark:bg-zinc-600 rounded;
 }
 
 /* Markdown content inside assistant bubbles */
@@ -76,7 +93,7 @@
 }
 
 .markdown pre {
-    @apply my-2 p-2 rounded-lg overflow-x-auto bg-gray-800 text-gray-100;
+    @apply my-2 p-2 rounded-lg overflow-x-auto bg-zinc-800 text-zinc-100;
 }
 
 .markdown code {
@@ -104,7 +121,7 @@
 }
 
 .markdown blockquote {
-    @apply border-l-4 border-gray-300 dark:border-gray-600 pl-3 italic text-gray-600 dark:text-gray-400;
+    @apply border-l-4 border-zinc-300 dark:border-zinc-600 pl-3 italic text-zinc-600 dark:text-zinc-400;
 }
 
 .markdown h1, .markdown h2, .markdown h3 {

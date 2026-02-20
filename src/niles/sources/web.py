@@ -489,6 +489,7 @@ async def chat_history(
         "messages": messages,
         "has_more": has_more,
         "next_offset": offset + _CHAT_PAGE_SIZE,
+        "user": user,
     })
 
 
@@ -527,6 +528,7 @@ async def chat_send(request: Request, message: str = Form(...)):
         "assistant_message": response_text,
         "user_timestamp": now,
         "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
+        "user": user,
     })
 
 
@@ -676,9 +678,8 @@ async def calendar_sources_list(request: Request):
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return HTMLResponse(
-            '<p class="text-sm text-gray-500 dark:text-gray-400 py-2">'
-            "Kalender-Manager nicht verfuegbar.</p>"
+        return templates.TemplateResponse(
+            request, "fragments/calendar_unavailable.html", {}
         )
 
     sources = await manager.get_sources()

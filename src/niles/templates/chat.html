@@ -1,55 +1,73 @@
 {% extends "base.html" %}
+{% from "macros/chat_bubble.html" import user_bubble, assistant_bubble %}
 {% block title %}Chat - Niles AI{% endblock %}
 {% block content %}
-<div class="flex flex-col h-[calc(100vh-140px)]">
-    <div id="chat-messages" role="log" aria-live="polite" class="flex-1 overflow-y-auto py-4 thin-scrollbar">
+<div class="flex flex-col h-[calc(100dvh-120px)]">
+    <div id="chat-messages" role="log" aria-live="polite" class="flex-1 overflow-y-auto py-4 thin-scrollbar"
+         data-user-avatar="{{ user.avatar_url }}">
         {% if has_more %}
         <div id="load-more-container" class="text-center mb-4">
             <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
                     hx-target="#load-more-container"
                     hx-swap="outerHTML"
-                    class="text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-gray-800 cursor-pointer">
+                    class="text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-800 cursor-pointer">
                 Aeltere Nachrichten laden
             </button>
         </div>
         {% endif %}
         {% if not messages and not has_more %}
-        <div class="chat-empty flex items-center justify-center h-full text-gray-400 italic">Starte eine Unterhaltung...</div>
+        <div class="chat-empty flex items-center justify-center h-full text-zinc-400 italic">Starte eine Unterhaltung...</div>
         {% endif %}
         {% for msg in messages %}
-        <div class="flex flex-col mb-3 {% if msg.role == 'user' %}items-end{% else %}items-start{% endif %}">
-            <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">{% if msg.role == 'user' %}Du{% else %}Niles{% endif %}</span>
-            <div class="max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words {% if msg.role == 'user' %}bg-blue-600 text-white{% else %}bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100{% endif %}{% if msg.role == 'assistant' %} markdown{% endif %}">{{ msg.content }}</div>
-            {% if msg.timestamp %}<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-        </div>
+        {% if msg.role == 'user' %}
+        {{ user_bubble(msg.content, msg.timestamp, user) }}
+        {% else %}
+        {{ assistant_bubble(msg.content, msg.timestamp) }}
+        {% endif %}
         {% endfor %}
     </div>
 
-    <div id="thinking-indicator" class="hidden" aria-live="assertive">
-        <div class="flex flex-col mb-3 items-start">
-            <div class="max-w-[75%] px-4 py-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100" data-thinking-text>
-                <span data-thinking-label>Niles denkt nach</span><span class="animate-blink">.</span><span class="animate-blink animation-delay-200">.</span><span class="animate-blink animation-delay-400">.</span>
+    <div id="thinking-indicator" class="hidden mb-4" aria-live="polite">
+        <div class="flex items-start gap-3">
+            <img src="/static/img/niles-avatar.webp" alt="Niles" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
+            <div>
+                <div class="flex items-baseline gap-2 mb-1">
+                    <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>
+                </div>
+                <div class="px-4 py-2.5 rounded-2xl rounded-tl-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400" data-thinking-text>
+                    <span data-thinking-label>Niles denkt nach</span><span class="animate-blink">.</span><span class="animate-blink animation-delay-200">.</span><span class="animate-blink animation-delay-400">.</span>
+                </div>
             </div>
         </div>
     </div>
 
     <form id="chat-form" class="mt-2">
         <label for="chat-input" class="sr-only">Nachricht</label>
-        <div class="flex">
-            <input id="chat-input" type="text" name="message" placeholder="Nachricht eingeben..."
-                   required autocomplete="off" autofocus maxlength="2000"
-                   class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-l-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button type="submit"
-                    class="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-r-lg hover:bg-blue-700 cursor-pointer border-0 text-base">Senden</button>
+        <div class="flex items-end rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden pl-5 pr-2 py-1">
+            <div class="chat-input-grow flex-1">
+                <textarea id="chat-input" name="message" rows="1" placeholder="Nachricht eingeben..."
+                          required autocomplete="off" autofocus maxlength="2000"
+                          class="resize-none overflow-hidden bg-transparent text-zinc-900 dark:text-zinc-100 text-base outline-none"
+                          data-autogrow></textarea>
+                <div class="invisible whitespace-pre-wrap break-words" aria-hidden="true" data-autogrow-mirror></div>
+            </div>
+            <button type="submit" aria-label="Senden"
+                    class="w-10 h-10 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path d="M3.105 2.29a.75.75 0 0 0-.826.95l1.414 4.926A1.5 1.5 0 0 0 5.135 9.25h6.115a.75.75 0 0 1 0 1.5H5.135a1.5 1.5 0 0 0-1.442 1.084L2.28 16.76a.75.75 0 0 0 .826.95l15.202-7.23a.75.75 0 0 0 0-1.36L3.105 2.29Z"/>
+                </svg>
+            </button>
         </div>
     </form>
 
-    <button hx-post="/ui/api/chat/clear"
-            hx-target="#chat-messages"
-            hx-swap="innerHTML"
-            hx-confirm="Chat-Verlauf wirklich loeschen?"
-            class="mt-2 w-full text-sm text-gray-500 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-lg py-2 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
-        Verlauf loeschen
-    </button>
+    <div class="text-center mt-2">
+        <button hx-post="/ui/api/chat/clear"
+                hx-target="#chat-messages"
+                hx-swap="innerHTML"
+                hx-confirm="Chat-Verlauf wirklich loeschen?"
+                class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 bg-transparent border-0 cursor-pointer transition-colors duration-150">
+            Verlauf loeschen
+        </button>
+    </div>
 </div>
 {% endblock %}
