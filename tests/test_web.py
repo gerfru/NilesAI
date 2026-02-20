@@ -287,6 +287,20 @@ class TestSettingsEndpoints:
         new_settings = request.app.state.settings
         assert new_settings.llm_model == "new-model"
 
+    async def test_update_llm_model_propagates_to_agent(self):
+        agent = AsyncMock()
+        agent.model = "old-model"
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            settings_store=AsyncMock(),
+            agent=agent,
+        )
+
+        await update_setting(request, key="llm_model", value="llama3.1:8b")
+
+        assert agent.model == "llama3.1:8b"
+
     async def test_update_non_editable_rejected(self):
         settings_store = AsyncMock()
         settings_store.set.side_effect = ValueError("Setting 'postgres_password' is not editable at runtime")

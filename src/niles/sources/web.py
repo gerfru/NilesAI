@@ -15,6 +15,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request, Response
+from openai import AsyncOpenAI
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -607,6 +608,14 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
         caldav = getattr(request.app.state, "caldav", None)
         if caldav:
             caldav.config = new_settings
+        # Hot-reload LLM settings on the running agent
+        agent = request.app.state.agent
+        if key == "llm_model":
+            agent.model = new_settings.llm_model
+        elif key == "llm_base_url":
+            agent.llm = AsyncOpenAI(
+                base_url=new_settings.llm_base_url, api_key="not-needed",
+            )
     except ValueError as e:
         return templates.TemplateResponse(request, "fragments/toast.html", {
             "message": str(e),
