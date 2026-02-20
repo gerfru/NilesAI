@@ -10,7 +10,7 @@
 | -------- | ------- | ----- |
 | Python | >= 3.11 | Runtime |
 | Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
-| LM Studio | aktuell | Lokale LLM Inference |
+| Ollama | >= 0.13 | Lokale LLM Inference (nativ auf Host) |
 | Git | aktuell | Versionskontrolle |
 | Tailwind CSS CLI | v3.4.17 | CSS Build (Standalone Binary, kein Node.js) |
 
@@ -61,11 +61,11 @@ BASE_URL=https://niles.example.com
 
 Siehe [Architecture.md](Architecture.md#7-konfiguration) fuer alle Konfigurationsoptionen.
 
-### LM Studio
+### Ollama
 
-1. LM Studio starten
-2. Modell laden: `qwen2.5-coder-7b-instruct-mlx` (oder anderes MLX-optimiertes Modell)
-3. Server starten auf Port 1234
+1. Ollama installieren: `brew install ollama`
+2. Modell laden: `ollama pull llama3.1:8b`
+3. Ollama laeuft automatisch auf Port 11434
 
 ---
 
