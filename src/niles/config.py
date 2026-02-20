@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     feature_carddav_sync: bool = False
     feature_caldav_sync: bool = False
 
-    # CardDAV (mailbox.org)
-    carddav_url: str = "https://dav.mailbox.org/carddav/32"
+    # CardDAV (configured via Settings UI)
+    carddav_url: str = ""
     carddav_user: str = ""
     carddav_password: str = ""
 
