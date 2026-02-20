@@ -444,10 +444,19 @@ class NilesAgent:
             # If 'to' looks like a name (not a number), resolve it first
             if not to.replace("+", "").replace(" ", "").isdigit():
                 contact = await self.contacts.find_by_name(to)
-                if contact and contact.get("phone"):
-                    to = contact["phone"]
-                else:
-                    return {"error": f"Kontakt '{args['to']}' nicht gefunden oder keine Telefonnummer vorhanden"}
+                if not contact:
+                    return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
+                phones = contact.get("phones", [])
+                if len(phones) > 1:
+                    # Multiple numbers — ask user to choose
+                    lines = [f"{contact['full_name']} hat mehrere Telefonnummern:"]
+                    for i, p in enumerate(phones, 1):
+                        lines.append(f"{i}. {p['number']} ({p['type']})")
+                    lines.append("Bitte sag mir die Nummer (1, 2, ...) an die ich senden soll.")
+                    return {"choose_phone": "\n".join(lines)}
+                if not contact.get("phone"):
+                    return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
+                to = contact["phone"]
 
             # Look up per-user WhatsApp instance from chat_id
             instance = None
