@@ -76,30 +76,45 @@ function convertTimestamps() {
     });
 }
 
-/* --- Chat message helpers (flat layout) --- */
+/* --- Chat message helpers (bubble layout with avatars) --- */
+
+function getUserAvatarHTML() {
+    var messagesEl = document.getElementById("chat-messages");
+    var url = messagesEl ? messagesEl.dataset.userAvatar : "";
+    if (url) {
+        return '<img src="' + url + '" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5" referrerpolicy="no-referrer">';
+    }
+    return '<div class="w-9 h-9 rounded-full shrink-0 mt-0.5 bg-blue-500 flex items-center justify-center text-white text-xs font-bold">Du</div>';
+}
 
 function createUserBubble(text) {
     const div = document.createElement("div");
-    div.className = "mb-5";
+    div.className = "flex items-start gap-3 mb-4 flex-row-reverse";
     div.innerHTML =
-        '<div class="flex items-baseline gap-2 mb-1">' +
-        '<span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Du</span>' +
+        getUserAvatarHTML() +
+        '<div class="max-w-[75%]">' +
+        '<div class="flex items-baseline gap-2 mb-1 justify-end">' +
         '<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500">' + formatTimestamp() + '</span>' +
+        '<span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Du</span>' +
         '</div>' +
-        '<div class="whitespace-pre-wrap break-words px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950 text-zinc-900 dark:text-zinc-100" data-user-content></div>';
+        '<div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tr-md bg-blue-500 text-white" data-user-content></div>' +
+        '</div>';
     div.querySelector("[data-user-content]").textContent = text;
     return div;
 }
 
 function createAssistantBubble() {
     const div = document.createElement("div");
-    div.className = "mb-5";
+    div.className = "flex items-start gap-3 mb-4";
     div.innerHTML =
+        '<img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">' +
+        '<div class="max-w-[75%]">' +
         '<div class="flex items-baseline gap-2 mb-1">' +
-        '<span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Niles</span>' +
+        '<span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>' +
         '<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500">' + formatTimestamp() + '</span>' +
         '</div>' +
-        '<div class="whitespace-pre-wrap break-words text-zinc-900 dark:text-zinc-100 markdown"></div>';
+        '<div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tl-md bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 markdown"></div>' +
+        '</div>';
     return div;
 }
 

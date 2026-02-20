@@ -64,13 +64,13 @@
 .chat-input-grow > textarea,
 .chat-input-grow > [data-autogrow-mirror] {
     grid-area: 1 / 1;
-    @apply px-4 py-3 text-base;
+    @apply py-2 text-base;
     font: inherit;
     word-break: break-word;
 }
 .chat-input-grow > textarea {
-    min-height: 3rem;
-    max-height: 12rem;
+    min-height: 2.5rem;
+    max-height: 10rem;
     overflow-y: auto;
 }
 
