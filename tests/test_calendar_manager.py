@@ -243,6 +243,34 @@ END:VCALENDAR"""
         assert "last_error" in error_call[0][0]
 
 
+class TestSyncICSSSRF:
+    """Regression test: ICS sync must NOT follow redirects (SSRF protection)."""
+
+    async def test_does_not_follow_redirects(self, manager, pool):
+        source = {
+            "id": 9, "name": "Redirect", "url": "https://example.com/cal.ics",
+            "source_type": "ics", "auth_user": None, "auth_password": None,
+            "google_refresh_token": None, "google_token_expiry": None,
+        }
+
+        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Verify follow_redirects=False is passed to client.get
+            mock_response = MagicMock()
+            mock_response.text = "BEGIN:VCALENDAR\nEND:VCALENDAR"
+            mock_response.content = b"BEGIN:VCALENDAR\nEND:VCALENDAR"
+            mock_response.raise_for_status = MagicMock()
+            mock_client.get.return_value = mock_response
+
+            await manager._sync_ics(source)
+
+            call_kwargs = mock_client.get.call_args[1]
+            assert call_kwargs["follow_redirects"] is False
+
+
 class TestSyncCalDAV:
     async def test_creates_caldav_sync_with_source_id(self, manager, pool):
         source = {
