@@ -9,11 +9,31 @@
 </div>
 {% endif %}
 {% for msg in messages %}
-<div class="mb-5">
-    <div class="flex items-baseline gap-2 mb-1">
-        <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">{% if msg.role == 'user' %}Du{% else %}Niles{% endif %}</span>
-        {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
+{% if msg.role == 'user' %}
+<div class="flex items-start gap-3 mb-4 flex-row-reverse">
+    {% if user and user.avatar_url %}
+    <img src="{{ user.avatar_url }}" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5" referrerpolicy="no-referrer">
+    {% else %}
+    <div class="w-9 h-9 rounded-full shrink-0 mt-0.5 bg-blue-500 flex items-center justify-center text-white text-xs font-bold">Du</div>
+    {% endif %}
+    <div class="max-w-[75%]">
+        <div class="flex items-baseline gap-2 mb-1 justify-end">
+            {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
+            <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Du</span>
+        </div>
+        <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tr-md bg-blue-500 text-white" data-user-content>{{ msg.content }}</div>
     </div>
-    <div class="whitespace-pre-wrap break-words {% if msg.role == 'user' %}px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950 text-zinc-900 dark:text-zinc-100{% else %}text-zinc-900 dark:text-zinc-100 markdown{% endif %}">{{ msg.content }}</div>
 </div>
+{% else %}
+<div class="flex items-start gap-3 mb-4">
+    <img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
+    <div class="max-w-[75%]">
+        <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>
+            {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
+        </div>
+        <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tl-md bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 markdown">{{ msg.content }}</div>
+    </div>
+</div>
+{% endif %}
 {% endfor %}

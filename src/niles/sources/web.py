@@ -489,6 +489,7 @@ async def chat_history(
         "messages": messages,
         "has_more": has_more,
         "next_offset": offset + _CHAT_PAGE_SIZE,
+        "user": user,
     })
 
 
@@ -527,6 +528,7 @@ async def chat_send(request: Request, message: str = Form(...)):
         "assistant_message": response_text,
         "user_timestamp": now,
         "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
+        "user": user,
     })
 
 
