@@ -15,6 +15,7 @@ RUN mkdir -p src/niles && touch src/niles/__init__.py \
 COPY src/ ./src/
 
 # Download Tailwind standalone CLI with SHA256 verification and build CSS
+# Binary is kept in the image so dev-mode (volume mount) can rebuild at startup
 COPY tailwind.config.js .
 RUN python -c "\
 import urllib.request, hashlib; \
@@ -25,8 +26,7 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
     && chmod +x /usr/local/bin/tailwindcss \
     && tailwindcss --minify \
        -i src/niles/static/css/input.css \
-       -o src/niles/static/css/style.css \
-    && rm /usr/local/bin/tailwindcss
+       -o src/niles/static/css/style.css
 
 # Copy config
 COPY config/ ./config/

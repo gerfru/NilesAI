@@ -15,7 +15,13 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
-# Settings that can be changed at runtime (not credentials/infrastructure)
+# Settings that can be changed at runtime via the Settings UI.
+# CardDAV credentials are included here (analogous to calendar_sources.auth_password
+# which is already stored in the DB by CalendarSourceManager).
+# NOTE: carddav_url/user/password are individually settable via the generic
+# POST /api/settings/{key} endpoint, but should only be changed atomically
+# through the dedicated contacts_connect flow in web.py. A direct POST to
+# a single key would leave credentials in a transiently inconsistent state.
 EDITABLE_SETTINGS = {
     "llm_base_url",
     "llm_model",
@@ -23,9 +29,10 @@ EDITABLE_SETTINGS = {
     "log_level",
     "feature_whatsapp_auto_reply",
     "feature_tool_send_whatsapp",
-    "feature_carddav_sync",
-    "feature_caldav_sync",
     "caldav_calendars",
+    "carddav_url",
+    "carddav_user",
+    "carddav_password",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
