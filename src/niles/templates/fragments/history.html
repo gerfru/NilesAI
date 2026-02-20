@@ -1,3 +1,4 @@
+{% from "macros/chat_bubble.html" import user_bubble, assistant_bubble %}
 {% if has_more %}
 <div id="load-more-container" class="text-center mb-4">
     <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
@@ -10,30 +11,8 @@
 {% endif %}
 {% for msg in messages %}
 {% if msg.role == 'user' %}
-<div class="flex items-start gap-3 mb-4 flex-row-reverse">
-    {% if user and user.avatar_url %}
-    <img src="{{ user.avatar_url }}" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5" referrerpolicy="no-referrer">
-    {% else %}
-    <div class="w-9 h-9 rounded-full shrink-0 mt-0.5 bg-blue-500 flex items-center justify-center text-white text-xs font-bold">Du</div>
-    {% endif %}
-    <div class="max-w-[75%]">
-        <div class="flex items-baseline gap-2 mb-1 justify-end">
-            {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-            <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Du</span>
-        </div>
-        <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tr-md bg-blue-500 text-white" data-user-content>{{ msg.content }}</div>
-    </div>
-</div>
+{{ user_bubble(msg.content, msg.timestamp, user) }}
 {% else %}
-<div class="flex items-start gap-3 mb-4">
-    <img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
-    <div class="max-w-[75%]">
-        <div class="flex items-baseline gap-2 mb-1">
-            <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>
-            {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-        </div>
-        <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tl-md bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 markdown">{{ msg.content }}</div>
-    </div>
-</div>
+{{ assistant_bubble(msg.content, msg.timestamp) }}
 {% endif %}
 {% endfor %}
