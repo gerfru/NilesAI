@@ -15,6 +15,7 @@ from ..mcp.client import MCPManager
 from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
+from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ class NilesAgent:
         mcp_manager: MCPManager | None = None,
         calendar: CalendarAction | None = None,
         calendar_manager: CalendarSourceManager | None = None,
+        wa_store: WhatsAppSessionStore | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -198,6 +200,7 @@ class NilesAgent:
         self.mcp = mcp_manager
         self.calendar = calendar
         self.calendar_manager = calendar_manager
+        self.wa_store = wa_store
         self.base_prompt = load_system_prompt()
 
     async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
@@ -314,7 +317,7 @@ class NilesAgent:
                         arguments=tc_dict["function"]["arguments"],
                     ),
                 )
-                result = await self._execute_tool_call(tool_call)
+                result = await self._execute_tool_call(tool_call, chat_id)
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
                 messages.append({
                     "role": "tool",
@@ -369,7 +372,7 @@ class NilesAgent:
 
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
-                result = await self._execute_tool_call(tool_call)
+                result = await self._execute_tool_call(tool_call, chat_id)
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
                 messages.append(
                     {
@@ -382,7 +385,7 @@ class NilesAgent:
         logger.warning("Max tool rounds reached")
         return "Ich konnte die Anfrage nicht abschließen."
 
-    async def _execute_tool_call(self, tool_call) -> dict:
+    async def _execute_tool_call(self, tool_call, chat_id: str = "") -> dict:
         """Execute a single tool call and return the result."""
         name = tool_call.function.name
         try:
@@ -414,7 +417,20 @@ class NilesAgent:
                 else:
                     return {"error": f"Kontakt '{args['to']}' nicht gefunden oder keine Telefonnummer vorhanden"}
 
-            result = await self.whatsapp.send_message(to=to, text=text)
+            # Look up per-user WhatsApp instance from chat_id
+            instance = None
+            if self.wa_store and chat_id.startswith("web-user-"):
+                try:
+                    uid = int(chat_id.split("-", 2)[2])
+                    session = await self.wa_store.get_session(uid)
+                    if session and session["status"] == "connected":
+                        instance = session["instance_name"]
+                except (ValueError, IndexError):
+                    pass
+
+            result = await self.whatsapp.send_message(
+                to=to, text=text, instance=instance,
+            )
             return {"status": "sent", "to": to} if "error" not in result else result
 
         if name == "remember":
