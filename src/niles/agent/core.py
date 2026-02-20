@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -206,6 +207,9 @@ class NilesAgent:
         self.calendar_manager = calendar_manager
         self.wa_store = wa_store
         self.base_prompt = load_system_prompt()
+        # Cached calendar source names (refreshed every 5 minutes)
+        self._source_names_cache: list[str] = []
+        self._source_names_ts: float = 0.0
 
     async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
         """Shared setup for process_event and process_event_stream.
@@ -219,15 +223,7 @@ class NilesAgent:
         chat_id = event["from"]
 
         memories = await self.memory.list_all()
-
-        # Load calendar source names so the LLM knows which calendars exist
-        source_names = []
-        if self.calendar_manager:
-            try:
-                sources = await self.calendar_manager.get_sources()
-                source_names = [s["name"] for s in sources if s.get("enabled", True)]
-            except Exception:
-                logger.warning("Failed to load calendar sources for prompt")
+        source_names = await self._get_calendar_source_names()
 
         system_prompt = build_system_prompt(
             self.base_prompt,
@@ -243,6 +239,25 @@ class NilesAgent:
 
         all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
         return chat_id, messages, all_tools
+
+    _SOURCE_CACHE_TTL = 300  # 5 minutes
+
+    async def _get_calendar_source_names(self) -> list[str]:
+        """Return enabled calendar source names, cached with a 5-minute TTL."""
+        if not self.calendar_manager:
+            return []
+        now = time.monotonic()
+        if now - self._source_names_ts < self._SOURCE_CACHE_TTL:
+            return self._source_names_cache
+        try:
+            sources = await self.calendar_manager.get_sources()
+            self._source_names_cache = [
+                s["name"] for s in sources if s.get("enabled", True)
+            ]
+            self._source_names_ts = now
+        except Exception:
+            logger.warning("Failed to load calendar sources for prompt")
+        return self._source_names_cache
 
     async def process_event_stream(self, event: dict):
         """Async generator: yields status updates + streamed text chunks.

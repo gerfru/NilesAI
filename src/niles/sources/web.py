@@ -1206,6 +1206,16 @@ async def contacts_connect(
 
     request.app.state.settings = new_settings
 
+    # Register daily sync job if not already scheduled
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler and not scheduler.get_job("carddav_daily_sync"):
+        scheduler.add_job(
+            carddav_sync.sync_contacts, "cron", hour=3, minute=0,
+            id="carddav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
+        )
+        logger.info("CardDAV daily sync job registered via UI")
+
     # Run initial sync
     try:
         await carddav_sync.sync_contacts()

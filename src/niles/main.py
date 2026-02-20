@@ -135,17 +135,11 @@ async def lifespan(app: FastAPI):
     await calendar_manager.initialize()
     calendar_sources = await calendar_manager.get_sources()
 
-    # Scheduler (shared by CardDAV, CalDAV, and calendar sources)
-    scheduler = None
-    needs_scheduler = (
-        settings.carddav_url
-        or settings.caldav_url
-        or calendar_sources
-    )
-    if needs_scheduler:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    # Scheduler – always started so jobs can be registered later
+    # (e.g. CardDAV daily sync added via contacts_connect in the UI)
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-        scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler()
 
     if settings.carddav_url:
         scheduler.add_job(
@@ -172,8 +166,7 @@ async def lifespan(app: FastAPI):
             len(calendar_sources),
         )
 
-    if scheduler:
-        scheduler.start()
+    scheduler.start()
 
     # MCP Servers
     mcp_manager = MCPManager()
@@ -208,13 +201,13 @@ async def lifespan(app: FastAPI):
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
     app.state.carddav_sync = carddav_sync
+    app.state.scheduler = scheduler
 
     yield
 
     # Shutdown
     await mcp_manager.stop_all()
-    if scheduler:
-        scheduler.shutdown()
+    scheduler.shutdown()
     await pool.close()
     logger.info("Niles Core shut down.")
 
