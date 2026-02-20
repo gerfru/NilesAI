@@ -10,9 +10,11 @@ from niles.sources.web import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     _CHAT_PAGE_SIZE,
+    _GCAL_OAUTH_COOKIE,
     _get_session_user,
     _login_attempts,
     _verify_csrf,
+    callback_google_calendar,
     chat_clear,
     chat_page,
     chat_send,
@@ -443,3 +445,160 @@ class TestChatStreamEndpoint:
         # Should contain error message and done event
         assert any("Fehler" in e.get("text", "") for e in events)
         assert events[-1]["type"] == "done"
+
+
+class TestGoogleCalendarCallback:
+    """Tests for callback_google_calendar OAuth flow."""
+
+    def _gcal_settings(self):
+        return _make_settings(
+            google_client_id="test-gid",
+            google_client_secret="test-gsecret",
+            base_url="https://niles.example.com",
+        )
+
+    def _gcal_request(self, *, state="valid-state", cookies=None):
+        """Build request with session + gcal_oauth_state cookie."""
+        c = _auth_cookies()
+        c[_GCAL_OAUTH_COOKIE] = state
+        if cookies:
+            c.update(cookies)
+        request = _make_request(cookies=c, settings=self._gcal_settings())
+        request.app.state.calendar_manager = AsyncMock()
+        return request
+
+    async def test_rejects_without_session(self):
+        """Callback without login session redirects to login."""
+        request = _make_request(
+            cookies={_GCAL_OAUTH_COOKIE: "state"},
+            settings=self._gcal_settings(),
+        )
+        response = await callback_google_calendar(
+            request, code="abc", state="state",
+        )
+        assert response.status_code == 303
+        assert "/ui/login" in response.headers["location"]
+
+    async def test_rejects_invalid_state(self):
+        """Callback with mismatched state redirects with error."""
+        request = self._gcal_request(state="correct-state")
+        response = await callback_google_calendar(
+            request, code="abc", state="wrong-state",
+        )
+        assert response.status_code == 303
+        assert "error=calendar_connect_failed" in response.headers["location"]
+
+    async def test_rejects_missing_code(self):
+        """Callback without code redirects with error."""
+        request = self._gcal_request()
+        response = await callback_google_calendar(
+            request, code="", state="valid-state",
+        )
+        assert response.status_code == 303
+        assert "error=calendar_connect_failed" in response.headers["location"]
+
+    async def test_rejects_google_error(self):
+        """Callback with error param from Google redirects with error."""
+        request = self._gcal_request()
+        response = await callback_google_calendar(
+            request, code="", state="valid-state", error="access_denied",
+        )
+        assert response.status_code == 303
+        assert "error=calendar_connect_failed" in response.headers["location"]
+
+    async def test_rejects_failed_token_exchange(self):
+        """Failed token exchange redirects with error."""
+        request = self._gcal_request()
+
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 400
+
+        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_token_resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            response = await callback_google_calendar(
+                request, code="test-code", state="valid-state",
+            )
+
+        assert response.status_code == 303
+        assert "error=calendar_connect_failed" in response.headers["location"]
+
+    async def test_rejects_missing_refresh_token(self):
+        """Missing refresh_token redirects with error."""
+        request = self._gcal_request()
+
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 200
+        mock_token_resp.json.return_value = {
+            "access_token": "at", "expires_in": 3600,
+            # no refresh_token
+        }
+
+        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_token_resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            response = await callback_google_calendar(
+                request, code="test-code", state="valid-state",
+            )
+
+        assert response.status_code == 303
+        assert "error=calendar_connect_failed" in response.headers["location"]
+
+    async def test_successful_calendar_discovery(self):
+        """Successful flow adds calendars and redirects to settings."""
+        request = self._gcal_request()
+        manager = request.app.state.calendar_manager
+        manager.add_source = AsyncMock(return_value={"id": 1})
+        manager.sync_all = AsyncMock()
+
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 200
+        mock_token_resp.json.return_value = {
+            "access_token": "at", "refresh_token": "rt", "expires_in": 3600,
+        }
+
+        mock_cal_resp = MagicMock()
+        mock_cal_resp.status_code = 200
+        mock_cal_resp.json.return_value = {
+            "items": [
+                {"id": "primary@gmail.com", "summary": "Mein Kalender",
+                 "accessRole": "owner"},
+                {"id": "holidays@google.com", "summary": "Feiertage",
+                 "accessRole": "reader"},
+            ],
+        }
+
+        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_token_resp
+            mock_client.get.return_value = mock_cal_resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            response = await callback_google_calendar(
+                request, code="test-code", state="valid-state",
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/ui/settings"
+
+        # Verify both calendars were added
+        assert manager.add_source.call_count == 2
+
+        # First call: owner → writable
+        first_call = manager.add_source.call_args_list[0]
+        assert first_call[1]["name"] == "Mein Kalender"
+        assert first_call[1]["source_type"] == "google"
+        assert first_call[1]["writable"] is True
+        assert "primary%40gmail.com" in first_call[1]["url"]
+
+        # Second call: reader → not writable
+        second_call = manager.add_source.call_args_list[1]
+        assert second_call[1]["name"] == "Feiertage"
+        assert second_call[1]["writable"] is False

@@ -7,7 +7,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
 class GoogleCalendarAuth(httpx.Auth):
@@ -43,7 +43,7 @@ class GoogleCalendarAuth(httpx.Auth):
         """Exchange refresh_token for a fresh access_token."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                _GOOGLE_TOKEN_URL,
+                GOOGLE_TOKEN_URL,
                 data={
                     "client_id": self._client_id,
                     "client_secret": self._client_secret,
