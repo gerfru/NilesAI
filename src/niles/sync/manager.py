@@ -9,6 +9,7 @@ import asyncpg
 import httpx
 
 from .caldav import CalDAVSync, upsert_event
+from .google_auth import GoogleCalendarAuth
 from .ical_parser import parse_icalendar
 
 logger = logging.getLogger(__name__)
@@ -268,8 +269,13 @@ class CalendarSourceManager:
     def _build_auth(self, source: dict) -> httpx.Auth | None:
         """Build httpx auth for a source (Basic or Bearer). Returns None for ICS."""
         if source["source_type"] == "google":
-            # Google Calendar OAuth – placeholder for Phase B
-            raise NotImplementedError("Google Calendar sync not yet implemented")
+            if not source.get("google_refresh_token"):
+                raise ValueError("Google source missing refresh token")
+            return GoogleCalendarAuth(
+                refresh_token=source["google_refresh_token"],
+                client_id=self.settings.google_client_id,
+                client_secret=self.settings.google_client_secret,
+            )
         if source["source_type"] == "caldav":
             return httpx.BasicAuth(source["auth_user"] or "", source["auth_password"] or "")
         return None

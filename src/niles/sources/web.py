@@ -10,7 +10,8 @@ import secrets
 import time
 import urllib.parse
 from collections import defaultdict
-from datetime import datetime, timezone
+import asyncio
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import asyncpg
@@ -163,17 +164,17 @@ def _google_configured(request: Request) -> bool:
     return bool(s.google_client_id and s.google_client_secret)
 
 
-def _build_redirect_uri(request: Request) -> str:
+def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> str:
     """Build Google OAuth redirect URI. Uses base_url if configured, else request headers."""
     base_url = request.app.state.settings.base_url
     if base_url:
-        return f"{base_url.rstrip('/')}/ui/callback/google"
+        return f"{base_url.rstrip('/')}{path}"
     # Fallback: derive from request headers (less secure behind reverse proxy)
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get(
         "x-forwarded-host", request.headers.get("host", "localhost"),
     )
-    return f"{scheme}://{host}/ui/callback/google"
+    return f"{scheme}://{host}{path}"
 
 
 def _safe_settings_dict(settings) -> dict:
@@ -455,6 +456,7 @@ async def settings_page(request: Request):
         **safe,
         "active_page": "settings",
         "user": user,
+        "google_configured": _google_configured(request),
     })
     _ensure_csrf_cookie(request, response)
     return response
@@ -778,3 +780,149 @@ async def calendar_source_sync(request: Request, source_id: int):
     sources = await manager.get_sources()
     ctx["sources"] = sources
     return templates.TemplateResponse(request, "fragments/calendar_sources.html", ctx)
+
+
+# --- Google Calendar OAuth (Phase B) ---
+
+_GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
+_GOOGLE_CALENDAR_LIST_URL = (
+    "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+)
+_GCAL_OAUTH_COOKIE = "gcal_oauth_state"
+
+
+@router.get("/api/calendar/google/connect")
+async def google_calendar_connect(request: Request):
+    """Redirect to Google OAuth with Calendar scope."""
+    user = _get_session_user(request)
+    if user is None:
+        return RedirectResponse(url="/ui/login", status_code=303)
+
+    if not _google_configured(request):
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    settings = request.app.state.settings
+    state = secrets.token_urlsafe(32)
+    redirect_uri = _build_redirect_uri(request, "/ui/callback/google/calendar")
+
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": _GOOGLE_CALENDAR_SCOPE,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    auth_url = f"{_GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+    response = RedirectResponse(url=auth_url, status_code=303)
+    response.set_cookie(
+        _GCAL_OAUTH_COOKIE, state,
+        max_age=600, httponly=True,
+        secure=_is_secure_context(request), samesite="lax",
+    )
+    return response
+
+
+@router.get("/callback/google/calendar")
+async def callback_google_calendar(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    """Handle Google Calendar OAuth callback.
+
+    Exchanges code for tokens, discovers calendars via Google Calendar API,
+    and creates calendar_sources entries for each discovered calendar.
+    """
+    # Validate OAuth state
+    stored_state = request.cookies.get(_GCAL_OAUTH_COOKIE, "")
+    if not state or not stored_state or not hmac.compare_digest(state, stored_state):
+        logger.warning("Google Calendar OAuth: invalid state parameter")
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    if error or not code:
+        logger.warning("Google Calendar OAuth error: %s", error or "no code")
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    settings = request.app.state.settings
+    redirect_uri = _build_redirect_uri(request, "/ui/callback/google/calendar")
+
+    # Exchange authorization code for tokens
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }, timeout=30)
+
+    if token_resp.status_code != 200:
+        logger.error("Google Calendar token exchange failed: %d", token_resp.status_code)
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    tokens = token_resp.json()
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    expires_in = tokens.get("expires_in", 3600)
+
+    if not access_token or not refresh_token:
+        logger.error("Google Calendar OAuth: missing tokens (refresh_token=%s)",
+                      "present" if refresh_token else "absent")
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+    # Discover calendars via Google Calendar REST API
+    async with httpx.AsyncClient() as client:
+        cal_resp = await client.get(
+            _GOOGLE_CALENDAR_LIST_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30,
+        )
+
+    if cal_resp.status_code != 200:
+        logger.error("Google Calendar list failed: %d", cal_resp.status_code)
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    calendars = cal_resp.json().get("items", [])
+    manager = getattr(request.app.state, "calendar_manager", None)
+    if not manager:
+        return RedirectResponse(url="/ui/settings", status_code=303)
+
+    added = 0
+    for cal in calendars:
+        cal_id = cal.get("id", "")
+        summary = cal.get("summary", cal_id)
+        access_role = cal.get("accessRole", "reader")
+        writable = access_role in ("owner", "writer")
+
+        # Build Google CalDAV URL
+        encoded_id = urllib.parse.quote(cal_id, safe="")
+        caldav_url = f"https://apidata.googleusercontent.com/caldav/v2/{encoded_id}/events/"
+
+        try:
+            await manager.add_source(
+                name=summary,
+                url=caldav_url,
+                source_type="google",
+                writable=writable,
+                google_refresh_token=refresh_token,
+                google_token_expiry=token_expiry,
+            )
+            added += 1
+        except Exception:
+            logger.debug("Skipping calendar %s (may already exist)", cal_id)
+
+    logger.info("Google Calendar OAuth: added %d calendar(s)", added)
+
+    # Trigger initial sync in background
+    if added > 0:
+        asyncio.create_task(manager.sync_all())
+
+    response = RedirectResponse(url="/ui/settings", status_code=303)
+    response.delete_cookie(_GCAL_OAUTH_COOKIE)
+    return response
