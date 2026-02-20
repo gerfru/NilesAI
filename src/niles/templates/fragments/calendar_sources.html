@@ -1,0 +1,42 @@
+<div id="calendar-sources-list">
+    {% if error is defined and error %}
+    <p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ error }}</p>
+    {% endif %}
+    {% for src in sources %}
+    <div class="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{{ src.name }}</span>
+                <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider
+                    {% if src.source_type == 'caldav' %}bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300
+                    {% elif src.source_type == 'google' %}bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300
+                    {% else %}bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ src.source_type }}</span>
+                {% if src.writable %}
+                <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-semibold uppercase tracking-wider">R/W</span>
+                {% endif %}
+            </div>
+            <span class="text-xs text-gray-400 dark:text-gray-500 block truncate">{{ src.url }}</span>
+            {% if src.last_synced %}
+            <span class="text-xs text-green-600 dark:text-green-400">Letzter Sync: {{ src.last_synced.strftime('%d.%m.%Y %H:%M') }}</span>
+            {% endif %}
+            {% if src.last_error %}
+            <span class="text-xs text-red-500 block truncate">Fehler: {{ src.last_error }}</span>
+            {% endif %}
+        </div>
+        <div class="flex gap-1 ml-2 shrink-0">
+            <button hx-post="/ui/api/calendar/sources/{{ src.id }}/sync"
+                    hx-target="#calendar-sources-container"
+                    hx-swap="innerHTML"
+                    class="px-2 py-1 text-xs text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-600 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Sync</button>
+            <button hx-delete="/ui/api/calendar/sources/{{ src.id }}"
+                    hx-target="#calendar-sources-container"
+                    hx-swap="innerHTML"
+                    hx-confirm="'{{ src.name }}' und alle zugehoerigen Termine loeschen?"
+                    class="px-2 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Entfernen</button>
+        </div>
+    </div>
+    {% endfor %}
+    {% if not sources %}
+    <p class="text-sm text-gray-500 dark:text-gray-400 py-2">Keine Kalenderquellen konfiguriert.</p>
+    {% endif %}
+</div>

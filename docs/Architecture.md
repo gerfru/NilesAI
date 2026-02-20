@@ -73,7 +73,9 @@ src/niles/
 │   └── web.py           # Web-UI Router (htmx, Google OAuth, Sessions)
 ├── sync/
 │   ├── carddav.py       # CardDAV Kontakt-Sync
-│   └── caldav.py        # CalDAV Kalender-Sync
+│   ├── caldav.py        # CalDAV Kalender-Sync
+│   ├── ical_parser.py   # Shared iCalendar Parser (VEVENT -> dict)
+│   └── manager.py       # CalendarSourceManager (CRUD, Sync, Migration)
 ├── mcp/
 │   └── client.py        # MCP Server Manager
 ├── templates/
@@ -81,7 +83,7 @@ src/niles/
 │   ├── login.html       # Login (Google OAuth + API-Key Fallback)
 │   ├── chat.html        # Chat-UI mit SSE Streaming
 │   ├── settings.html    # Settings Dashboard
-│   └── fragments/       # htmx-Fragmente (message, history, toast, calendars)
+│   └── fragments/       # htmx-Fragmente (message, history, toast, calendars, calendar_sources)
 └── static/
     ├── css/
     │   ├── input.css    # Tailwind Direktiven + Custom Components
@@ -107,7 +109,7 @@ Event-Quellen, die eingehende Nachrichten empfangen und an den Agent weiterleite
 
 ### sync/
 
-Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events. Beide laufen als Cronjobs via APScheduler.
+Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events via CalDAV-Protokoll (PROPFIND/REPORT). `ical_parser.py` ist ein Shared Parser fuer iCalendar-Daten (VEVENT -> dict), genutzt von CalDAV und ICS-Sync. `manager.py` enthaelt den `CalendarSourceManager`, der alle Kalenderquellen verwaltet (CRUD, Sync-Orchestrierung, Auto-Migration von `.env` CalDAV-Config). Sync-Jobs laufen als Cronjobs via APScheduler.
 
 ### templates/ & static/
 
@@ -236,6 +238,39 @@ CREATE INDEX IF NOT EXISTS idx_conversations_chat
 ON conversations (chat_id, created_at);
 ```
 
+### calendar_sources
+
+```sql
+-- Erstellt durch CalendarSourceManager (sync/manager.py)
+CREATE TABLE IF NOT EXISTS calendar_sources (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'ics',   -- 'ics', 'caldav', 'google'
+    writable BOOLEAN DEFAULT FALSE,
+    enabled BOOLEAN DEFAULT TRUE,
+    auth_user TEXT,
+    auth_password TEXT,
+    google_refresh_token TEXT,
+    google_token_expiry TIMESTAMP WITH TIME ZONE,
+    last_synced TIMESTAMP WITH TIME ZONE,
+    last_error TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(url, source_type)
+);
+```
+
+### events (Erweiterung)
+
+```sql
+-- source_id verknuepft Events mit ihrer Kalenderquelle (NULL = Legacy)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS
+    source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id);
+```
+
+`ON DELETE CASCADE` entfernt automatisch alle Events einer Quelle beim Loeschen.
+
 ### settings_overrides
 
 ```sql
@@ -279,9 +314,9 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 | `carddav_url` | `"https://dav.mailbox.org/carddav/32"` | `CARDDAV_URL` | Nein |
 | `carddav_user` | `""` | `CARDDAV_USER` | Nein |
 | `carddav_password` | `""` | `CARDDAV_PASSWORD` | Nein |
-| `caldav_url` | `"https://dav.mailbox.org/caldav/"` | `CALDAV_URL` | Nein |
-| `caldav_user` | `""` | `CALDAV_USER` | Nein |
-| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein |
+| `caldav_url` | `"https://dav.mailbox.org/caldav/"` | `CALDAV_URL` | Nein* |
+| `caldav_user` | `""` | `CALDAV_USER` | Nein* |
+| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein* |
 | `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | Nein** |
 | `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | Nein** |
 | `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | Nein |
@@ -289,6 +324,8 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 \* `base_url` wird empfohlen wenn Google OAuth hinter einem Reverse Proxy laeuft (verhindert Redirect-URI aus untrusted Headers).
 
 \*\* Pflicht wenn Google OAuth gewuenscht. Ohne Google OAuth wird API-Key Login verwendet.
+
+\* `caldav_url/user/password` sind Legacy-Felder. Beim ersten Start werden sie automatisch in die `calendar_sources`-Tabelle migriert. Neue Kalenderquellen werden ueber die Web-UI verwaltet (Settings > Kalenderquellen).
 
 `postgres_password` verwendet `validation_alias="EVOLUTION_POSTGRES_PASSWORD"` -- die Env-Variable heisst anders als das Python-Feld, weil die bestehende PostgreSQL-Instanz bereits diese Variable erwartet.
 
