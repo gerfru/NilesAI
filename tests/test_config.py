@@ -12,7 +12,7 @@ def test_settings_defaults():
         postgres_password="test",
         evolution_api_key="test",
     )
-    assert settings.llm_base_url == "http://host.docker.internal:1234/v1"
+    assert settings.llm_base_url == "http://host.docker.internal:11434/v1"
     assert settings.postgres_host == "evolution_postgres"
     assert settings.postgres_port == 5432
     assert settings.postgres_db == "evolution_db"

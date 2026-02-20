@@ -101,7 +101,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "find_event",
-            "description": "Sucht Kalendertermine nach Stichwort und/oder Zeitraum.",
+            "description": "Liest bestehende Kalendertermine aus der Datenbank. Nutze dieses Tool wenn der Benutzer nach Terminen fragt, wissen will wann etwas stattfindet, oder seinen Kalender sehen will.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -126,7 +126,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_event",
-            "description": "Erstellt einen neuen Kalendertermin.",
+            "description": "Erstellt einen NEUEN Kalendertermin via CalDAV. Nur verwenden wenn der Benutzer explizit einen neuen Termin anlegen will.",
             "parameters": {
                 "type": "object",
                 "properties": {
