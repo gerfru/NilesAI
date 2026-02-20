@@ -83,7 +83,7 @@ function createUserBubble(text) {
     div.className = "flex flex-col mb-3 items-end";
     div.innerHTML =
         '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Du</span>' +
-        '<div class="max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-blue-600 text-white"></div>' +
+        '<div class="max-w-[90%] sm:max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-blue-600 text-white"></div>' +
         '<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1">' + formatTimestamp() + '</span>';
     div.querySelector(".bg-blue-600").textContent = text;
     return div;
@@ -94,7 +94,7 @@ function createAssistantBubble() {
     div.className = "flex flex-col mb-3 items-start";
     div.innerHTML =
         '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Niles</span>' +
-        '<div class="max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 markdown"></div>' +
+        '<div class="max-w-[90%] sm:max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 markdown"></div>' +
         '<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1">' + formatTimestamp() + '</span>';
     return div;
 }
