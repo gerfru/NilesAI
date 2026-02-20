@@ -1,7 +1,7 @@
 """System prompt loading and building."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -29,7 +29,10 @@ def load_system_prompt(path: str | None = None) -> str:
 
 
 def build_system_prompt(
-    base_prompt: str, memories: list[dict], timezone: str = "Europe/Vienna",
+    base_prompt: str,
+    memories: list[dict],
+    timezone: str = "Europe/Vienna",
+    calendar_sources: list[str] | None = None,
 ) -> str:
     """Build full system prompt with current datetime and memory context."""
     try:
@@ -51,7 +54,20 @@ def build_system_prompt(
         f"Es ist {now.strftime('%H:%M')} Uhr ({timezone})."
     )
 
+    # Add upcoming 7 days so the LLM doesn't have to calculate weekday→date
+    upcoming_lines = []
+    for i in range(1, 8):
+        day = now + timedelta(days=i)
+        day_name = weekdays_de[day.weekday()]
+        upcoming_lines.append(f"- {day_name}: {day.strftime('%d.%m.%Y')}")
+    time_section += "\n\nKommende Tage:\n" + "\n".join(upcoming_lines)
+
     prompt = base_prompt + time_section
+
+    if calendar_sources:
+        prompt += "\n\n## Verfügbare Kalender\n"
+        for name in calendar_sources:
+            prompt += f"- {name}\n"
 
     if memories:
         memory_lines = [f"- {e['key']}: {e['value']}" for e in memories]

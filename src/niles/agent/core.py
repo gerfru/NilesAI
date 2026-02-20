@@ -118,6 +118,10 @@ TOOLS = [
                         "type": "string",
                         "description": "Enddatum (ISO-Format). Nur setzen bei expliziten Zeitraeumen wie 'diese Woche' oder 'naechste 7 Tage'. NICHT setzen bei Fragen nach einem einzelnen Tag.",
                     },
+                    "calendar": {
+                        "type": "string",
+                        "description": "Name des Kalenders in dem gesucht werden soll (optional). Bei Geburtstags-Fragen den Geburtstags-Kalender verwenden.",
+                    },
                 },
                 "required": [],
             },
@@ -215,8 +219,21 @@ class NilesAgent:
         chat_id = event["from"]
 
         memories = await self.memory.list_all()
+
+        # Load calendar source names so the LLM knows which calendars exist
+        source_names = []
+        if self.calendar_manager:
+            try:
+                sources = await self.calendar_manager.get_sources()
+                source_names = [s["name"] for s in sources if s.get("enabled", True)]
+            except Exception:
+                logger.warning("Failed to load calendar sources for prompt")
+
         system_prompt = build_system_prompt(
-            self.base_prompt, memories, timezone=self.config.timezone,
+            self.base_prompt,
+            memories,
+            timezone=self.config.timezone,
+            calendar_sources=source_names,
         )
 
         history_messages = await self.history.get_recent(chat_id)
@@ -450,6 +467,7 @@ class NilesAgent:
                 query=args.get("query", ""),
                 date_from=args.get("date_from", ""),
                 date_to=args.get("date_to", ""),
+                calendar=args.get("calendar", ""),
             )
             if events:
                 return {"events": events, "count": len(events)}
