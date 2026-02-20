@@ -25,8 +25,6 @@ EDITABLE_SETTINGS = {
     "log_level",
     "feature_whatsapp_auto_reply",
     "feature_tool_send_whatsapp",
-    "feature_carddav_sync",
-    "feature_caldav_sync",
     "caldav_calendars",
     "carddav_url",
     "carddav_user",

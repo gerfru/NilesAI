@@ -143,13 +143,30 @@ def _set_csrf_cookie(request: Request, response: Response) -> None:
     )
 
 
-def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
-    """Check session + CSRF. Returns (user_dict, None) or (None, error_response)."""
+async def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
+    """Check session + CSRF + user existence in DB.
+
+    Returns (user_dict, None) or (None, error_response).
+    Invalidates session cookie when the user row no longer exists (e.g. after
+    a database reset while the browser still holds a signed cookie).
+    """
     user = _get_session_user(request)
     if user is None:
         return None, Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
     if not _verify_csrf(request):
         return None, Response(status_code=403, headers={"HX-Redirect": "/ui/login"})
+
+    # Verify user still exists in DB (skip for API-key admin uid=0)
+    uid = user.get("uid")
+    if uid and uid != 0:
+        user_store = getattr(request.app.state, "user_store", None)
+        if user_store and await user_store.get_by_id(uid) is None:
+            logger.warning("Stale session: user_id=%s not in users table", uid)
+            response = Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+            response.delete_cookie(SESSION_COOKIE_NAME)
+            response.delete_cookie(CSRF_COOKIE_NAME)
+            return None, response
+
     return user, None
 
 
@@ -182,7 +199,6 @@ def _safe_settings_dict(settings) -> dict:
     feature_flags = {}
     for key in [
         "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
-        "feature_carddav_sync", "feature_caldav_sync",
     ]:
         feature_flags[key] = getattr(settings, key)
 
@@ -493,7 +509,7 @@ async def chat_history(
 @router.post("/api/chat", response_class=HTMLResponse)
 async def chat_send(request: Request, message: str = Form(...)):
     """Process a chat message, return HTML fragment with user + assistant bubbles."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -537,7 +553,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
     reconnect semantics (retry/last-event-id) don't apply.  A dropped
     connection simply ends the stream; the user re-sends if needed.
     """
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -574,7 +590,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
 @router.post("/api/chat/clear", response_class=HTMLResponse)
 async def chat_clear(request: Request):
     """Clear chat history for current user."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -587,7 +603,7 @@ async def chat_clear(request: Request):
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
 async def update_setting(request: Request, key: str, value: str = Form(...)):
     """Update a single runtime setting."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -700,7 +716,7 @@ async def calendar_source_add(
     auth_password: str = Form(""),
 ):
     """Add a new calendar source and return updated sources list."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -747,7 +763,7 @@ async def calendar_source_add(
 @router.delete("/api/calendar/sources/{source_id}", response_class=HTMLResponse)
 async def calendar_source_remove(request: Request, source_id: int):
     """Remove a calendar source (CASCADE deletes events)."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -768,7 +784,7 @@ async def calendar_source_remove(request: Request, source_id: int):
 @router.post("/api/calendar/sources/{source_id}/sync", response_class=HTMLResponse)
 async def calendar_source_sync(request: Request, source_id: int):
     """Sync a single calendar source."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -1010,7 +1026,7 @@ async def whatsapp_status(request: Request):
 @router.post("/api/whatsapp/connect", response_class=HTMLResponse)
 async def whatsapp_connect(request: Request):
     """Create an Evolution API instance and return QR code fragment."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -1039,7 +1055,18 @@ async def whatsapp_connect(request: Request):
     else:
         qr_base64 = result.get("qrcode", {}).get("base64", "")
 
-    await wa_store.upsert_session(user["uid"], instance_name, status="connecting")
+    try:
+        await wa_store.upsert_session(user["uid"], instance_name, status="connecting")
+    except asyncpg.ForeignKeyViolationError:
+        logger.warning("FK violation: user_id=%s not in users table", user["uid"])
+        response = HTMLResponse(
+            '<p class="text-sm text-red-500">'
+            "Sitzung ungueltig &ndash; bitte erneut einloggen.</p>",
+            status_code=401,
+            headers={"HX-Redirect": "/ui/login"},
+        )
+        response.delete_cookie(SESSION_COOKIE_NAME)
+        return response
 
     return templates.TemplateResponse(
         request, "fragments/whatsapp_status.html", {
@@ -1053,7 +1080,7 @@ async def whatsapp_connect(request: Request):
 @router.post("/api/whatsapp/disconnect", response_class=HTMLResponse)
 async def whatsapp_disconnect(request: Request):
     """Logout and delete the user's Evolution API instance."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -1131,7 +1158,7 @@ async def contacts_connect(
     password: str = Form(...),
 ):
     """Test CardDAV connection, then save credentials and trigger initial sync."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -1162,17 +1189,19 @@ async def contacts_connect(
             {"connected": False, "carddav_error": message},
         )
 
-    # Connection successful — persist credentials
+    # Connection successful — persist credentials (plaintext in DB,
+    # acceptable for self-hosted; same pattern as CalDAV credentials).
     settings_store = request.app.state.settings_store
     try:
         await settings_store.set("carddav_url", url.strip())
         await settings_store.set("carddav_user", username.strip())
         await settings_store.set("carddav_password", password)
-    except ValueError as exc:
+    except Exception as exc:
+        logger.exception("Failed to persist CardDAV credentials")
         carddav_sync.update_config(settings)
         return templates.TemplateResponse(
             request, "fragments/carddav_status.html",
-            {"connected": False, "carddav_error": str(exc)},
+            {"connected": False, "carddav_error": f"Speichern fehlgeschlagen: {exc}"},
         )
 
     request.app.state.settings = new_settings
@@ -1192,7 +1221,7 @@ async def contacts_connect(
 @router.post("/api/contacts/disconnect", response_class=HTMLResponse)
 async def contacts_disconnect(request: Request):
     """Remove CardDAV credentials and delete all synced contacts."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -1231,7 +1260,7 @@ async def contacts_disconnect(request: Request):
 @router.post("/api/contacts/sync", response_class=HTMLResponse)
 async def contacts_sync(request: Request):
     """Trigger a manual CardDAV contact sync."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
