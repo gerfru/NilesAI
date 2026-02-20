@@ -23,7 +23,7 @@ Niles ist ein lokaler, privater AI-Butler auf einem Mac Mini M4. Er empfaengt Ev
 
 | Komponente | Interner Port | Externer Zugang | Zweck |
 | ---------- | ------------- | --------------- | ----- |
-| LM Studio (Qwen 2.5 Coder 7B MLX) | 1234 (Host) | `http://localhost:1234` | LLM Inference (OpenAI-kompatibel) |
+| Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM Inference (OpenAI-kompatibel) |
 | PostgreSQL | 5432 | Nicht exponiert | Datenbank (evolution_db) |
 | Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp Gateway |
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python Backend + Web-UI |
@@ -59,7 +59,7 @@ Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
                          │    │ Google OAuth + Sessions    │
                          │    │                           │
                          │         v                      │
-POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> LM Studio :1234
+POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> Ollama :11434
                          │    │  Tool-Call Loop (max 5)   │
                          │    │                           │
                          │    ├─ memory/store.py          │──> PostgreSQL :5432
@@ -191,8 +191,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     # LLM
-    llm_base_url: str = "http://host.docker.internal:1234/v1"
-    llm_model: str = "qwen2.5-coder-7b-instruct-mlx"
+    llm_base_url: str = "http://host.docker.internal:11434/v1"
+    llm_model: str = "llama3.1:8b"
     # PostgreSQL
     postgres_password: str  # validation_alias="EVOLUTION_POSTGRES_PASSWORD"
     # Evolution API
@@ -561,7 +561,7 @@ Alle Container im `niles_network`. Container-Namen als Hostnamen:
 - `evolution_postgres` (PostgreSQL)
 - `evolution_api` (Evolution API)
 - `niles_core` (Niles, auch fuer Webhooks)
-- `host.docker.internal:1234` (LM Studio auf dem Host)
+- `host.docker.internal:11434` (Ollama auf dem Host)
 
 ### Evolution API Webhook
 
