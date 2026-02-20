@@ -13,13 +13,15 @@ class TestEditableWhitelist:
             "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
             "feature_carddav_sync", "feature_caldav_sync",
             "caldav_calendars",
+            "carddav_url", "carddav_user", "carddav_password",
         }
         assert EDITABLE_SETTINGS == expected
 
     def test_does_not_contain_credentials(self):
+        """Infrastructure credentials that must never be runtime-editable."""
         forbidden = {
             "postgres_password", "evolution_api_key", "niles_api_key",
-            "carddav_password", "caldav_password",
+            "caldav_password",
         }
         assert forbidden.isdisjoint(EDITABLE_SETTINGS)
 
