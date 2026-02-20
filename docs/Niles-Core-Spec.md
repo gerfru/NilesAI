@@ -107,6 +107,7 @@ Niles/
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV Kontakt-Sync
 │       │   ├── caldav.py             # CalDAV Kalender-Sync
+│       │   ├── google_auth.py        # Google Calendar OAuth (Bearer + Refresh)
 │       │   ├── ical_parser.py        # Shared iCalendar Parser
 │       │   └── manager.py            # CalendarSourceManager (CRUD, Sync, Migration)
 │       ├── mcp/
@@ -394,9 +395,13 @@ APScheduler fuer taeglichen Sync (03:00). Feature Flag: `FEATURE_CARDDAV_SYNC`.
 
 **CalendarSourceManager** (`manager.py`) verwaltet alle Kalenderquellen (ICS, CalDAV, Google) ueber die `calendar_sources`-Tabelle. CRUD-Operationen, Sync-Orchestrierung und Auto-Migration von `.env` CalDAV-Config beim ersten Start.
 
-**CalDAVSync** (`caldav.py`) synchronisiert einzelne CalDAV-Quellen via PROPFIND/REPORT. Parameterisierter Constructor (URL, Auth, Timezone, source_id).
+**CalDAVSync** (`caldav.py`) synchronisiert einzelne CalDAV- und Google-Quellen via PROPFIND/REPORT. Parameterisierter Constructor (URL, Auth, Timezone, source_id). Google-Quellen nutzen dieselbe CalDAV-Logik mit Bearer-Token statt Basic-Auth.
+
+**GoogleCalendarAuth** (`google_auth.py`) ist eine httpx.Auth-Klasse fuer Google Calendar OAuth. Haelt einen In-Memory-Cache des Access-Tokens und refresht automatisch via `refresh_token` wenn abgelaufen. Wird pro Sync-Lauf instanziiert.
 
 **iCalendar Parser** (`ical_parser.py`) ist ein Shared Parser fuer VEVENT-Daten, genutzt von CalDAV und ICS-Sync.
+
+**Google Calendar OAuth Flow** (`web.py`): `/ui/api/calendar/google/connect` leitet zu Google OAuth mit Calendar-Scope weiter. Der Callback `/ui/callback/google/calendar` tauscht den Code gegen Tokens, entdeckt alle Kalender via Google Calendar REST API und erstellt automatisch `calendar_sources`-Eintraege. Separater Flow vom Login-OAuth (anderer Scope, anderer Callback).
 
 APScheduler fuer taeglichen Sync: CardDAV 03:00, CalDAV 03:15, Kalenderquellen 03:20.
 Feature Flag `FEATURE_CALDAV_SYNC` aktiviert den Legacy-CalDAV-Sync. Neue Kalenderquellen werden unabhaengig davon ueber die Web-UI verwaltet und automatisch gesynct.
