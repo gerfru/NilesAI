@@ -39,6 +39,17 @@
     100% { opacity: 0; }
 }
 
+/* htmx loading indicator (hidden by default, shown during in-flight requests) */
+.htmx-indicator {
+    display: none;
+}
+.htmx-request .htmx-indicator {
+    display: flex;
+}
+.htmx-request .htmx-hide-on-request {
+    display: none;
+}
+
 /* Thinking dots animation */
 @layer utilities {
     .animate-blink {
