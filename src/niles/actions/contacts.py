@@ -71,7 +71,7 @@ class ContactsAction:
             params.append(name)
 
             query = f"""
-                SELECT full_name, first_name, last_name,
+                SELECT id, full_name, first_name, last_name,
                        phone_primary, phone_mobile, phone_work, email
                 FROM contacts
                 WHERE {where_clause}
@@ -90,7 +90,7 @@ class ContactsAction:
             # Single-word search: original logic
             row = await self.pool.fetchrow(
                 """
-                SELECT full_name, first_name, last_name,
+                SELECT id, full_name, first_name, last_name,
                        phone_primary, phone_mobile, phone_work, email
                 FROM contacts
                 WHERE full_name ILIKE '%' || $1 || '%'
@@ -112,12 +112,39 @@ class ContactsAction:
         if not row:
             return None
 
-        # Phone priority: mobile > primary > work
-        raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
-        phone = normalize_phone(raw_phone) if raw_phone else None
+        # Fetch all phone numbers from contact_phones table
+        contact_id = row["id"]
+        phone_rows = await self.pool.fetch(
+            """
+            SELECT type, number FROM contact_phones
+            WHERE contact_id = $1
+            ORDER BY
+                CASE type
+                    WHEN 'mobile' THEN 1
+                    WHEN 'home' THEN 2
+                    WHEN 'work' THEN 3
+                    ELSE 4
+                END
+            """,
+            contact_id,
+        )
+
+        phones = [
+            {"type": p["type"], "number": normalize_phone(p["number"])}
+            for p in phone_rows
+        ]
+
+        # Preferred phone: first from sorted list (mobile > home > work > other)
+        preferred = phones[0]["number"] if phones else None
+
+        # Fallback to legacy columns if contact_phones is empty (pre-migration)
+        if not phones:
+            raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
+            preferred = normalize_phone(raw_phone) if raw_phone else None
 
         return {
             "full_name": row["full_name"],
-            "phone": phone,
+            "phone": preferred,
+            "phones": phones,
             "email": row["email"],
         }

@@ -27,7 +27,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "find_contact",
-            "description": "Sucht einen Kontakt nach Name und gibt Telefonnummer und Email zurück.",
+            "description": "Sucht einen Kontakt nach Name und gibt alle Telefonnummern (phone = bevorzugte, phones = alle mit Typ) und Email zurück.",
             "parameters": {
                 "type": "object",
                 "properties": {
