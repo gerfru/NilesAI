@@ -4,7 +4,7 @@
 <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Settings</h2>
 <div id="toast-container"></div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Feature Flags</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, enabled in feature_flags.items() %}
@@ -24,7 +24,7 @@
     {% endfor %}
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">LLM Configuration</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}
@@ -42,7 +42,7 @@
     {% endfor %}
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-3 text-gray-900 dark:text-white">General</h3>
     <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
@@ -70,7 +70,7 @@
     </form>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Kalenderquellen</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">ICS-Abonnements (nur lesen), CalDAV-Kalender (lesen + schreiben) und Google Kalender (via OAuth). Termine erscheinen in der Kalendersuche.</p>
 
@@ -81,7 +81,7 @@
     {% if google_configured is defined and google_configured %}
     <a href="/ui/api/calendar/google/connect"
        class="inline-flex items-center gap-2.5 px-4 py-2.5 mb-4 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm no-underline transition-colors">
-        <svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24">
+        <svg class="w-[18px] h-[18px] shrink-0" width="18" height="18" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -92,31 +92,35 @@
     {% endif %}
 
     <div class="mb-4" id="calendar-add-form">
-        <div class="flex gap-2 mb-2">
-            <select id="cal-source-type"
-                    class="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="ics">ICS</option>
-                <option value="caldav">CalDAV</option>
-            </select>
-            <input type="text" id="cal-source-name" placeholder="Name (optional)"
-                   maxlength="200"
-                   class="w-1/4 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="url" id="cal-source-url" placeholder="https://..."
-                   maxlength="2048" required
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <form hx-post="/ui/api/calendar/sources"
-                  hx-target="#calendar-sources-container"
-                  hx-swap="innerHTML" class="contents">
-                <input type="hidden" name="source_type" id="cal-form-type" value="ics">
-                <input type="hidden" name="name" id="cal-form-name" value="">
-                <input type="hidden" name="url" id="cal-form-url" value="">
-                <input type="hidden" name="auth_user" id="cal-form-user" value="">
-                <input type="hidden" name="auth_password" id="cal-form-password" value="">
-                <button type="submit" data-calendar-add
-                        class="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer shrink-0">Hinzufuegen</button>
-            </form>
+        <div class="flex flex-col sm:flex-row gap-2 mb-2">
+            <div class="flex gap-2">
+                <select id="cal-source-type"
+                        class="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="ics">ICS</option>
+                    <option value="caldav">CalDAV</option>
+                </select>
+                <input type="text" id="cal-source-name" placeholder="Name (optional)"
+                       maxlength="200"
+                       class="flex-1 sm:w-36 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex gap-2 flex-1">
+                <input type="url" id="cal-source-url" placeholder="https://..."
+                       maxlength="2048" required
+                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <form hx-post="/ui/api/calendar/sources"
+                      hx-target="#calendar-sources-container"
+                      hx-swap="innerHTML" class="contents">
+                    <input type="hidden" name="source_type" id="cal-form-type" value="ics">
+                    <input type="hidden" name="name" id="cal-form-name" value="">
+                    <input type="hidden" name="url" id="cal-form-url" value="">
+                    <input type="hidden" name="auth_user" id="cal-form-user" value="">
+                    <input type="hidden" name="auth_password" id="cal-form-password" value="">
+                    <button type="submit" data-calendar-add
+                            class="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer shrink-0">Hinzufuegen</button>
+                </form>
+            </div>
         </div>
-        <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2 pl-[7.5rem]">
+        <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2 sm:pl-[7.5rem]">
             <input type="text" id="cal-source-user" placeholder="Benutzername"
                    maxlength="256"
                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -131,7 +135,7 @@
          hx-trigger="load"
          hx-swap="innerHTML">
         <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
-            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <svg class="animate-spin h-4 w-4" width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
@@ -140,7 +144,7 @@
     </div>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Infrastructure (read-only)</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Diese Werte koennen nur in der <code class="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
     <div class="overflow-x-auto">
