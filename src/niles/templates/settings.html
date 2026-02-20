@@ -25,6 +25,23 @@
 </div>
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">WhatsApp</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Verknuepfe dein WhatsApp-Konto mit Niles.</p>
+    <div id="whatsapp-container"
+         hx-get="/ui/api/whatsapp/status"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 text-sm">
+            <svg class="animate-spin h-4 w-4" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Status wird geladen...
+        </div>
+    </div>
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}

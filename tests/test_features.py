@@ -115,6 +115,7 @@ class TestAutoReplyFlag:
         mock_app.state.whatsapp_action.send_message.assert_called_once_with(
             to="436601234567@s.whatsapp.net",
             text="Reply text",
+            instance=None,
         )
 
     async def test_webhook_rejects_invalid_token(self, mock_app, webhook_payload):
