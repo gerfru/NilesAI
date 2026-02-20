@@ -582,8 +582,8 @@ class TestResolveWriteCollection:
 
         assert url == "https://dav.mailbox.org/caldav/Y2FsOi8vMC8zMQ/"
 
-    async def test_direct_collection_url_returned(self, sync):
-        """When caldav_url is already a collection, return it."""
+    async def test_returns_first_discovered_collection(self, sync):
+        """Single collection discovered; returned as-is."""
         with patch.object(sync, "_get_sync_collections", return_value=[
             "https://dav.mailbox.org/caldav/123/",
         ]):
