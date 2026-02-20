@@ -233,6 +233,12 @@ class NilesAgent:
         if chat_id not in self._pending_phone_choices:
             return None
 
+        # Expire stale choices (5 min TTL)
+        pending_peek = self._pending_phone_choices[chat_id]
+        if time.monotonic() > pending_peek.get("expires_at", float("inf")):
+            del self._pending_phone_choices[chat_id]
+            return None
+
         # Accept "1", "2", "1.", "2." etc.
         stripped = content.strip().rstrip(".")
         if not stripped.isdigit():
@@ -241,12 +247,13 @@ class NilesAgent:
             return None
 
         choice_idx = int(stripped) - 1
-        pending = self._pending_phone_choices.pop(chat_id)
+        pending = self._pending_phone_choices[chat_id]  # peek, don't pop yet
 
         if choice_idx < 0 or choice_idx >= len(pending["phones"]):
             count = len(pending["phones"])
             return f"Ungültige Auswahl. Bitte wähle 1 bis {count}."
 
+        self._pending_phone_choices.pop(chat_id)  # valid choice — remove state
         phone = pending["phones"][choice_idx]["number"]
         instance = await self._resolve_wa_instance(chat_id)
 
@@ -537,6 +544,7 @@ class NilesAgent:
                         "phones": phones,
                         "text": text,
                         "contact_name": contact["full_name"],
+                        "expires_at": time.monotonic() + 300,
                     }
                     lines = [f"Es gibt mehrere Nummern für {contact['full_name']}:"]
                     for i, p in enumerate(phones, 1):

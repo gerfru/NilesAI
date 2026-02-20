@@ -72,6 +72,11 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         if session:
             chat_id = f"web-user-{session['user_id']}"
             instance_for_reply = instance_name
+        else:
+            logger.warning(
+                "Webhook from unknown instance '%s' — falling back to global instance",
+                instance_name,
+            )
 
     # Fallback: use sender phone as chat ID (legacy global instance)
     if not chat_id:
