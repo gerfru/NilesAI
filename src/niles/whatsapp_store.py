@@ -20,7 +20,8 @@ class WhatsAppSessionStore:
                 user_id INTEGER PRIMARY KEY REFERENCES users(id),
                 instance_name TEXT UNIQUE NOT NULL,
                 phone_number TEXT,
-                status TEXT NOT NULL DEFAULT 'disconnected',
+                status TEXT NOT NULL DEFAULT 'disconnected'
+                    CHECK (status IN ('disconnected', 'connecting', 'connected')),
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )

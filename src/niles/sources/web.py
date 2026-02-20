@@ -963,12 +963,22 @@ async def callback_google_calendar(
 # --- WhatsApp session management ---
 
 
+_WA_REQUIRES_GOOGLE = (
+    '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
+    "WhatsApp-Verknuepfung erfordert einen Google-Login.</p>"
+)
+
+
 @router.get("/api/whatsapp/status", response_class=HTMLResponse)
 async def whatsapp_status(request: Request):
     """Return WhatsApp connection status fragment."""
     user = _get_session_user(request)
     if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    # API-key admin (uid=0) has no row in users table → FK would violate
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
 
     wa_store = getattr(request.app.state, "wa_store", None)
     if not wa_store:
@@ -995,7 +1005,8 @@ async def whatsapp_status(request: Request):
             qr_data = await whatsapp_action.get_qr_code(session["instance_name"])
             ctx["wa_qr"] = qr_data.get("base64", "")
         else:
-            # Instance exists in DB but Evolution says closed — clean up
+            # Instance exists in DB but Evolution says closed — stale row
+            # will be overwritten on next reconnect via upsert_session
             ctx["wa_status"] = "disconnected"
 
     return templates.TemplateResponse(
@@ -1010,6 +1021,9 @@ async def whatsapp_connect(request: Request):
     if error:
         return error
 
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
+
     wa_store = getattr(request.app.state, "wa_store", None)
     whatsapp_action = request.app.state.whatsapp_action
     if not wa_store:
@@ -1019,6 +1033,8 @@ async def whatsapp_connect(request: Request):
 
     instance_name = f"niles-wa-{user['uid']}"
     webhook_url = _build_redirect_uri(request, "/webhook/whatsapp")
+    # TODO: use a dedicated WEBHOOK_SECRET instead of the Evolution API key
+    # to limit exposure if Evolution's stored webhook URLs are ever leaked.
     webhook_url += f"?token={request.app.state.settings.evolution_api_key}"
 
     result = await whatsapp_action.create_instance(instance_name, webhook_url)
@@ -1047,6 +1063,9 @@ async def whatsapp_disconnect(request: Request):
     user, error = _require_auth_and_csrf(request)
     if error:
         return error
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
 
     wa_store = getattr(request.app.state, "wa_store", None)
     whatsapp_action = request.app.state.whatsapp_action
