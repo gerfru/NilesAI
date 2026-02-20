@@ -181,6 +181,8 @@ tests/
 ├── test_features.py         # Feature Flags + Webhook Auth
 ├── test_carddav.py          # CardDAV Sync
 ├── test_caldav.py           # CalDAV Sync
+├── test_ical_parser.py      # iCalendar Parser
+├── test_calendar_manager.py # CalendarSourceManager (CRUD, Sync, Migration)
 ├── test_mcp.py              # MCP Integration
 ├── test_security.py         # API Auth, Rate Limiting
 ├── test_settings_store.py   # Runtime Settings Store

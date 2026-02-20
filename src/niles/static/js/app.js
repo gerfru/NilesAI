@@ -283,6 +283,41 @@ document.body.addEventListener("htmx:afterRequest", function(evt) {
     if (btn) btn.removeAttribute("aria-busy");
 });
 
+/* Calendar source add form -- show/hide auth fields based on type + populate hidden fields */
+document.body.addEventListener("change", function(evt) {
+    if (evt.target.id !== "cal-source-type") return;
+    var authFields = document.getElementById("caldav-auth-fields");
+    if (authFields) {
+        if (evt.target.value === "caldav") {
+            authFields.classList.remove("hidden");
+        } else {
+            authFields.classList.add("hidden");
+        }
+    }
+});
+
+document.body.addEventListener("click", function(evt) {
+    if (!evt.target.hasAttribute("data-calendar-add")) return;
+    /* Populate hidden form fields from visible inputs before htmx submit */
+    var type = document.getElementById("cal-source-type");
+    var name = document.getElementById("cal-source-name");
+    var url = document.getElementById("cal-source-url");
+    var user = document.getElementById("cal-source-user");
+    var password = document.getElementById("cal-source-password");
+
+    if (type) document.getElementById("cal-form-type").value = type.value;
+    if (name) document.getElementById("cal-form-name").value = name.value;
+    if (url) document.getElementById("cal-form-url").value = url.value;
+    if (user) document.getElementById("cal-form-user").value = user.value;
+    if (password) document.getElementById("cal-form-password").value = password.value;
+
+    /* Validate URL is provided */
+    if (!url || !url.value.trim()) {
+        evt.preventDefault();
+        return;
+    }
+});
+
 /* Render markdown + convert timestamps in content loaded via htmx (history pagination) */
 document.body.addEventListener("htmx:afterSettle", function() {
     convertTimestamps();
