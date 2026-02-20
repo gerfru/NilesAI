@@ -40,34 +40,74 @@ class ContactsAction:
         """
         Search contact by name (case-insensitive, partial match).
 
+        For multi-word queries (e.g. "Thomas Brunner"), each word must match
+        somewhere in the contact's name fields. This handles cases where
+        full_name is stored as "Brunner Thomas" or the search order differs.
+
         Priority:
         1. Exact match on full_name
         2. Prefix match on full_name
         3. Partial match on full_name
-        4. Match on first_name or last_name
+        4. All words match across name fields
 
         Returns dict with full_name, phone, email or None.
         """
-        row = await self.pool.fetchrow(
+        words = name.split()
+        if len(words) > 1:
+            # Multi-word search: each word must appear in at least one name field
+            word_conditions = []
+            params = []
+            for i, word in enumerate(words):
+                p = f"${i + 1}"
+                word_conditions.append(
+                    f"(full_name ILIKE '%%' || {p} || '%%' "
+                    f"OR first_name ILIKE '%%' || {p} || '%%' "
+                    f"OR last_name ILIKE '%%' || {p} || '%%')"
+                )
+                params.append(word)
+
+            where_clause = " AND ".join(word_conditions)
+            name_param = f"${len(params) + 1}"
+            params.append(name)
+
+            query = f"""
+                SELECT full_name, first_name, last_name,
+                       phone_primary, phone_mobile, phone_work, email
+                FROM contacts
+                WHERE {where_clause}
+                ORDER BY
+                    CASE
+                        WHEN LOWER(full_name) = LOWER({name_param}) THEN 1
+                        WHEN LOWER(full_name) LIKE LOWER({name_param}) || '%%' THEN 2
+                        WHEN LOWER(full_name) LIKE '%%' || LOWER({name_param}) || '%%' THEN 3
+                        ELSE 4
+                    END,
+                    full_name ASC
+                LIMIT 1
             """
-            SELECT full_name, first_name, last_name,
-                   phone_primary, phone_mobile, phone_work, email
-            FROM contacts
-            WHERE full_name ILIKE '%' || $1 || '%'
-               OR first_name ILIKE '%' || $1 || '%'
-               OR last_name ILIKE '%' || $1 || '%'
-            ORDER BY
-                CASE
-                    WHEN LOWER(full_name) = LOWER($1) THEN 1
-                    WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                    WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                    ELSE 4
-                END,
-                full_name ASC
-            LIMIT 1
-            """,
-            name,
-        )
+            row = await self.pool.fetchrow(query, *params)
+        else:
+            # Single-word search: original logic
+            row = await self.pool.fetchrow(
+                """
+                SELECT full_name, first_name, last_name,
+                       phone_primary, phone_mobile, phone_work, email
+                FROM contacts
+                WHERE full_name ILIKE '%' || $1 || '%'
+                   OR first_name ILIKE '%' || $1 || '%'
+                   OR last_name ILIKE '%' || $1 || '%'
+                ORDER BY
+                    CASE
+                        WHEN LOWER(full_name) = LOWER($1) THEN 1
+                        WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
+                        WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
+                        ELSE 4
+                    END,
+                    full_name ASC
+                LIMIT 1
+                """,
+                name,
+            )
 
         if not row:
             return None
