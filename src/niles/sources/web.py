@@ -158,7 +158,7 @@ async def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Respons
 
     # Verify user still exists in DB (skip for API-key admin uid=0)
     uid = user.get("uid")
-    if uid and uid != 0:
+    if uid:  # uid=0 is the synthetic API-key admin; real users have uid > 0
         user_store = getattr(request.app.state, "user_store", None)
         if user_store and await user_store.get_by_id(uid) is None:
             logger.warning("Stale session: user_id=%s not in users table", uid)
