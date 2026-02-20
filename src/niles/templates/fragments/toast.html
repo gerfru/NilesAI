@@ -1,4 +1,4 @@
 <div role="alert"
-     class="px-4 py-3 rounded-lg mb-2 text-sm text-white animate-fadeout {% if toast_type == 'success' %}bg-green-500{% else %}bg-red-500{% endif %}">
+     class="px-4 py-3 rounded-lg mb-2 text-sm font-medium animate-fadeout {% if toast_type == 'success' %}bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300{% else %}bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300{% endif %}">
     {{ message }}
 </div>
