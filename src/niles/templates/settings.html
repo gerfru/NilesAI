@@ -74,6 +74,10 @@
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Kalenderquellen</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">ICS-Abonnements (nur lesen), CalDAV-Kalender (lesen + schreiben) und Google Kalender (via OAuth). Termine erscheinen in der Kalendersuche.</p>
 
+    {% if calendar_error is defined and calendar_error %}
+    <p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ calendar_error }}</p>
+    {% endif %}
+
     {% if google_configured is defined and google_configured %}
     <div class="mb-4">
         <a href="/ui/api/calendar/google/connect"
