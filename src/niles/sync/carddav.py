@@ -43,6 +43,20 @@ class CardDAVSync:
         self._base_url = match.group(0) if match else ""
         logger.info("CardDAV credentials updated via settings UI")
 
+    async def test_connection(self) -> tuple[bool, str]:
+        """Test CardDAV connection with current credentials. Returns (ok, message)."""
+        if not self.carddav_url:
+            return False, "Keine CardDAV URL konfiguriert."
+        try:
+            vcf_urls = await self._propfind()
+            return True, f"{len(vcf_urls)} Kontakte gefunden."
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                return False, "Authentifizierung fehlgeschlagen (401)."
+            return False, f"Server-Fehler: HTTP {exc.response.status_code}"
+        except Exception as exc:
+            return False, f"Verbindung fehlgeschlagen: {exc}"
+
     async def initialize(self) -> None:
         """Create contacts table and indexes if they don't exist."""
         await self.pool.execute("""
@@ -108,10 +122,13 @@ class CardDAVSync:
 
     async def _propfind(self) -> list[str]:
         """Send PROPFIND request and extract .vcf URLs from response."""
-        async with httpx.AsyncClient() as client:
+        url = self.carddav_url
+        if not url.endswith("/"):
+            url += "/"
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.request(
                 "PROPFIND",
-                self.carddav_url,
+                url,
                 content=_PROPFIND_BODY,
                 headers={
                     "Depth": "1",
