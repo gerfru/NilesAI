@@ -26,7 +26,7 @@ Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
                          │    │ Google OAuth + Sessions    │
                          │    │                           │
                          │         v                      │
-POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> LM Studio :1234
+POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> Ollama :11434
                          │    │  Tool-Call Loop (max 5)   │
                          │    │                           │
                          │    ├─ memory/store.py          │──> PostgreSQL :5432
@@ -46,7 +46,7 @@ POST /chat  ──────────> │  agent/core.py (NilesAgent)    �
                          └────────────────────────────────┘
 ```
 
-Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). LM Studio laeuft nativ auf dem Host und ist ueber `host.docker.internal:1234` erreichbar.
+Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). Ollama laeuft nativ auf dem Host und ist ueber `host.docker.internal:11434` erreichbar.
 
 ---
 
@@ -73,7 +73,9 @@ src/niles/
 │   └── web.py           # Web-UI Router (htmx, Google OAuth, Sessions)
 ├── sync/
 │   ├── carddav.py       # CardDAV Kontakt-Sync
-│   └── caldav.py        # CalDAV Kalender-Sync
+│   ├── caldav.py        # CalDAV Kalender-Sync
+│   ├── ical_parser.py   # Shared iCalendar Parser (VEVENT -> dict)
+│   └── manager.py       # CalendarSourceManager (CRUD, Sync, Migration)
 ├── mcp/
 │   └── client.py        # MCP Server Manager
 ├── templates/
@@ -81,7 +83,7 @@ src/niles/
 │   ├── login.html       # Login (Google OAuth + API-Key Fallback)
 │   ├── chat.html        # Chat-UI mit SSE Streaming
 │   ├── settings.html    # Settings Dashboard
-│   └── fragments/       # htmx-Fragmente (message, history, toast, calendars)
+│   └── fragments/       # htmx-Fragmente (message, history, toast, calendars, calendar_sources)
 └── static/
     ├── css/
     │   ├── input.css    # Tailwind Direktiven + Custom Components
@@ -107,7 +109,7 @@ Event-Quellen, die eingehende Nachrichten empfangen und an den Agent weiterleite
 
 ### sync/
 
-Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events. Beide laufen als Cronjobs via APScheduler.
+Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events via CalDAV-Protokoll (PROPFIND/REPORT). `ical_parser.py` ist ein Shared Parser fuer iCalendar-Daten (VEVENT -> dict), genutzt von CalDAV und ICS-Sync. `manager.py` enthaelt den `CalendarSourceManager`, der alle Kalenderquellen verwaltet (CRUD, Sync-Orchestrierung, Auto-Migration von `.env` CalDAV-Config). Sync-Jobs laufen als Cronjobs via APScheduler.
 
 ### templates/ & static/
 
@@ -236,6 +238,39 @@ CREATE INDEX IF NOT EXISTS idx_conversations_chat
 ON conversations (chat_id, created_at);
 ```
 
+### calendar_sources
+
+```sql
+-- Erstellt durch CalendarSourceManager (sync/manager.py)
+CREATE TABLE IF NOT EXISTS calendar_sources (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'ics',   -- 'ics', 'caldav', 'google'
+    writable BOOLEAN DEFAULT FALSE,
+    enabled BOOLEAN DEFAULT TRUE,
+    auth_user TEXT,
+    auth_password TEXT,
+    google_refresh_token TEXT,
+    google_token_expiry TIMESTAMP WITH TIME ZONE,
+    last_synced TIMESTAMP WITH TIME ZONE,
+    last_error TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(url, source_type)
+);
+```
+
+### events (Erweiterung)
+
+```sql
+-- source_id verknuepft Events mit ihrer Kalenderquelle (NULL = Legacy)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS
+    source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id);
+```
+
+`ON DELETE CASCADE` entfernt automatisch alle Events einer Quelle beim Loeschen.
+
 ### settings_overrides
 
 ```sql
@@ -258,8 +293,8 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 | Feld | Default | Env-Variable | Pflicht |
 | ---- | ------- | ------------ | ------- |
 | `log_level` | `"INFO"` | `LOG_LEVEL` | Nein |
-| `llm_base_url` | `"http://host.docker.internal:1234/v1"` | `LLM_BASE_URL` | Nein |
-| `llm_model` | `"qwen2.5-coder-7b-instruct-mlx"` | `LLM_MODEL` | Nein |
+| `llm_base_url` | `"http://host.docker.internal:11434/v1"` | `LLM_BASE_URL` | Nein |
+| `llm_model` | `"llama3.1:8b"` | `LLM_MODEL` | Nein |
 | `postgres_host` | `"evolution_postgres"` | `POSTGRES_HOST` | Nein |
 | `postgres_port` | `5432` | `POSTGRES_PORT` | Nein |
 | `postgres_db` | `"evolution_db"` | `POSTGRES_DB` | Nein |
@@ -279,9 +314,9 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 | `carddav_url` | `"https://dav.example.com/carddav/32"` | `CARDDAV_URL` | Nein |
 | `carddav_user` | `""` | `CARDDAV_USER` | Nein |
 | `carddav_password` | `""` | `CARDDAV_PASSWORD` | Nein |
-| `caldav_url` | `"https://dav.example.com/caldav/"` | `CALDAV_URL` | Nein |
-| `caldav_user` | `""` | `CALDAV_USER` | Nein |
-| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein |
+| `caldav_url` | `"https://dav.example.com/caldav/"` | `CALDAV_URL` | Nein* |
+| `caldav_user` | `""` | `CALDAV_USER` | Nein* |
+| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein* |
 | `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | Nein** |
 | `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | Nein** |
 | `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | Nein |
@@ -289,6 +324,8 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 \* `base_url` wird empfohlen wenn Google OAuth hinter einem Reverse Proxy laeuft (verhindert Redirect-URI aus untrusted Headers).
 
 \*\* Pflicht wenn Google OAuth gewuenscht. Ohne Google OAuth wird API-Key Login verwendet.
+
+\* `caldav_url/user/password` sind Legacy-Felder. Beim ersten Start werden sie automatisch in die `calendar_sources`-Tabelle migriert. Neue Kalenderquellen werden ueber die Web-UI verwaltet (Settings > Kalenderquellen).
 
 `postgres_password` verwendet `validation_alias="EVOLUTION_POSTGRES_PASSWORD"` -- die Env-Variable heisst anders als das Python-Feld, weil die bestehende PostgreSQL-Instanz bereits diese Variable erwartet.
 
@@ -339,7 +376,7 @@ Alle Container im Bridge-Netzwerk `niles_network`. Container-Namen dienen als Ho
 - `niles_core` -> `evolution_postgres:5432`
 - `niles_core` -> `evolution_api:8080` (nur fuer WhatsApp senden)
 - `evolution_api` -> `niles_core:8000` (Webhook)
-- `niles_core` -> `host.docker.internal:1234` (LM Studio auf dem Host)
+- `niles_core` -> `host.docker.internal:11434` (Ollama auf dem Host)
 
 ### Volumes
 
@@ -382,7 +419,7 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 | Frontend Interaktion | htmx | 2.0.4 (CDN) |
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
-| LLM Inference | LM Studio (MLX) | lokal |
+| LLM Inference | Ollama (nativ auf Host) | lokal |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 
 ---

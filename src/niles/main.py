@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
@@ -32,6 +33,7 @@ from .user_store import UserStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
 from .sync.carddav import CardDAVSync
+from .sync.manager import CalendarSourceManager
 
 logger = logging.getLogger(__name__)
 
@@ -111,13 +113,29 @@ async def lifespan(app: FastAPI):
     carddav_sync = CardDAVSync(pool, settings)
     await carddav_sync.initialize()
 
-    # CalDAV Sync
-    caldav_sync = CalDAVSync(pool, settings)
+    # CalDAV Sync (kept for discover_collections in settings UI)
+    caldav_sync = CalDAVSync(
+        pool=pool,
+        caldav_url=settings.caldav_url,
+        auth=httpx.BasicAuth(settings.caldav_user, settings.caldav_password),
+        timezone=settings.timezone,
+        caldav_calendars=settings.caldav_calendars,
+    )
     await caldav_sync.initialize()
 
-    # Scheduler (shared by CardDAV and CalDAV)
+    # Calendar Source Manager (unified sync for ICS + CalDAV + Google)
+    calendar_manager = CalendarSourceManager(pool, settings)
+    await calendar_manager.initialize()
+    calendar_sources = await calendar_manager.get_sources()
+
+    # Scheduler (shared by CardDAV, CalDAV, and calendar sources)
     scheduler = None
-    if settings.feature_carddav_sync or settings.feature_caldav_sync:
+    needs_scheduler = (
+        settings.feature_carddav_sync
+        or settings.feature_caldav_sync
+        or calendar_sources
+    )
+    if needs_scheduler:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
         scheduler = AsyncIOScheduler()
@@ -132,15 +150,20 @@ async def lifespan(app: FastAPI):
         logger.info("CardDAV sync scheduled (daily at 03:00)")
 
     calendar = None
-    if settings.feature_caldav_sync:
+    if settings.feature_caldav_sync or calendar_sources:
+        calendar = CalendarAction(pool, timezone=settings.timezone)
+
+    if calendar_sources:
         scheduler.add_job(
-            caldav_sync.sync_events, "cron", hour=3, minute=15,
-            id="caldav_daily_sync",
+            calendar_manager.sync_all, "cron", hour=3, minute=20,
+            id="calendar_sources_sync",
             max_instances=1, misfire_grace_time=300,
         )
-        asyncio.create_task(caldav_sync.sync_events())
-        calendar = CalendarAction(pool, timezone=settings.timezone)
-        logger.info("CalDAV sync scheduled (daily at 03:15)")
+        asyncio.create_task(calendar_manager.sync_all())
+        logger.info(
+            "Calendar source sync scheduled (daily at 03:20), %d source(s)",
+            len(calendar_sources),
+        )
 
     if scheduler:
         scheduler.start()
@@ -162,7 +185,7 @@ async def lifespan(app: FastAPI):
         history=history,
         mcp_manager=mcp_manager,
         calendar=calendar,
-        caldav_sync=caldav_sync if settings.feature_caldav_sync else None,
+        calendar_manager=calendar_manager,
     )
 
     # Store on app state for access in route handlers
@@ -174,6 +197,7 @@ async def lifespan(app: FastAPI):
     app.state.settings_store = settings_store
     app.state.user_store = user_store
     app.state.caldav = caldav_sync if settings.feature_caldav_sync else None
+    app.state.calendar_manager = calendar_manager
 
     yield
 
