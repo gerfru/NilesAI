@@ -767,12 +767,14 @@ async def calendar_source_sync(request: Request, source_id: int):
             '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
         )
 
+    ctx: dict = {}
     try:
-        await manager.sync_source(source_id)
+        count = await manager.sync_source(source_id)
+        if count is None:
+            ctx["error"] = "Quelle nicht gefunden oder deaktiviert."
     except Exception:
         logger.exception("Manual sync failed for source %d", source_id)
 
     sources = await manager.get_sources()
-    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-        "sources": sources,
-    })
+    ctx["sources"] = sources
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", ctx)

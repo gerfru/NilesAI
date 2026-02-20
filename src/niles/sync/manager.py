@@ -36,7 +36,29 @@ class CalendarSourceManager:
         self.settings = settings
 
     async def initialize(self) -> None:
-        """Create calendar_sources table, extend events table, run migration."""
+        """Create calendar_sources table, ensure events table exists, run migration."""
+        # Ensure events table exists (may not be created by CalDAVSync if disabled)
+        await self.pool.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id SERIAL PRIMARY KEY,
+                summary TEXT NOT NULL,
+                dtstart TIMESTAMP WITH TIME ZONE NOT NULL,
+                dtend TIMESTAMP WITH TIME ZONE,
+                all_day BOOLEAN DEFAULT FALSE,
+                description TEXT,
+                location TEXT,
+                caldav_uid TEXT UNIQUE,
+                caldav_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_events_dtstart ON events (dtstart)
+        """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_events_summary ON events (summary)
+        """)
         await self.pool.execute("""
             CREATE TABLE IF NOT EXISTS calendar_sources (
                 id SERIAL PRIMARY KEY,
@@ -82,6 +104,10 @@ class CalendarSourceManager:
         """Add a new calendar source. Returns the created row."""
         if not url.startswith("https://"):
             raise ValueError("Nur HTTPS-URLs sind erlaubt")
+        # Strip embedded credentials from URL (https://user:pass@host → https://host)
+        parsed = urlparse(url)
+        if parsed.username or parsed.password:
+            url = parsed._replace(netloc=parsed.hostname + (f":{parsed.port}" if parsed.port else "")).geturl()
         if len(url) > 2048:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
         if len(name) > 200:
@@ -169,8 +195,8 @@ class CalendarSourceManager:
         logger.info("Calendar sync complete: %d events from %d sources", total, len(sources))
         return total
 
-    async def sync_source(self, source_id: int) -> int:
-        """Sync a single source by ID."""
+    async def sync_source(self, source_id: int) -> int | None:
+        """Sync a single source by ID. Returns event count, or None if not found."""
         row = await self.pool.fetchrow(
             """
             SELECT id, name, url, source_type, auth_user, auth_password,
@@ -180,7 +206,7 @@ class CalendarSourceManager:
             source_id,
         )
         if not row:
-            return 0
+            return None
         src = dict(row)
         if src["source_type"] == "ics":
             return await self._sync_ics(src)
