@@ -12,7 +12,7 @@ from ..actions.contacts import ContactsAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
-from ..sync.caldav import CalDAVSync
+from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from .prompts import build_system_prompt, load_system_prompt
@@ -183,12 +183,12 @@ class NilesAgent:
         history: ConversationHistory,
         mcp_manager: MCPManager | None = None,
         calendar: CalendarAction | None = None,
-        caldav_sync: CalDAVSync | None = None,
+        calendar_manager: CalendarSourceManager | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
             base_url=config.llm_base_url,
-            api_key="not-needed",  # LM Studio doesn't require a key
+            api_key="not-needed",
         )
         self.model = config.llm_model
         self.contacts = contacts
@@ -197,7 +197,7 @@ class NilesAgent:
         self.history = history
         self.mcp = mcp_manager
         self.calendar = calendar
-        self.caldav_sync = caldav_sync
+        self.calendar_manager = calendar_manager
         self.base_prompt = load_system_prompt()
 
     async def _prepare_messages(self, event: dict) -> tuple[str, list[dict], list]:
@@ -440,12 +440,14 @@ class NilesAgent:
             return {"error": "Keine Termine gefunden"}
 
         if name == "create_event":
-            if not self.caldav_sync:
+            if not self.calendar_manager:
                 return {"error": "Kalender ist nicht konfiguriert"}
-            if not self.config.feature_caldav_sync:
-                return {"error": "Kalender-Sync ist deaktiviert"}
             try:
-                return await self.caldav_sync.create_event(
+                writable = await self.calendar_manager.get_writable_source()
+                if not writable:
+                    return {"error": "Kein beschreibbarer Kalender konfiguriert"}
+                return await self.calendar_manager.create_event(
+                    source=writable,
                     summary=args["summary"],
                     dtstart_str=args["start"],
                     dtend_str=args.get("end"),
