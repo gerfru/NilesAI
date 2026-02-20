@@ -183,9 +183,8 @@ async function handleChatSubmit(form) {
                         scrollChat();
                     }
                     if (item.type === "status") {
-                        /* Only show status while no bubble exists yet (fix #2) */
+                        /* Keep thinking indicator visible during tool calls */
                         if (!bubble && indicator) {
-                            indicator.querySelector("[data-thinking-label]").textContent = item.text;
                             indicator.classList.remove("hidden");
                         }
                     }
