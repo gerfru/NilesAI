@@ -26,7 +26,7 @@ Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
                          │    │ Google OAuth + Sessions    │
                          │    │                           │
                          │         v                      │
-POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> LM Studio :1234
+POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> Ollama :11434
                          │    │  Tool-Call Loop (max 5)   │
                          │    │                           │
                          │    ├─ memory/store.py          │──> PostgreSQL :5432
@@ -46,7 +46,7 @@ POST /chat  ──────────> │  agent/core.py (NilesAgent)    �
                          └────────────────────────────────┘
 ```
 
-Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). LM Studio laeuft nativ auf dem Host und ist ueber `host.docker.internal:1234` erreichbar.
+Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). Ollama laeuft nativ auf dem Host und ist ueber `host.docker.internal:11434` erreichbar.
 
 ---
 
@@ -258,8 +258,8 @@ Pydantic Settings laedt Werte aus `.env` und Environment-Variablen. `extra = "ig
 | Feld | Default | Env-Variable | Pflicht |
 | ---- | ------- | ------------ | ------- |
 | `log_level` | `"INFO"` | `LOG_LEVEL` | Nein |
-| `llm_base_url` | `"http://host.docker.internal:1234/v1"` | `LLM_BASE_URL` | Nein |
-| `llm_model` | `"qwen2.5-coder-7b-instruct-mlx"` | `LLM_MODEL` | Nein |
+| `llm_base_url` | `"http://host.docker.internal:11434/v1"` | `LLM_BASE_URL` | Nein |
+| `llm_model` | `"llama3.1:8b"` | `LLM_MODEL` | Nein |
 | `postgres_host` | `"evolution_postgres"` | `POSTGRES_HOST` | Nein |
 | `postgres_port` | `5432` | `POSTGRES_PORT` | Nein |
 | `postgres_db` | `"evolution_db"` | `POSTGRES_DB` | Nein |
@@ -339,7 +339,7 @@ Alle Container im Bridge-Netzwerk `niles_network`. Container-Namen dienen als Ho
 - `niles_core` -> `evolution_postgres:5432`
 - `niles_core` -> `evolution_api:8080` (nur fuer WhatsApp senden)
 - `evolution_api` -> `niles_core:8000` (Webhook)
-- `niles_core` -> `host.docker.internal:1234` (LM Studio auf dem Host)
+- `niles_core` -> `host.docker.internal:11434` (Ollama auf dem Host)
 
 ### Volumes
 
@@ -382,7 +382,7 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 | Frontend Interaktion | htmx | 2.0.4 (CDN) |
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
-| LLM Inference | LM Studio (MLX) | lokal |
+| LLM Inference | Ollama (nativ auf Host) | lokal |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 
 ---
