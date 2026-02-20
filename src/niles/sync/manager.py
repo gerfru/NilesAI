@@ -2,15 +2,15 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import asyncpg
 import httpx
 
-from .caldav import CalDAVSync, upsert_event
+from .caldav import CalDAVSync, cleanup_recurring_occurrences, upsert_event
 from .google_auth import GoogleCalendarAuth
-from .ical_parser import parse_icalendar
+from .ical_parser import expand_recurring_event, parse_icalendar
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,11 @@ class CalendarSourceManager:
         return 0
 
     async def _sync_ics(self, source: dict) -> int:
-        """Sync an ICS subscription: HTTP GET, parse, upsert."""
+        """Sync an ICS subscription: HTTP GET, parse, upsert.
+
+        Recurring events (RRULE) are expanded into individual occurrences
+        within a window of 30 days past to 365 days future.
+        """
         source_id = source["id"]
         url = source["url"]
         logger.info("Syncing ICS source '%s' from %s", source["name"], url)
@@ -236,13 +240,23 @@ class CalendarSourceManager:
         ics_text = response.text
         count = 0
 
+        now = datetime.now(timezone.utc)
+        window_start = now - timedelta(days=30)
+        window_end = now + timedelta(days=365)
+
         for vevent_text in _split_vevents(ics_text):
             event = parse_icalendar(vevent_text, url)
             if event:
                 # Prefix UID with source_id to avoid collision with CalDAV UIDs
                 event["caldav_uid"] = f"ics-{source_id}-{event['caldav_uid']}"
-                await self._upsert_event(event, source_id)
-                count += 1
+                expanded = expand_recurring_event(event, window_start, window_end)
+                if event.get("rrule"):
+                    await cleanup_recurring_occurrences(
+                        self.pool, event["caldav_uid"], source_id,
+                    )
+                for occ in expanded:
+                    await self._upsert_event(occ, source_id)
+                    count += 1
 
         await self._set_synced(source_id)
         logger.info("  '%s': synced %d events", source["name"], count)

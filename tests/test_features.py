@@ -25,22 +25,6 @@ class TestFeatureFlagDefaults:
         )
         assert settings.feature_tool_send_whatsapp is True
 
-    def test_carddav_sync_disabled_by_default(self):
-        settings = Settings(
-            _env_file=None,
-            postgres_password="test",
-            evolution_api_key="test",
-        )
-        assert settings.feature_carddav_sync is False
-
-    def test_caldav_sync_disabled_by_default(self):
-        settings = Settings(
-            _env_file=None,
-            postgres_password="test",
-            evolution_api_key="test",
-        )
-        assert settings.feature_caldav_sync is False
-
     def test_flags_from_env(self, monkeypatch):
         monkeypatch.setenv("FEATURE_WHATSAPP_AUTO_REPLY", "true")
         monkeypatch.setenv("FEATURE_TOOL_SEND_WHATSAPP", "false")
@@ -115,6 +99,7 @@ class TestAutoReplyFlag:
         mock_app.state.whatsapp_action.send_message.assert_called_once_with(
             to="436601234567@s.whatsapp.net",
             text="Reply text",
+            instance=None,
         )
 
     async def test_webhook_rejects_invalid_token(self, mock_app, webhook_payload):

@@ -104,7 +104,11 @@ services:
     volumes:
       - ../src:/app/src
       - ../config:/app/config:ro
-    command: uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >-
+      sh -c "set -e && tailwindcss --minify
+      -i src/niles/static/css/input.css
+      -o src/niles/static/css/style.css
+      && exec uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload"
     networks:
       - niles_network
     depends_on:

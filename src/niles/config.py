@@ -51,11 +51,9 @@ class Settings(BaseSettings):
     # Features
     feature_whatsapp_auto_reply: bool = False
     feature_tool_send_whatsapp: bool = True
-    feature_carddav_sync: bool = False
-    feature_caldav_sync: bool = False
 
-    # CardDAV (mailbox.org)
-    carddav_url: str = "https://dav.example.com/carddav/32"
+    # CardDAV (configured via Settings UI)
+    carddav_url: str = ""
     carddav_user: str = ""
     carddav_password: str = ""
 

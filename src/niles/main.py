@@ -30,6 +30,7 @@ from .memory.store import MemoryStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
+from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
 from .sync.carddav import CardDAVSync
@@ -101,6 +102,10 @@ async def lifespan(app: FastAPI):
     user_store = UserStore(pool)
     await user_store.initialize()
 
+    # WhatsApp session store (per-user Evolution API instances)
+    wa_store = WhatsAppSessionStore(pool)
+    await wa_store.initialize()
+
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool)
     await settings_store.initialize()
@@ -115,7 +120,7 @@ async def lifespan(app: FastAPI):
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
     caldav_sync = None
-    if settings.feature_caldav_sync:
+    if settings.caldav_url:
         caldav_sync = CalDAVSync(
             pool=pool,
             caldav_url=settings.caldav_url,
@@ -130,19 +135,13 @@ async def lifespan(app: FastAPI):
     await calendar_manager.initialize()
     calendar_sources = await calendar_manager.get_sources()
 
-    # Scheduler (shared by CardDAV, CalDAV, and calendar sources)
-    scheduler = None
-    needs_scheduler = (
-        settings.feature_carddav_sync
-        or settings.feature_caldav_sync
-        or calendar_sources
-    )
-    if needs_scheduler:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    # Scheduler – always started so jobs can be registered later
+    # (e.g. CardDAV daily sync added via contacts_connect in the UI)
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-        scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler()
 
-    if settings.feature_carddav_sync:
+    if settings.carddav_url:
         scheduler.add_job(
             carddav_sync.sync_contacts, "cron", hour=3, minute=0,
             id="carddav_daily_sync",
@@ -152,7 +151,7 @@ async def lifespan(app: FastAPI):
         logger.info("CardDAV sync scheduled (daily at 03:00)")
 
     calendar = None
-    if settings.feature_caldav_sync or calendar_sources:
+    if settings.caldav_url or calendar_sources:
         calendar = CalendarAction(pool, timezone=settings.timezone)
 
     if calendar_sources:
@@ -167,8 +166,7 @@ async def lifespan(app: FastAPI):
             len(calendar_sources),
         )
 
-    if scheduler:
-        scheduler.start()
+    scheduler.start()
 
     # MCP Servers
     mcp_manager = MCPManager()
@@ -188,6 +186,7 @@ async def lifespan(app: FastAPI):
         mcp_manager=mcp_manager,
         calendar=calendar,
         calendar_manager=calendar_manager,
+        wa_store=wa_store,
     )
 
     # Store on app state for access in route handlers
@@ -200,13 +199,15 @@ async def lifespan(app: FastAPI):
     app.state.user_store = user_store
     app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
+    app.state.wa_store = wa_store
+    app.state.carddav_sync = carddav_sync
+    app.state.scheduler = scheduler
 
     yield
 
     # Shutdown
     await mcp_manager.stop_all()
-    if scheduler:
-        scheduler.shutdown()
+    scheduler.shutdown()
     await pool.close()
     logger.info("Niles Core shut down.")
 
