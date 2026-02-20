@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 # Settings that can be changed at runtime via the Settings UI.
 # CardDAV credentials are included here (analogous to calendar_sources.auth_password
 # which is already stored in the DB by CalendarSourceManager).
+# NOTE: carddav_url/user/password are individually settable via the generic
+# POST /api/settings/{key} endpoint, but should only be changed atomically
+# through the dedicated contacts_connect flow in web.py. A direct POST to
+# a single key would leave credentials in a transiently inconsistent state.
 EDITABLE_SETTINGS = {
     "llm_base_url",
     "llm_model",

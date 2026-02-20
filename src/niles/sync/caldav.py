@@ -96,16 +96,20 @@ async def cleanup_recurring_occurrences(
     - The master event row (caldav_uid = master_uid)
     - All expanded occurrence rows (caldav_uid LIKE 'master_uid@%')
     """
+    # Escape SQL LIKE wildcards in the UID to prevent unintended matches
+    escaped = master_uid.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like_pattern = f"{escaped}@%"
+
     if source_id is not None:
         result = await pool.execute(
             "DELETE FROM events WHERE source_id = $1 AND "
-            "(caldav_uid = $2 OR caldav_uid LIKE $3)",
-            source_id, master_uid, f"{master_uid}@%",
+            "(caldav_uid = $2 OR caldav_uid LIKE $3 ESCAPE '\\')",
+            source_id, master_uid, like_pattern,
         )
     else:
         result = await pool.execute(
-            "DELETE FROM events WHERE caldav_uid = $1 OR caldav_uid LIKE $2",
-            master_uid, f"{master_uid}@%",
+            "DELETE FROM events WHERE caldav_uid = $1 OR caldav_uid LIKE $2 ESCAPE '\\'",
+            master_uid, like_pattern,
         )
     # asyncpg returns "DELETE N"
     deleted = int(result.split()[-1]) if result else 0
