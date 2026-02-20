@@ -229,6 +229,24 @@ Verarbeitet die Nachricht ueber den Agent (gleiche Pipeline wie `/chat` und What
 
 Loescht die Chat-Historie des aktuellen Users. Erfordert CSRF-Token.
 
+### GET /ui/api/calendar/sources
+
+Gibt die Liste aller konfigurierten Kalenderquellen als HTML-Fragment (htmx) zurueck. Zeigt Name, URL, Typ-Badge (ICS/CalDAV/Google), Sync-Status und Fehler.
+
+### POST /ui/api/calendar/sources
+
+Fuegt eine neue Kalenderquelle hinzu. Erwartet Form-Felder: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+
+**Validierung:** Nur HTTPS-URLs, max 2048 Zeichen URL, max 200 Zeichen Name.
+
+### DELETE /ui/api/calendar/sources/{source_id}
+
+Entfernt eine Kalenderquelle. Events der Quelle werden via CASCADE automatisch geloescht. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+
+### POST /ui/api/calendar/sources/{source_id}/sync
+
+Triggert einen manuellen Sync fuer eine einzelne Kalenderquelle. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+
 ### POST /ui/api/settings/{key}
 
 Aendert eine einzelne Runtime-Einstellung. Erwartet `value` als Form-Feld + CSRF-Token.
@@ -339,7 +357,7 @@ Ruft einen gespeicherten Fakt aus dem Memory ab.
 
 ### find_events
 
-Sucht Kalender-Events in der CalDAV-Datenbank.
+Sucht Kalender-Events aus allen konfigurierten Kalenderquellen (ICS, CalDAV, Google).
 
 **Parameter:**
 
@@ -351,7 +369,7 @@ Sucht Kalender-Events in der CalDAV-Datenbank.
 
 ### create_event
 
-Erstellt einen neuen Kalender-Eintrag.
+Erstellt einen neuen Kalender-Eintrag auf der ersten beschreibbaren Kalenderquelle (via `CalendarSourceManager`). Gibt einen Fehler zurueck wenn keine beschreibbare Quelle konfiguriert ist.
 
 **Parameter:**
 

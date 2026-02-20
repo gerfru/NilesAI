@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import asyncpg
 import httpx
 from fastapi import APIRouter, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -199,9 +200,9 @@ def _safe_settings_dict(settings) -> dict:
         "carddav_url": settings.carddav_url,
         "carddav_user": settings.carddav_user,
         "carddav_password": "********" if settings.carddav_password else "(not set)",
-        "caldav_url": settings.caldav_url,
-        "caldav_user": settings.caldav_user,
-        "caldav_password": "********" if settings.caldav_password else "(not set)",
+        "caldav_url (Legacy)": settings.caldav_url,
+        "caldav_user (Legacy)": settings.caldav_user,
+        "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
     }
 
     return {
@@ -209,7 +210,6 @@ def _safe_settings_dict(settings) -> dict:
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
-        "caldav_enabled": settings.feature_caldav_sync,
     }
 
 
@@ -653,4 +653,126 @@ async def caldav_calendars(request: Request):
     return templates.TemplateResponse(request, "fragments/calendars.html", {
         "collections": collections,
         "selected": selected,
+    })
+
+
+# --- Calendar source management ---
+
+
+@router.get("/api/calendar/sources", response_class=HTMLResponse)
+async def calendar_sources_list(request: Request):
+    """Return htmx fragment listing all calendar sources."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    manager = getattr(request.app.state, "calendar_manager", None)
+    if not manager:
+        return HTMLResponse(
+            '<p class="text-sm text-gray-500 dark:text-gray-400 py-2">'
+            "Kalender-Manager nicht verfuegbar.</p>"
+        )
+
+    sources = await manager.get_sources()
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
+        "sources": sources,
+    })
+
+
+@router.post("/api/calendar/sources", response_class=HTMLResponse)
+async def calendar_source_add(
+    request: Request,
+    source_type: str = Form(...),
+    name: str = Form(""),
+    url: str = Form(...),
+    auth_user: str = Form(""),
+    auth_password: str = Form(""),
+):
+    """Add a new calendar source and return updated sources list."""
+    _user, error = _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    manager = getattr(request.app.state, "calendar_manager", None)
+    if not manager:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
+        )
+
+    # Default name from URL if not provided
+    if not name.strip():
+        name = url.split("//", 1)[-1].split("/")[0][:80]
+
+    writable = source_type in ("caldav", "google")
+
+    try:
+        await manager.add_source(
+            name=name.strip(),
+            url=url.strip(),
+            source_type=source_type,
+            writable=writable,
+            auth_user=auth_user.strip() or None,
+            auth_password=auth_password or None,
+        )
+    except asyncpg.UniqueViolationError:
+        sources = await manager.get_sources()
+        return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
+            "sources": sources,
+            "error": "Diese Quelle existiert bereits.",
+        })
+    except ValueError as exc:
+        sources = await manager.get_sources()
+        return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
+            "sources": sources,
+            "error": str(exc),
+        })
+
+    sources = await manager.get_sources()
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
+        "sources": sources,
+    })
+
+
+@router.delete("/api/calendar/sources/{source_id}", response_class=HTMLResponse)
+async def calendar_source_remove(request: Request, source_id: int):
+    """Remove a calendar source (CASCADE deletes events)."""
+    _user, error = _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    manager = getattr(request.app.state, "calendar_manager", None)
+    if not manager:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
+        )
+
+    removed = await manager.remove_source(source_id)
+    sources = await manager.get_sources()
+    ctx = {"sources": sources}
+    if not removed:
+        ctx["error"] = "Quelle nicht gefunden."
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", ctx)
+
+
+@router.post("/api/calendar/sources/{source_id}/sync", response_class=HTMLResponse)
+async def calendar_source_sync(request: Request, source_id: int):
+    """Sync a single calendar source."""
+    _user, error = _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    manager = getattr(request.app.state, "calendar_manager", None)
+    if not manager:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
+        )
+
+    try:
+        await manager.sync_source(source_id)
+    except Exception:
+        logger.exception("Manual sync failed for source %d", source_id)
+
+    sources = await manager.get_sources()
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
+        "sources": sources,
     })

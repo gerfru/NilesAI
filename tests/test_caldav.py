@@ -1,13 +1,18 @@
-"""Tests for CalDAV calendar sync."""
+"""Tests for CalDAV calendar sync.
 
-from datetime import datetime, timezone
+Parser tests (unfold, parse_dt, parse_icalendar) have been moved to
+test_ical_parser.py.  This file tests CalDAVSync behaviour:
+collection discovery, event upsert, sync flow, and event creation.
+"""
+
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 
-from niles.config import Settings
-from niles.sync.caldav import CalDAVSync, _escape_ical_text, _parse_dt, _unfold_ics
+from niles.sync.caldav import CalDAVSync, _escape_ical_text
 
 _TZ_VIENNA = ZoneInfo("Europe/Vienna")
 
@@ -70,23 +75,6 @@ SAMPLE_PROPFIND_ROOT_XML = """<?xml version="1.0" encoding="UTF-8"?>
   </D:response>
 </D:multistatus>"""
 
-# Collection-level response with .ics files
-SAMPLE_PROPFIND_COLLECTION_XML = """<?xml version="1.0" encoding="utf-8"?>
-<D:multistatus xmlns:D="DAV:">
-  <D:response>
-    <D:href>/caldav/Y2FsOi8vMC8zMQ/</D:href>
-    <D:propstat>
-      <D:prop><D:displayname>Kalender</D:displayname></D:prop>
-    </D:propstat>
-  </D:response>
-  <D:response>
-    <D:href>/caldav/Y2FsOi8vMC8zMQ/meeting.ics</D:href>
-    <D:propstat>
-      <D:prop><D:displayname/></D:prop>
-    </D:propstat>
-  </D:response>
-</D:multistatus>"""
-
 SAMPLE_ICS_FULL = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -99,34 +87,6 @@ LOCATION:Wiedner Hauptstrasse 10, Wien
 END:VEVENT
 END:VCALENDAR"""
 
-SAMPLE_ICS_UTC = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:def-456-event
-DTSTART:20260301T100000Z
-DTEND:20260301T110000Z
-SUMMARY:Team Meeting
-END:VEVENT
-END:VCALENDAR"""
-
-SAMPLE_ICS_ALL_DAY = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:ghi-789-event
-DTSTART;VALUE=DATE:20260401
-DTEND;VALUE=DATE:20260402
-SUMMARY:Urlaub
-END:VEVENT
-END:VCALENDAR"""
-
-SAMPLE_ICS_MINIMAL = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-DTSTART:20260515T090000Z
-SUMMARY:Quick Note
-END:VEVENT
-END:VCALENDAR"""
-
 SAMPLE_ICS_NO_SUMMARY = """BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -135,29 +95,6 @@ DTSTART:20260515T090000Z
 END:VEVENT
 END:VCALENDAR"""
 
-SAMPLE_ICS_FOLDED = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:folded-event
-DTSTART:20260601T100000Z
-SUMMARY:Long event with a very
- long summary that is folded
-DESCRIPTION:Also a
- folded description
-END:VEVENT
-END:VCALENDAR"""
-
-
-@pytest.fixture
-def config():
-    return Settings(
-        postgres_password="test",
-        evolution_api_key="test",
-        caldav_url="https://dav.mailbox.org/caldav/123/",
-        caldav_user="testuser",
-        caldav_password="testpass",
-    )
-
 
 @pytest.fixture
 def pool():
@@ -165,8 +102,23 @@ def pool():
 
 
 @pytest.fixture
-def sync(pool, config):
-    return CalDAVSync(pool, config)
+def sync(pool):
+    return CalDAVSync(
+        pool=pool,
+        caldav_url="https://dav.mailbox.org/caldav/123/",
+        auth=httpx.BasicAuth("testuser", "testpass"),
+        timezone="Europe/Vienna",
+    )
+
+
+def _make_root_sync(pool, caldav_calendars=""):
+    return CalDAVSync(
+        pool=pool,
+        caldav_url="https://dav.mailbox.org/caldav/",
+        auth=httpx.BasicAuth("testuser", "testpass"),
+        timezone="Europe/Vienna",
+        caldav_calendars=caldav_calendars,
+    )
 
 
 class TestInitialize:
@@ -195,13 +147,7 @@ class TestGetSyncCollections:
 
     async def test_discovers_collections_from_root(self, pool):
         """When URL is root, discover sub-collections."""
-        root_sync = CalDAVSync(pool, Settings(
-            postgres_password="test",
-            evolution_api_key="test",
-            caldav_url="https://dav.mailbox.org/caldav/",
-            caldav_user="testuser",
-            caldav_password="testpass",
-        ))
+        root_sync = _make_root_sync(pool)
 
         with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
             urls = await root_sync._get_sync_collections()
@@ -213,14 +159,7 @@ class TestGetSyncCollections:
 
     async def test_filters_by_caldav_calendars_setting(self, pool):
         """When caldav_calendars is set, only matching collections are returned."""
-        root_sync = CalDAVSync(pool, Settings(
-            postgres_password="test",
-            evolution_api_key="test",
-            caldav_url="https://dav.mailbox.org/caldav/",
-            caldav_user="testuser",
-            caldav_password="testpass",
-            caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/",
-        ))
+        root_sync = _make_root_sync(pool, caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/")
 
         with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
             urls = await root_sync._get_sync_collections()
@@ -228,77 +167,6 @@ class TestGetSyncCollections:
         assert len(urls) == 1
         assert "Y2FsOi8vMC8zMQ" in urls[0]
         assert not any("Y2FsOi8vMTUvMA" in u for u in urls)
-
-
-class TestUnfoldIcs:
-    def test_unfolds_space_continuation(self):
-        # RFC 5545: CRLF + space/tab is removed entirely (space is folding indicator)
-        text = "SUMMARY:Long\n summary here"
-        assert _unfold_ics(text) == "SUMMARY:Longsummary here"
-
-    def test_unfolds_tab_continuation(self):
-        text = "SUMMARY:Long\n\tsummary here"
-        assert _unfold_ics(text) == "SUMMARY:Longsummary here"
-
-    def test_leaves_normal_lines(self):
-        text = "SUMMARY:Short\nDTSTART:20260101"
-        assert _unfold_ics(text) == "SUMMARY:Short\nDTSTART:20260101"
-
-    def test_unfolds_crlf(self):
-        text = "SUMMARY:Long\r\n summary"
-        assert _unfold_ics(text) == "SUMMARY:Longsummary"
-
-
-class TestParseDt:
-    def test_utc_format(self):
-        dt, all_day = _parse_dt("DTSTART:20260714T170000Z")
-        assert dt is not None
-        assert dt.tzinfo == timezone.utc
-        assert dt.year == 2026
-        assert dt.month == 7
-        assert dt.hour == 17
-        assert all_day is False
-
-    def test_tzid_format(self):
-        dt, all_day = _parse_dt("DTSTART;TZID=Europe/Vienna:20260714T170000")
-        assert dt is not None
-        assert dt.tzinfo == _TZ_VIENNA
-        assert dt.hour == 17
-        assert all_day is False
-
-    def test_all_day_format(self):
-        dt, all_day = _parse_dt("DTSTART;VALUE=DATE:20260714")
-        assert dt is not None
-        assert all_day is True
-        assert dt.year == 2026
-        assert dt.month == 7
-        assert dt.day == 14
-
-    def test_dtend_utc(self):
-        dt, all_day = _parse_dt("DTEND:20260714T180000Z")
-        assert dt is not None
-        assert dt.hour == 18
-
-    def test_invalid_line(self):
-        dt, all_day = _parse_dt("SUMMARY:Not a datetime")
-        assert dt is None
-        assert all_day is False
-
-    def test_naive_datetime(self):
-        dt, all_day = _parse_dt("DTSTART:20260714T170000")
-        assert dt is not None
-        assert dt.tzinfo == timezone.utc
-        assert all_day is False
-
-    def test_invalid_date_value(self):
-        dt, all_day = _parse_dt("DTSTART:not-a-date")
-        assert dt is None
-        assert all_day is False
-
-    def test_invalid_all_day_value(self):
-        dt, all_day = _parse_dt("DTSTART;VALUE=DATE:baddate")
-        assert dt is None
-        assert all_day is False
 
 
 class TestEscapeIcalText:
@@ -327,57 +195,6 @@ class TestEscapeIcalText:
         assert _escape_ical_text("a;b,c\\d\ne") == "a\\;b\\,c\\\\d\\ne"
 
 
-class TestParseICalendar:
-    def test_full_event(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_FULL, "/caldav/123/event1.ics")
-
-        assert event is not None
-        assert event["summary"] == "Zahnarzt Dr. Mueller"
-        assert event["description"] == "Kontrolle und Reinigung"
-        assert event["location"] == "Wiedner Hauptstrasse 10, Wien"
-        assert event["caldav_uid"] == "abc-123-event"
-        assert event["dtstart"].hour == 14
-        assert event["dtstart"].tzinfo == _TZ_VIENNA
-        assert event["dtend"].hour == 15
-        assert event["dtend"].minute == 30
-        assert event["all_day"] is False
-
-    def test_utc_event(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_UTC, "/caldav/123/event2.ics")
-
-        assert event is not None
-        assert event["summary"] == "Team Meeting"
-        assert event["caldav_uid"] == "def-456-event"
-        assert event["dtstart"].tzinfo == timezone.utc
-        assert event["dtstart"].hour == 10
-
-    def test_all_day_event(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_ALL_DAY, "/caldav/123/event3.ics")
-
-        assert event is not None
-        assert event["summary"] == "Urlaub"
-        assert event["all_day"] is True
-        assert event["caldav_uid"] == "ghi-789-event"
-
-    def test_minimal_event_uid_from_url(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_MINIMAL, "/caldav/123/quick-note.ics")
-
-        assert event is not None
-        assert event["summary"] == "Quick Note"
-        assert event["caldav_uid"] == "quick-note"
-
-    def test_skip_event_without_summary(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_NO_SUMMARY, "/caldav/123/bad.ics")
-        assert event is None
-
-    def test_folded_lines(self, sync):
-        event = sync._parse_icalendar(SAMPLE_ICS_FOLDED, "/caldav/123/folded.ics")
-
-        assert event is not None
-        assert event["summary"] == "Long event with a verylong summary that is folded"
-        assert event["description"] == "Also afolded description"
-
-
 class TestUpsertEvent:
     async def test_upsert_executes_query(self, sync, pool):
         event = {
@@ -399,6 +216,31 @@ class TestUpsertEvent:
         args = pool.execute.call_args[0][1:]
         assert "Test Event" in args
         assert "uid-123" in args
+
+    async def test_upsert_includes_source_id(self, pool):
+        """When source_id is set, it is included in the INSERT."""
+        sync_with_source = CalDAVSync(
+            pool=pool,
+            caldav_url="https://dav.example.com/caldav/",
+            auth=httpx.BasicAuth("u", "p"),
+            timezone="Europe/Vienna",
+            source_id=42,
+        )
+        event = {
+            "summary": "Sourced Event",
+            "dtstart": datetime(2026, 2, 20, 14, 0, tzinfo=_TZ_VIENNA),
+            "dtend": datetime(2026, 2, 20, 15, 0, tzinfo=_TZ_VIENNA),
+            "all_day": False,
+            "description": "",
+            "location": "",
+            "caldav_uid": "uid-sourced",
+            "caldav_url": "/test.ics",
+        }
+
+        await sync_with_source._upsert_event(event)
+
+        args = pool.execute.call_args[0]
+        assert 42 in args  # source_id should be passed
 
 
 class TestSyncEvents:
@@ -566,13 +408,7 @@ class TestResolveWriteCollection:
 
     async def test_uses_first_discovered_collection(self, pool):
         """Root CalDAV URL discovers sub-collections; first one is used."""
-        root_sync = CalDAVSync(pool, Settings(
-            postgres_password="test",
-            evolution_api_key="test",
-            caldav_url="https://dav.mailbox.org/caldav/",
-            caldav_user="testuser",
-            caldav_password="testpass",
-        ))
+        root_sync = _make_root_sync(pool)
 
         with patch.object(root_sync, "_get_sync_collections", return_value=[
             "https://dav.mailbox.org/caldav/Y2FsOi8vMC8zMQ/",
@@ -593,13 +429,7 @@ class TestResolveWriteCollection:
 
     async def test_raises_when_no_collections(self, pool):
         """Raises RuntimeError when no writable collection is found."""
-        root_sync = CalDAVSync(pool, Settings(
-            postgres_password="test",
-            evolution_api_key="test",
-            caldav_url="https://dav.mailbox.org/caldav/",
-            caldav_user="testuser",
-            caldav_password="testpass",
-        ))
+        root_sync = _make_root_sync(pool)
 
         with patch.object(root_sync, "_get_sync_collections", return_value=[]):
             with pytest.raises(RuntimeError, match="No writable calendar"):

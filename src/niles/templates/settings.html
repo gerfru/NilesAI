@@ -70,12 +70,47 @@
     </form>
 </div>
 
-{% if caldav_enabled %}
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">CalDAV Kalender</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Waehle aus, welche Kalender synchronisiert werden sollen. Aenderungen wirken beim naechsten Sync.</p>
-    <div id="caldav-calendars"
-         hx-get="/ui/api/caldav/calendars"
+    <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Kalenderquellen</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">ICS-Abonnements (nur lesen) und CalDAV-Kalender (lesen + schreiben). Termine erscheinen in der Kalendersuche.</p>
+
+    <div class="mb-4" id="calendar-add-form">
+        <div class="flex gap-2 mb-2">
+            <select id="cal-source-type"
+                    class="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="ics">ICS</option>
+                <option value="caldav">CalDAV</option>
+            </select>
+            <input type="text" id="cal-source-name" placeholder="Name (optional)"
+                   maxlength="200"
+                   class="w-1/4 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="url" id="cal-source-url" placeholder="https://..."
+                   maxlength="2048" required
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2">
+            <input type="text" id="cal-source-user" placeholder="Benutzername"
+                   maxlength="256"
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="password" id="cal-source-password" placeholder="Passwort"
+                   maxlength="256"
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <form hx-post="/ui/api/calendar/sources"
+              hx-target="#calendar-sources-container"
+              hx-swap="innerHTML">
+            <input type="hidden" name="source_type" id="cal-form-type" value="ics">
+            <input type="hidden" name="name" id="cal-form-name" value="">
+            <input type="hidden" name="url" id="cal-form-url" value="">
+            <input type="hidden" name="auth_user" id="cal-form-user" value="">
+            <input type="hidden" name="auth_password" id="cal-form-password" value="">
+            <button type="submit" data-calendar-add
+                    class="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-600 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Hinzufuegen</button>
+        </form>
+    </div>
+
+    <div id="calendar-sources-container"
+         hx-get="/ui/api/calendar/sources"
          hx-trigger="load"
          hx-swap="innerHTML">
         <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
@@ -83,11 +118,10 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-            Kalender werden geladen...
+            Quellen werden geladen...
         </div>
     </div>
 </div>
-{% endif %}
 
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">Infrastructure (read-only)</h3>
