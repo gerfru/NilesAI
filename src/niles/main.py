@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
     caldav_sync = None
-    if settings.feature_caldav_sync:
+    if settings.caldav_url:
         caldav_sync = CalDAVSync(
             pool=pool,
             caldav_url=settings.caldav_url,
@@ -138,8 +138,8 @@ async def lifespan(app: FastAPI):
     # Scheduler (shared by CardDAV, CalDAV, and calendar sources)
     scheduler = None
     needs_scheduler = (
-        settings.feature_carddav_sync
-        or settings.feature_caldav_sync
+        settings.carddav_url
+        or settings.caldav_url
         or calendar_sources
     )
     if needs_scheduler:
@@ -147,7 +147,7 @@ async def lifespan(app: FastAPI):
 
         scheduler = AsyncIOScheduler()
 
-    if settings.feature_carddav_sync:
+    if settings.carddav_url:
         scheduler.add_job(
             carddav_sync.sync_contacts, "cron", hour=3, minute=0,
             id="carddav_daily_sync",
@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI):
         logger.info("CardDAV sync scheduled (daily at 03:00)")
 
     calendar = None
-    if settings.feature_caldav_sync or calendar_sources:
+    if settings.caldav_url or calendar_sources:
         calendar = CalendarAction(pool, timezone=settings.timezone)
 
     if calendar_sources:

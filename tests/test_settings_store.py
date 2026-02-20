@@ -11,7 +11,6 @@ class TestEditableWhitelist:
         expected = {
             "llm_base_url", "llm_model", "timezone", "log_level",
             "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
-            "feature_carddav_sync", "feature_caldav_sync",
             "caldav_calendars",
             "carddav_url", "carddav_user", "carddav_password",
         }
@@ -28,7 +27,7 @@ class TestEditableWhitelist:
 
 class TestKeyValidation:
     def test_valid_keys_pass(self):
-        for key in ["llm_model", "feature_caldav_sync", "log_level"]:
+        for key in ["llm_model", "feature_tool_send_whatsapp", "log_level"]:
             _validate_key(key)  # Should not raise
 
     def test_rejects_uppercase(self):
