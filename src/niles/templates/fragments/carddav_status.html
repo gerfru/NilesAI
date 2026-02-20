@@ -1,0 +1,74 @@
+{% if carddav_error %}
+<p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ carddav_error }}</p>
+{% endif %}
+
+{% if connected %}
+<div id="carddav-connected">
+    <div class="htmx-hide-on-request flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 gap-2">
+        <div class="flex items-start gap-3 flex-1 min-w-0">
+            <svg class="w-5 h-5 mt-0.5 shrink-0 text-blue-500 dark:text-blue-400" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
+            </svg>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">CardDAV-Kontakte</span>
+                    <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-semibold uppercase tracking-wider">CardDAV</span>
+                </div>
+                <span class="text-xs text-zinc-400 dark:text-zinc-500 block truncate">{{ carddav_url }}</span>
+                {% if contact_count and contact_count > 0 %}
+                <span class="text-xs text-green-600 dark:text-green-400">{{ contact_count }} Kontakte synchronisiert</span>
+                {% else %}
+                <span class="text-xs text-zinc-400 dark:text-zinc-500">Keine Kontakte synchronisiert</span>
+                {% endif %}
+                {% if last_sync %}
+                <span class="text-xs text-zinc-400 dark:text-zinc-500 block">Letzter Sync: {{ last_sync.strftime('%d.%m.%Y %H:%M') }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex gap-1.5 sm:ml-3 shrink-0 ml-8">
+            <button hx-post="/ui/api/contacts/sync"
+                    hx-target="#carddav-status-container"
+                    hx-swap="innerHTML"
+                    hx-indicator="#carddav-connected"
+                    class="px-2.5 py-1 text-xs text-blue-500 dark:text-blue-400 border border-blue-300 dark:border-blue-500 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Sync</button>
+            <button hx-post="/ui/api/contacts/disconnect"
+                    hx-target="#carddav-status-container"
+                    hx-swap="innerHTML"
+                    hx-confirm="CardDAV trennen und alle synchronisierten Kontakte loeschen?"
+                    class="px-2.5 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Trennen</button>
+        </div>
+    </div>
+    <div class="htmx-indicator items-center gap-2 py-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <svg class="animate-spin h-4 w-4 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Kontakte werden synchronisiert...
+    </div>
+</div>
+{% else %}
+<form hx-post="/ui/api/contacts/connect"
+      hx-target="#carddav-status-container"
+      hx-swap="innerHTML">
+    <div class="htmx-hide-on-request flex flex-col sm:flex-row gap-2 mb-2">
+        <input type="url" name="url" placeholder="https://dav.mailbox.org/carddav/..."
+               maxlength="2048" required
+               class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <input type="text" name="username" placeholder="Benutzername"
+               maxlength="256" required
+               class="flex-1 sm:max-w-[12rem] px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <input type="password" name="password" placeholder="Passwort"
+               maxlength="256" required
+               class="flex-1 sm:max-w-[12rem] px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <button type="submit"
+                class="px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg cursor-pointer shrink-0">Verbinden</button>
+    </div>
+    <div class="htmx-indicator items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <svg class="animate-spin h-4 w-4 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Verbinde und synchronisiere Kontakte...
+    </div>
+</form>
+{% endif %}

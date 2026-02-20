@@ -83,12 +83,16 @@ def sync(pool, config):
 
 class TestInitialize:
     async def test_creates_table_and_indexes(self, sync, pool):
+        # _migrate_phones does a fetch that returns [] by default
+        pool.fetch.return_value = []
         await sync.initialize()
-        assert pool.execute.call_count == 3
+        # contacts table + full_name index + contact_phones table + contact_phones index
+        assert pool.execute.call_count == 4
         calls = [c[0][0] for c in pool.execute.call_args_list]
         assert "CREATE TABLE IF NOT EXISTS contacts" in calls[0]
         assert "idx_contacts_full_name" in calls[1]
-        assert "idx_contacts_phone" in calls[2]
+        assert "CREATE TABLE IF NOT EXISTS contact_phones" in calls[2]
+        assert "idx_contact_phones_contact_id" in calls[3]
 
 
 class TestPropfind:
@@ -133,20 +137,23 @@ class TestParseVcard:
         assert contact["full_name"] == "Max Mustermann"
         assert contact["first_name"] == "Max"
         assert contact["last_name"] == "Mustermann"
-        assert contact["phone_mobile"] == "+43 660 1234567"
-        assert contact["phone_work"] == "+43 1 9876543"
-        assert contact["phone_primary"] == "+43 1 1111111"
         assert contact["email"] == "max@example.com"
         assert contact["cardav_uid"] == "abc-123-def"
         assert contact["cardav_url"] == "/carddav/32/contact1.vcf"
+        # All phone numbers collected
+        assert ("mobile", "+43 660 1234567") in contact["phones"]
+        assert ("work", "+43 1 9876543") in contact["phones"]
+        assert ("home", "+43 1 1111111") in contact["phones"]
+        assert len(contact["phones"]) == 3
 
     def test_minimal_vcard(self, sync):
         contact = sync._parse_vcard(SAMPLE_VCARD_MINIMAL, "/carddav/32/anna.vcf")
 
         assert contact is not None
         assert contact["full_name"] == "Anna Test"
-        assert contact["phone_primary"] == "+43 660 9999999"
-        assert contact["phone_mobile"] == ""
+        # TEL without TYPE → "other"
+        assert len(contact["phones"]) == 1
+        assert contact["phones"][0] == ("other", "+43 660 9999999")
         assert contact["email"] == ""
 
     def test_skip_empty_name(self, sync):
@@ -166,7 +173,23 @@ class TestParseVcard:
         assert contact["full_name"] == "Hans Mueller"
         assert contact["first_name"] == "Hans"
         assert contact["last_name"] == "Mueller"
-        assert contact["phone_mobile"] == "+43 660 5555555"
+        assert ("mobile", "+43 660 5555555") in contact["phones"]
+
+    def test_multiple_phones_same_type(self, sync):
+        """Two mobile numbers should both be stored."""
+        vcard = """BEGIN:VCARD
+VERSION:3.0
+FN:Dual Phone
+TEL;TYPE=CELL:+43 660 1111111
+TEL;TYPE=CELL:+43 660 2222222
+UID:dual-phone
+END:VCARD"""
+        contact = sync._parse_vcard(vcard, "/carddav/32/dual.vcf")
+
+        assert contact is not None
+        assert len(contact["phones"]) == 2
+        assert ("mobile", "+43 660 1111111") in contact["phones"]
+        assert ("mobile", "+43 660 2222222") in contact["phones"]
 
 
 class TestUpsertContact:
@@ -175,23 +198,28 @@ class TestUpsertContact:
             "full_name": "Test User",
             "first_name": "Test",
             "last_name": "User",
-            "phone_primary": "",
-            "phone_mobile": "+43 660 1234567",
-            "phone_work": "",
+            "phones": [("mobile", "+43 660 1234567"), ("home", "+43 1 9999999")],
             "email": "test@example.com",
             "cardav_uid": "uid-123",
             "cardav_url": "/carddav/32/test.vcf",
         }
+        pool.fetchval.return_value = 42  # returned contact id
 
         await sync._upsert_contact(contact)
 
-        pool.execute.assert_called_once()
-        sql = pool.execute.call_args[0][0]
+        # fetchval for RETURNING id
+        sql = pool.fetchval.call_args[0][0]
         assert "ON CONFLICT (cardav_uid) DO UPDATE" in sql
-        # Verify all values are passed as parameters
-        args = pool.execute.call_args[0][1:]
+        assert "RETURNING id" in sql
+        args = pool.fetchval.call_args[0][1:]
         assert "Test User" in args
         assert "uid-123" in args
+
+        # DELETE old phones + INSERT for each phone
+        execute_calls = pool.execute.call_args_list
+        assert any("DELETE FROM contact_phones" in c[0][0] for c in execute_calls)
+        insert_calls = [c for c in execute_calls if "INSERT INTO contact_phones" in c[0][0]]
+        assert len(insert_calls) == 2
 
 
 class TestSyncContacts:
