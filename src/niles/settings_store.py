@@ -15,7 +15,9 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
-# Settings that can be changed at runtime (not credentials/infrastructure)
+# Settings that can be changed at runtime via the Settings UI.
+# CardDAV credentials are included here (analogous to calendar_sources.auth_password
+# which is already stored in the DB by CalendarSourceManager).
 EDITABLE_SETTINGS = {
     "llm_base_url",
     "llm_model",
@@ -26,6 +28,9 @@ EDITABLE_SETTINGS = {
     "feature_carddav_sync",
     "feature_caldav_sync",
     "caldav_calendars",
+    "carddav_url",
+    "carddav_user",
+    "carddav_password",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")

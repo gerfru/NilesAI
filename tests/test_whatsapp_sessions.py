@@ -36,8 +36,6 @@ class TestWhatsAppAction:
 
     async def test_send_message_custom_instance(self, action):
         """send_message with explicit instance parameter."""
-        import httpx
-
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "sent"}
         mock_response.raise_for_status = MagicMock()
