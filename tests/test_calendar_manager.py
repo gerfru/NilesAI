@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from niles.config import Settings
+from niles.sync.google_auth import GoogleCalendarAuth
 from niles.sync.manager import CalendarSourceManager, _split_vevents
 
 
@@ -17,6 +18,8 @@ def settings():
         caldav_url="https://dav.example.com/caldav/",
         caldav_user="testuser",
         caldav_password="testpass",
+        google_client_id="test-client-id",
+        google_client_secret="test-client-secret",
     )
 
 
@@ -388,9 +391,20 @@ class TestBuildAuth:
         auth = manager._build_auth(source)
         assert isinstance(auth, httpx.BasicAuth)
 
-    def test_google_not_implemented(self, manager):
-        source = {"source_type": "google"}
-        with pytest.raises(NotImplementedError):
+    def test_google_returns_google_auth(self, manager):
+        source = {
+            "source_type": "google",
+            "google_refresh_token": "refresh-tok",
+        }
+        auth = manager._build_auth(source)
+        assert isinstance(auth, GoogleCalendarAuth)
+
+    def test_google_missing_refresh_token_raises(self, manager):
+        source = {
+            "source_type": "google",
+            "google_refresh_token": None,
+        }
+        with pytest.raises(ValueError, match="refresh token"):
             manager._build_auth(source)
 
     def test_caldav_none_credentials(self, manager):
