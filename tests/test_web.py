@@ -13,6 +13,7 @@ from niles.sources.web import (
     _GCAL_OAUTH_COOKIE,
     _get_session_user,
     _login_attempts,
+    _require_auth_and_csrf,
     _verify_csrf,
     callback_google_calendar,
     chat_clear,
@@ -174,6 +175,36 @@ class TestWebAuth:
         response = await settings_page(request)
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/login"
+
+    async def test_stale_session_returns_401(self):
+        """Session cookie valid but user row deleted from DB → 401 + cookie cleared."""
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = None  # user not in DB
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        user, error = await _require_auth_and_csrf(request)
+        assert user is None
+        assert error is not None
+        assert error.status_code == 401
+        assert error.headers.get("HX-Redirect") == "/ui/login"
+        user_store.get_by_id.assert_awaited_once_with(1)
+
+    async def test_valid_session_with_existing_user_passes(self):
+        """Session cookie valid and user exists in DB → returns user dict."""
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {"id": 1, "email": "test@example.com"}
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        user, error = await _require_auth_and_csrf(request)
+        assert error is None
+        assert user is not None
+        assert user["uid"] == 1
 
 
 class TestChatEndpoints:
