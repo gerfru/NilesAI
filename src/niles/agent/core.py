@@ -449,10 +449,9 @@ class NilesAgent:
                 phones = contact.get("phones", [])
                 if len(phones) > 1:
                     # Multiple numbers — ask user to choose
-                    lines = [f"{contact['full_name']} hat mehrere Telefonnummern:"]
+                    lines = [f"Es gibt mehrere Nummern für {contact['full_name']}:"]
                     for i, p in enumerate(phones, 1):
-                        lines.append(f"{i}. {p['number']} ({p['type']})")
-                    lines.append("Bitte sag mir die Nummer (1, 2, ...) an die ich senden soll.")
+                        lines.append(f"{i}. 00{p['number']} ({p['type']})")
                     return {"choose_phone": "\n".join(lines)}
                 if not contact.get("phone"):
                     return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
