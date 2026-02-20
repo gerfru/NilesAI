@@ -1,7 +1,7 @@
 """Tests for web GUI router."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from itsdangerous import URLSafeTimedSerializer
 
@@ -300,6 +300,26 @@ class TestSettingsEndpoints:
         await update_setting(request, key="llm_model", value="llama3.1:8b")
 
         assert agent.model == "llama3.1:8b"
+
+    async def test_update_llm_base_url_propagates_to_agent(self):
+        agent = AsyncMock()
+        agent.llm = AsyncMock()
+        request = _make_request(
+            cookies=_auth_cookies(),
+            headers=_csrf_headers(),
+            settings_store=AsyncMock(),
+            agent=agent,
+        )
+
+        with patch("niles.sources.web.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            await update_setting(request, key="llm_base_url", value="http://localhost:9999/v1")
+
+        mock_openai.assert_called_once_with(
+            base_url="http://localhost:9999/v1", api_key="not-needed",
+        )
+        assert agent.llm is mock_client
 
     async def test_update_non_editable_rejected(self):
         settings_store = AsyncMock()
