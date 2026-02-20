@@ -442,9 +442,9 @@ class CalDAVSync:
     async def _resolve_write_collection(self) -> str:
         """Return a collection URL suitable for creating events.
 
-        If caldav_url already points to a specific collection (contains .ics
-        files), return it directly. Otherwise, discover sub-collections and
-        return the first one.
+        Delegates to _get_sync_collections() which handles both direct
+        collection URLs and root-level discovery. Returns the first
+        discovered collection.
         """
         collections = await self._get_sync_collections()
         if not collections:
