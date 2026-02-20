@@ -102,7 +102,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "find_event",
-            "description": "Liest bestehende Kalendertermine aus der Datenbank. Nutze dieses Tool wenn der Benutzer nach Terminen fragt, wissen will wann etwas stattfindet, oder seinen Kalender sehen will.",
+            "description": "Liest bestehende Kalendertermine aus der Datenbank. Nutze dieses Tool wenn der Benutzer nach Terminen fragt, wissen will wann etwas stattfindet, oder seinen Kalender sehen will. Wenn nur date_from angegeben wird, werden automatisch nur Termine an diesem Tag zurueckgegeben.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -112,11 +112,11 @@ TOOLS = [
                     },
                     "date_from": {
                         "type": "string",
-                        "description": "Startdatum (ISO-Format, z.B. '2026-02-20' oder '2026-02-20T14:00'). Optional.",
+                        "description": "Startdatum (ISO-Format, z.B. '2026-02-20'). Bei 'morgen' oder einem einzelnen Tag NUR date_from setzen, NICHT date_to.",
                     },
                     "date_to": {
                         "type": "string",
-                        "description": "Enddatum (ISO-Format). Optional.",
+                        "description": "Enddatum (ISO-Format). Nur setzen bei expliziten Zeitraeumen wie 'diese Woche' oder 'naechste 7 Tage'. NICHT setzen bei Fragen nach einem einzelnen Tag.",
                     },
                 },
                 "required": [],
