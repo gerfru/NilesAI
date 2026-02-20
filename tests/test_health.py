@@ -12,8 +12,12 @@ def _make_mock_pool():
     pool = MagicMock()
     pool.execute = AsyncMock()
     pool.fetch = AsyncMock(return_value=[])
-    pool.fetchrow = AsyncMock()
-    pool.fetchval = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value={
+        "id": 1, "name": "", "url": "", "source_type": "ics",
+        "writable": False, "enabled": True, "last_synced": None,
+        "last_error": None, "created_at": None,
+    })
+    pool.fetchval = AsyncMock(return_value=0)
     pool.close = AsyncMock()
     pool.get_size.return_value = 2
     pool.get_idle_size.return_value = 2
