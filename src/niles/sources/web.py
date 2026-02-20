@@ -200,9 +200,9 @@ def _safe_settings_dict(settings) -> dict:
         "carddav_url": settings.carddav_url,
         "carddav_user": settings.carddav_user,
         "carddav_password": "********" if settings.carddav_password else "(not set)",
-        "caldav_url": settings.caldav_url,
-        "caldav_user": settings.caldav_user,
-        "caldav_password": "********" if settings.caldav_password else "(not set)",
+        "caldav_url (Legacy)": settings.caldav_url,
+        "caldav_user (Legacy)": settings.caldav_user,
+        "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
     }
 
     return {
@@ -746,11 +746,12 @@ async def calendar_source_remove(request: Request, source_id: int):
             '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
         )
 
-    await manager.remove_source(source_id)
+    removed = await manager.remove_source(source_id)
     sources = await manager.get_sources()
-    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-        "sources": sources,
-    })
+    ctx = {"sources": sources}
+    if not removed:
+        ctx["error"] = "Quelle nicht gefunden."
+    return templates.TemplateResponse(request, "fragments/calendar_sources.html", ctx)
 
 
 @router.post("/api/calendar/sources/{source_id}/sync", response_class=HTMLResponse)

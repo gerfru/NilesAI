@@ -185,7 +185,7 @@ async def lifespan(app: FastAPI):
         history=history,
         mcp_manager=mcp_manager,
         calendar=calendar,
-        calendar_manager=calendar_manager if calendar_sources else None,
+        calendar_manager=calendar_manager,
     )
 
     # Store on app state for access in route handlers

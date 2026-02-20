@@ -1,18 +1,23 @@
 """Calendar source manager – unified CRUD, sync, and .env migration."""
 
 import logging
+import re
 from datetime import datetime
+from urllib.parse import urlparse
 
 import asyncpg
 import httpx
 
-from .caldav import CalDAVSync
+from .caldav import CalDAVSync, upsert_event
 from .ical_parser import parse_icalendar
 
 logger = logging.getLogger(__name__)
 
 _MAX_ICS_SIZE = 5 * 1024 * 1024  # 5 MB limit per ICS file
 _ICS_TIMEOUT = 60  # seconds
+
+# Strip credentials from URLs in error messages (user:pass@host → ***@host)
+_CREDENTIAL_RE = re.compile(r"://[^@/\s]+@")
 
 
 class CalendarSourceManager:
@@ -192,13 +197,13 @@ class CalendarSourceManager:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url, timeout=_ICS_TIMEOUT, follow_redirects=True,
+                    url, timeout=_ICS_TIMEOUT, follow_redirects=False,
                 )
                 response.raise_for_status()
                 if len(response.content) > _MAX_ICS_SIZE:
                     raise ValueError(f"ICS file too large: {len(response.content)} bytes")
         except Exception as exc:
-            await self._set_error(source_id, str(exc)[:500])
+            await self._set_error(source_id, str(exc))
             raise
 
         ics_text = response.text
@@ -231,15 +236,17 @@ class CalendarSourceManager:
             await self._set_synced(source["id"])
             return count
         except Exception as exc:
-            await self._set_error(source["id"], str(exc)[:500])
+            await self._set_error(source["id"], str(exc))
             raise
 
-    def _build_auth(self, source: dict) -> httpx.Auth:
-        """Build httpx auth for a source (Basic or Bearer)."""
+    def _build_auth(self, source: dict) -> httpx.Auth | None:
+        """Build httpx auth for a source (Basic or Bearer). Returns None for ICS."""
         if source["source_type"] == "google":
             # Google Calendar OAuth – placeholder for Phase B
             raise NotImplementedError("Google Calendar sync not yet implemented")
-        return httpx.BasicAuth(source["auth_user"] or "", source["auth_password"] or "")
+        if source["source_type"] == "caldav":
+            return httpx.BasicAuth(source["auth_user"] or "", source["auth_password"] or "")
+        return None
 
     # --- Event creation ---
 
@@ -273,34 +280,7 @@ class CalendarSourceManager:
 
     async def _upsert_event(self, event: dict, source_id: int) -> None:
         """Insert or update an ICS event."""
-        await self.pool.execute(
-            """
-            INSERT INTO events (
-                summary, dtstart, dtend, all_day,
-                description, location, caldav_uid, caldav_url,
-                source_id, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (caldav_uid) DO UPDATE SET
-                summary = EXCLUDED.summary,
-                dtstart = EXCLUDED.dtstart,
-                dtend = EXCLUDED.dtend,
-                all_day = EXCLUDED.all_day,
-                description = EXCLUDED.description,
-                location = EXCLUDED.location,
-                caldav_url = EXCLUDED.caldav_url,
-                source_id = EXCLUDED.source_id,
-                updated_at = NOW()
-            """,
-            event["summary"],
-            event["dtstart"],
-            event["dtend"],
-            event["all_day"],
-            event["description"],
-            event["location"],
-            event["caldav_uid"],
-            event["caldav_url"],
-            source_id,
-        )
+        await upsert_event(self.pool, event, source_id)
 
     async def _set_synced(self, source_id: int) -> None:
         """Update last_synced timestamp, clear error."""
@@ -310,10 +290,11 @@ class CalendarSourceManager:
         )
 
     async def _set_error(self, source_id: int, error_msg: str) -> None:
-        """Store sync error message."""
+        """Store sync error message (credentials stripped)."""
+        sanitized = _CREDENTIAL_RE.sub("://***@", error_msg)[:500]
         await self.pool.execute(
             "UPDATE calendar_sources SET last_error = $1 WHERE id = $2",
-            error_msg, source_id,
+            sanitized, source_id,
         )
 
     async def _migrate_env_source(self) -> None:
@@ -326,8 +307,9 @@ class CalendarSourceManager:
         if not cfg.caldav_url or not cfg.caldav_user:
             return  # Nothing to migrate
 
+        host = urlparse(cfg.caldav_url).hostname or "CalDAV"
         await self.add_source(
-            name="mailbox.org (migriert)",
+            name=f"{host} (migriert)",
             url=cfg.caldav_url,
             source_type="caldav",
             writable=True,
