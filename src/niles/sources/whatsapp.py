@@ -61,13 +61,29 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
     logger.info("WhatsApp message from %s: %s", sender, text[:100])
 
+    # Determine per-user chat ID from Evolution instance name
+    instance_name = payload.get("instance")
+    wa_store = getattr(request.app.state, "wa_store", None)
+    chat_id = None
+    instance_for_reply = None
+
+    if wa_store and instance_name:
+        session = await wa_store.get_by_instance(instance_name)
+        if session:
+            chat_id = f"web-user-{session['user_id']}"
+            instance_for_reply = instance_name
+
+    # Fallback: use sender phone as chat ID (legacy global instance)
+    if not chat_id:
+        chat_id = f"wa-{sender}"
+
     # Process via agent
     agent = request.app.state.agent
     event = {
         "type": "whatsapp",
-        "from": sender,
+        "from": chat_id,
         "content": text,
-        "metadata": {"jid": remote_jid},
+        "metadata": {"jid": remote_jid, "sender": sender},
     }
 
     try:
@@ -77,7 +93,9 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         settings = request.app.state.settings
         if response_text and settings.feature_whatsapp_auto_reply:
             whatsapp_action = request.app.state.whatsapp_action
-            await whatsapp_action.send_message(to=remote_jid, text=response_text)
+            await whatsapp_action.send_message(
+                to=remote_jid, text=response_text, instance=instance_for_reply,
+            )
         elif response_text:
             logger.info("Auto-reply disabled, suppressed response to %s", sender)
     except Exception:
