@@ -143,13 +143,30 @@ def _set_csrf_cookie(request: Request, response: Response) -> None:
     )
 
 
-def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
-    """Check session + CSRF. Returns (user_dict, None) or (None, error_response)."""
+async def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
+    """Check session + CSRF + user existence in DB.
+
+    Returns (user_dict, None) or (None, error_response).
+    Invalidates session cookie when the user row no longer exists (e.g. after
+    a database reset while the browser still holds a signed cookie).
+    """
     user = _get_session_user(request)
     if user is None:
         return None, Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
     if not _verify_csrf(request):
         return None, Response(status_code=403, headers={"HX-Redirect": "/ui/login"})
+
+    # Verify user still exists in DB (skip for API-key admin uid=0)
+    uid = user.get("uid")
+    if uid:  # uid=0 is the synthetic API-key admin; real users have uid > 0
+        user_store = getattr(request.app.state, "user_store", None)
+        if user_store and await user_store.get_by_id(uid) is None:
+            logger.warning("Stale session: user_id=%s not in users table", uid)
+            response = Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+            response.delete_cookie(SESSION_COOKIE_NAME)
+            response.delete_cookie(CSRF_COOKIE_NAME)
+            return None, response
+
     return user, None
 
 
@@ -182,7 +199,6 @@ def _safe_settings_dict(settings) -> dict:
     feature_flags = {}
     for key in [
         "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
-        "feature_carddav_sync", "feature_caldav_sync",
     ]:
         feature_flags[key] = getattr(settings, key)
 
@@ -198,9 +214,6 @@ def _safe_settings_dict(settings) -> dict:
         "postgres_password": "********",
         "evolution_api_url": settings.evolution_api_url,
         "evolution_api_key": "********",
-        "carddav_url": settings.carddav_url,
-        "carddav_user": settings.carddav_user,
-        "carddav_password": "********" if settings.carddav_password else "(not set)",
         "caldav_url (Legacy)": settings.caldav_url,
         "caldav_user (Legacy)": settings.caldav_user,
         "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
@@ -496,7 +509,7 @@ async def chat_history(
 @router.post("/api/chat", response_class=HTMLResponse)
 async def chat_send(request: Request, message: str = Form(...)):
     """Process a chat message, return HTML fragment with user + assistant bubbles."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -540,7 +553,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
     reconnect semantics (retry/last-event-id) don't apply.  A dropped
     connection simply ends the stream; the user re-sends if needed.
     """
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -577,7 +590,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
 @router.post("/api/chat/clear", response_class=HTMLResponse)
 async def chat_clear(request: Request):
     """Clear chat history for current user."""
-    user, error = _require_auth_and_csrf(request)
+    user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -590,7 +603,7 @@ async def chat_clear(request: Request):
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
 async def update_setting(request: Request, key: str, value: str = Form(...)):
     """Update a single runtime setting."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -618,6 +631,11 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
         caldav = getattr(request.app.state, "caldav", None)
         if caldav:
             caldav.config = new_settings
+        # Hot-reload CardDAV credentials when they change
+        if key.startswith("carddav_"):
+            carddav_sync = getattr(request.app.state, "carddav_sync", None)
+            if carddav_sync:
+                carddav_sync.update_config(new_settings)
         # Hot-reload LLM settings on the running agent
         agent = request.app.state.agent
         if agent is not None:
@@ -698,7 +716,7 @@ async def calendar_source_add(
     auth_password: str = Form(""),
 ):
     """Add a new calendar source and return updated sources list."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -745,7 +763,7 @@ async def calendar_source_add(
 @router.delete("/api/calendar/sources/{source_id}", response_class=HTMLResponse)
 async def calendar_source_remove(request: Request, source_id: int):
     """Remove a calendar source (CASCADE deletes events)."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -766,7 +784,7 @@ async def calendar_source_remove(request: Request, source_id: int):
 @router.post("/api/calendar/sources/{source_id}/sync", response_class=HTMLResponse)
 async def calendar_source_sync(request: Request, source_id: int):
     """Sync a single calendar source."""
-    _user, error = _require_auth_and_csrf(request)
+    _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
 
@@ -949,3 +967,327 @@ async def callback_google_calendar(
     response = RedirectResponse(url="/ui/settings", status_code=303)
     response.delete_cookie(_GCAL_OAUTH_COOKIE)
     return response
+
+
+# --- WhatsApp session management ---
+
+
+_WA_REQUIRES_GOOGLE = (
+    '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
+    "WhatsApp-Verknuepfung erfordert einen Google-Login.</p>"
+)
+
+
+@router.get("/api/whatsapp/status", response_class=HTMLResponse)
+async def whatsapp_status(request: Request):
+    """Return WhatsApp connection status fragment."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    # API-key admin (uid=0) has no row in users table → FK would violate
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
+
+    wa_store = getattr(request.app.state, "wa_store", None)
+    if not wa_store:
+        return HTMLResponse(
+            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
+            "WhatsApp nicht verfuegbar.</p>"
+        )
+
+    session = await wa_store.get_session(user["uid"])
+    ctx: dict = {"wa_status": "disconnected", "wa_phone": "", "wa_qr": ""}
+
+    if session:
+        whatsapp_action = request.app.state.whatsapp_action
+        state = await whatsapp_action.get_connection_state(session["instance_name"])
+
+        if state == "open":
+            if session["status"] != "connected":
+                await wa_store.update_status(user["uid"], "connected")
+            ctx["wa_status"] = "connected"
+            ctx["wa_phone"] = session.get("phone_number") or ""
+        elif session["status"] == "connecting":
+            ctx["wa_status"] = "connecting"
+            # Fetch fresh QR code
+            qr_data = await whatsapp_action.get_qr_code(session["instance_name"])
+            ctx["wa_qr"] = qr_data.get("base64", "")
+        else:
+            # Instance exists in DB but Evolution says closed — stale row
+            # will be overwritten on next reconnect via upsert_session
+            ctx["wa_status"] = "disconnected"
+
+    return templates.TemplateResponse(
+        request, "fragments/whatsapp_status.html", ctx
+    )
+
+
+@router.post("/api/whatsapp/connect", response_class=HTMLResponse)
+async def whatsapp_connect(request: Request):
+    """Create an Evolution API instance and return QR code fragment."""
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
+
+    wa_store = getattr(request.app.state, "wa_store", None)
+    whatsapp_action = request.app.state.whatsapp_action
+    if not wa_store:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>'
+        )
+
+    instance_name = f"niles-wa-{user['uid']}"
+    webhook_url = _build_redirect_uri(request, "/webhook/whatsapp")
+    # TODO: use a dedicated WEBHOOK_SECRET instead of the Evolution API key
+    # to limit exposure if Evolution's stored webhook URLs are ever leaked.
+    webhook_url += f"?token={request.app.state.settings.evolution_api_key}"
+
+    result = await whatsapp_action.create_instance(instance_name, webhook_url)
+
+    if "error" in result:
+        # Instance may already exist — try to get QR code directly
+        qr_data = await whatsapp_action.get_qr_code(instance_name)
+        qr_base64 = qr_data.get("base64", "")
+    else:
+        qr_base64 = result.get("qrcode", {}).get("base64", "")
+
+    try:
+        await wa_store.upsert_session(user["uid"], instance_name, status="connecting")
+    except asyncpg.ForeignKeyViolationError:
+        logger.warning("FK violation: user_id=%s not in users table", user["uid"])
+        response = HTMLResponse(
+            '<p class="text-sm text-red-500">'
+            "Sitzung ungueltig &ndash; bitte erneut einloggen.</p>",
+            status_code=401,
+            headers={"HX-Redirect": "/ui/login"},
+        )
+        response.delete_cookie(SESSION_COOKIE_NAME)
+        return response
+
+    return templates.TemplateResponse(
+        request, "fragments/whatsapp_status.html", {
+            "wa_status": "connecting",
+            "wa_qr": qr_base64,
+            "wa_phone": "",
+        }
+    )
+
+
+@router.post("/api/whatsapp/disconnect", response_class=HTMLResponse)
+async def whatsapp_disconnect(request: Request):
+    """Logout and delete the user's Evolution API instance."""
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_WA_REQUIRES_GOOGLE)
+
+    wa_store = getattr(request.app.state, "wa_store", None)
+    whatsapp_action = request.app.state.whatsapp_action
+    if not wa_store:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>'
+        )
+
+    session = await wa_store.get_session(user["uid"])
+    if session:
+        instance_name = session["instance_name"]
+        await whatsapp_action.logout_instance(instance_name)
+        await whatsapp_action.delete_instance(instance_name)
+        await wa_store.delete_session(user["uid"])
+
+    return templates.TemplateResponse(
+        request, "fragments/whatsapp_status.html", {
+            "wa_status": "disconnected",
+            "wa_phone": "",
+            "wa_qr": "",
+        }
+    )
+
+
+# --- CardDAV contacts endpoints ---
+
+
+async def _contacts_status_ctx(request: Request) -> dict:
+    """Build template context for carddav_status.html fragment."""
+    settings = request.app.state.settings
+    connected = bool(settings.carddav_url)
+    ctx: dict = {"connected": connected, "carddav_error": None}
+    if not connected:
+        return ctx
+
+    ctx["carddav_url"] = settings.carddav_url
+    ctx["carddav_user"] = settings.carddav_user
+
+    pool = request.app.state.pool
+    try:
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
+        )
+        if row:
+            ctx["contact_count"] = row["cnt"]
+            ctx["last_sync"] = row["last_sync"]
+    except Exception:
+        logger.warning("Failed to fetch contact status")
+    return ctx
+
+
+@router.get("/api/contacts/status", response_class=HTMLResponse)
+async def contacts_status(request: Request):
+    """Return CardDAV sync status fragment (form or connected card)."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    ctx = await _contacts_status_ctx(request)
+    return templates.TemplateResponse(
+        request, "fragments/carddav_status.html", ctx,
+    )
+
+
+@router.post("/api/contacts/connect", response_class=HTMLResponse)
+async def contacts_connect(
+    request: Request,
+    url: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """Test CardDAV connection, then save credentials and trigger initial sync."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    carddav_sync = getattr(request.app.state, "carddav_sync", None)
+    if not carddav_sync:
+        return templates.TemplateResponse(
+            request, "fragments/carddav_status.html",
+            {"connected": False, "carddav_error": "CardDAV Sync nicht verfuegbar."},
+        )
+
+    settings = request.app.state.settings
+
+    # Apply overrides temporarily for connection test (not persisted yet)
+    new_settings = apply_overrides(settings, {
+        "carddav_url": url.strip(),
+        "carddav_user": username.strip(),
+        "carddav_password": password,
+    })
+    carddav_sync.update_config(new_settings)
+
+    # Test connection BEFORE saving to DB
+    ok, message = await carddav_sync.test_connection()
+    if not ok:
+        # Revert to previous config
+        carddav_sync.update_config(settings)
+        return templates.TemplateResponse(
+            request, "fragments/carddav_status.html",
+            {"connected": False, "carddav_error": message},
+        )
+
+    # Connection successful — persist credentials (plaintext in DB,
+    # acceptable for self-hosted; same pattern as CalDAV credentials).
+    settings_store = request.app.state.settings_store
+    try:
+        await settings_store.set("carddav_url", url.strip())
+        await settings_store.set("carddav_user", username.strip())
+        await settings_store.set("carddav_password", password)
+    except Exception as exc:
+        logger.exception("Failed to persist CardDAV credentials")
+        carddav_sync.update_config(settings)
+        return templates.TemplateResponse(
+            request, "fragments/carddav_status.html",
+            {"connected": False, "carddav_error": f"Speichern fehlgeschlagen: {exc}"},
+        )
+
+    request.app.state.settings = new_settings
+
+    # Register daily sync job if not already scheduled
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler and not scheduler.get_job("carddav_daily_sync"):
+        scheduler.add_job(
+            carddav_sync.sync_contacts, "cron", hour=3, minute=0,
+            id="carddav_daily_sync",
+            max_instances=1, misfire_grace_time=300,
+        )
+        logger.info("CardDAV daily sync job registered via UI")
+
+    # Run initial sync
+    try:
+        await carddav_sync.sync_contacts()
+    except Exception:
+        logger.exception("Initial CardDAV sync failed after connect")
+
+    ctx = await _contacts_status_ctx(request)
+    return templates.TemplateResponse(
+        request, "fragments/carddav_status.html", ctx,
+    )
+
+
+@router.post("/api/contacts/disconnect", response_class=HTMLResponse)
+async def contacts_disconnect(request: Request):
+    """Remove CardDAV credentials and delete all synced contacts."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    settings_store = request.app.state.settings_store
+
+    # Delete credentials from settings store
+    for key in ("carddav_url", "carddav_user", "carddav_password"):
+        await settings_store.delete(key)
+
+    # Apply overrides (empty strings revert to env/defaults)
+    new_settings = apply_overrides(request.app.state.settings, {
+        "carddav_url": "",
+        "carddav_user": "",
+        "carddav_password": "",
+    })
+    request.app.state.settings = new_settings
+
+    carddav_sync = getattr(request.app.state, "carddav_sync", None)
+    if carddav_sync:
+        carddav_sync.update_config(new_settings)
+
+    # Delete all contacts
+    pool = request.app.state.pool
+    try:
+        await pool.execute("DELETE FROM contacts")
+        logger.info("All contacts deleted (CardDAV disconnected)")
+    except Exception:
+        logger.exception("Failed to delete contacts on disconnect")
+
+    return templates.TemplateResponse(
+        request, "fragments/carddav_status.html",
+        {"connected": False, "carddav_error": None},
+    )
+
+
+@router.post("/api/contacts/sync", response_class=HTMLResponse)
+async def contacts_sync(request: Request):
+    """Trigger a manual CardDAV contact sync."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    carddav_sync = getattr(request.app.state, "carddav_sync", None)
+    if not carddav_sync:
+        ctx = await _contacts_status_ctx(request)
+        ctx["carddav_error"] = "CardDAV Sync nicht verfuegbar."
+        return templates.TemplateResponse(
+            request, "fragments/carddav_status.html", ctx,
+        )
+
+    try:
+        await carddav_sync.sync_contacts()
+    except Exception:
+        logger.exception("Manual CardDAV sync failed")
+
+    ctx = await _contacts_status_ctx(request)
+    return templates.TemplateResponse(
+        request, "fragments/carddav_status.html", ctx,
+    )

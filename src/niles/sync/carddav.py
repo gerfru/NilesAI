@@ -35,8 +35,30 @@ class CardDAVSync:
         self._base_url = re.match(r"https?://[^/]+", config.carddav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
 
+    def update_config(self, config: Settings) -> None:
+        """Hot-reload credentials from updated settings."""
+        self.carddav_url = config.carddav_url
+        self.auth = (config.carddav_user, config.carddav_password)
+        match = re.match(r"https?://[^/]+", config.carddav_url)
+        self._base_url = match.group(0) if match else ""
+        logger.info("CardDAV credentials updated via settings UI")
+
+    async def test_connection(self) -> tuple[bool, str]:
+        """Test CardDAV connection with current credentials. Returns (ok, message)."""
+        if not self.carddav_url:
+            return False, "Keine CardDAV URL konfiguriert."
+        try:
+            vcf_urls = await self._propfind()
+            return True, f"{len(vcf_urls)} Kontakte gefunden."
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                return False, "Authentifizierung fehlgeschlagen (401)."
+            return False, f"Server-Fehler: HTTP {exc.response.status_code}"
+        except Exception as exc:
+            return False, f"Verbindung fehlgeschlagen: {exc}"
+
     async def initialize(self) -> None:
-        """Create contacts table and indexes if they don't exist."""
+        """Create contacts table, contact_phones table, and indexes."""
         await self.pool.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
@@ -57,14 +79,68 @@ class CardDAVSync:
             CREATE INDEX IF NOT EXISTS idx_contacts_full_name
             ON contacts (full_name)
         """)
+
+        # 1:N phone table – stores all phone numbers per contact
         await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_contacts_phone
-            ON contacts (phone_primary)
+            CREATE TABLE IF NOT EXISTS contact_phones (
+                id SERIAL PRIMARY KEY,
+                contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+                type TEXT NOT NULL DEFAULT 'other',
+                number TEXT NOT NULL,
+                UNIQUE(contact_id, number)
+            )
         """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_contact_phones_contact_id
+            ON contact_phones (contact_id)
+        """)
+
+        # Migrate legacy phone columns → contact_phones (one-time)
+        await self._migrate_phones()
+
         logger.info("Contacts table initialized")
+
+    async def _migrate_phones(self) -> None:
+        """Migrate phone numbers from contacts columns to contact_phones table (one-time)."""
+        # Only migrate contacts that have phone data in old columns
+        # but no rows yet in contact_phones
+        rows = await self.pool.fetch("""
+            SELECT c.id, c.phone_primary, c.phone_mobile, c.phone_work
+            FROM contacts c
+            WHERE (c.phone_primary IS NOT NULL AND c.phone_primary != ''
+                   OR c.phone_mobile IS NOT NULL AND c.phone_mobile != ''
+                   OR c.phone_work IS NOT NULL AND c.phone_work != '')
+              AND NOT EXISTS (
+                  SELECT 1 FROM contact_phones cp WHERE cp.contact_id = c.id
+              )
+        """)
+        if not rows:
+            return
+
+        logger.info("Migrating %d contacts to contact_phones table", len(rows))
+        for row in rows:
+            phones = []
+            if row["phone_mobile"]:
+                phones.append(("mobile", row["phone_mobile"]))
+            if row["phone_primary"]:
+                phones.append(("home", row["phone_primary"]))
+            if row["phone_work"]:
+                phones.append(("work", row["phone_work"]))
+            for phone_type, number in phones:
+                await self.pool.execute(
+                    """
+                    INSERT INTO contact_phones (contact_id, type, number)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (contact_id, number) DO NOTHING
+                    """,
+                    row["id"], phone_type, number,
+                )
 
     async def sync_contacts(self) -> int:
         """Run a full CardDAV sync. Returns number of synced contacts."""
+        if not self.carddav_url:
+            return 0
+
         logger.info("Starting CardDAV contact sync...")
 
         try:
@@ -100,10 +176,13 @@ class CardDAVSync:
 
     async def _propfind(self) -> list[str]:
         """Send PROPFIND request and extract .vcf URLs from response."""
-        async with httpx.AsyncClient() as client:
+        url = self.carddav_url
+        if not url.endswith("/"):
+            url += "/"
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.request(
                 "PROPFIND",
-                self.carddav_url,
+                url,
                 content=_PROPFIND_BODY,
                 headers={
                     "Depth": "1",
@@ -146,9 +225,7 @@ class CardDAVSync:
             "full_name": "",
             "first_name": "",
             "last_name": "",
-            "phone_primary": "",
-            "phone_mobile": "",
-            "phone_work": "",
+            "phones": [],  # list of (type, number)
             "email": "",
             "cardav_uid": "",
             "cardav_url": url,
@@ -172,11 +249,13 @@ class CardDAVSync:
                     type_match = re.search(r"TYPE=([^;:]+)", line, re.IGNORECASE)
                     tel_type = type_match.group(1).upper() if type_match else "OTHER"
                     if tel_type in ("CELL", "MOBILE"):
-                        contact["phone_mobile"] = contact["phone_mobile"] or number
+                        contact["phones"].append(("mobile", number))
                     elif tel_type == "WORK":
-                        contact["phone_work"] = contact["phone_work"] or number
+                        contact["phones"].append(("work", number))
+                    elif tel_type in ("HOME", "VOICE"):
+                        contact["phones"].append(("home", number))
                     else:
-                        contact["phone_primary"] = contact["phone_primary"] or number
+                        contact["phones"].append(("other", number))
 
             elif line.startswith("EMAIL"):
                 email_match = re.match(r"EMAIL[^:]*:(.+)", line)
@@ -203,8 +282,15 @@ class CardDAVSync:
         return contact
 
     async def _upsert_contact(self, contact: dict) -> None:
-        """Insert or update a contact by cardav_uid."""
-        await self.pool.execute(
+        """Insert or update a contact by cardav_uid, then sync phones."""
+        phones = contact["phones"]
+
+        # Keep legacy columns populated for backward compat (first of each type)
+        phone_mobile = next((n for t, n in phones if t == "mobile"), "")
+        phone_home = next((n for t, n in phones if t == "home"), "")
+        phone_work = next((n for t, n in phones if t == "work"), "")
+
+        contact_id = await self.pool.fetchval(
             """
             INSERT INTO contacts (
                 full_name, first_name, last_name,
@@ -221,14 +307,29 @@ class CardDAVSync:
                 email = EXCLUDED.email,
                 cardav_url = EXCLUDED.cardav_url,
                 updated_at = NOW()
+            RETURNING id
             """,
             contact["full_name"],
             contact["first_name"],
             contact["last_name"],
-            contact["phone_primary"],
-            contact["phone_mobile"],
-            contact["phone_work"],
+            phone_home,
+            phone_mobile,
+            phone_work,
             contact["email"],
             contact["cardav_uid"],
             contact["cardav_url"],
         )
+
+        # Sync phones: delete old, insert current
+        await self.pool.execute(
+            "DELETE FROM contact_phones WHERE contact_id = $1", contact_id,
+        )
+        for phone_type, number in phones:
+            await self.pool.execute(
+                """
+                INSERT INTO contact_phones (contact_id, type, number)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (contact_id, number) DO NOTHING
+                """,
+                contact_id, phone_type, number,
+            )

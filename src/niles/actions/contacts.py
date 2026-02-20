@@ -40,44 +40,111 @@ class ContactsAction:
         """
         Search contact by name (case-insensitive, partial match).
 
+        For multi-word queries (e.g. "Thomas Brunner"), each word must match
+        somewhere in the contact's name fields. This handles cases where
+        full_name is stored as "Brunner Thomas" or the search order differs.
+
         Priority:
         1. Exact match on full_name
         2. Prefix match on full_name
         3. Partial match on full_name
-        4. Match on first_name or last_name
+        4. All words match across name fields
 
         Returns dict with full_name, phone, email or None.
         """
-        row = await self.pool.fetchrow(
+        words = name.split()
+        if len(words) > 1:
+            # Multi-word search: each word must appear in at least one name field
+            word_conditions = []
+            params = []
+            for i, word in enumerate(words):
+                p = f"${i + 1}"
+                word_conditions.append(
+                    f"(full_name ILIKE '%%' || {p} || '%%' "
+                    f"OR first_name ILIKE '%%' || {p} || '%%' "
+                    f"OR last_name ILIKE '%%' || {p} || '%%')"
+                )
+                params.append(word)
+
+            where_clause = " AND ".join(word_conditions)
+            name_param = f"${len(params) + 1}"
+            params.append(name)
+
+            query = f"""
+                SELECT id, full_name, first_name, last_name,
+                       phone_primary, phone_mobile, phone_work, email
+                FROM contacts
+                WHERE {where_clause}
+                ORDER BY
+                    CASE
+                        WHEN LOWER(full_name) = LOWER({name_param}) THEN 1
+                        WHEN LOWER(full_name) LIKE LOWER({name_param}) || '%%' THEN 2
+                        WHEN LOWER(full_name) LIKE '%%' || LOWER({name_param}) || '%%' THEN 3
+                        ELSE 4
+                    END,
+                    full_name ASC
+                LIMIT 1
             """
-            SELECT full_name, first_name, last_name,
-                   phone_primary, phone_mobile, phone_work, email
-            FROM contacts
-            WHERE full_name ILIKE '%' || $1 || '%'
-               OR first_name ILIKE '%' || $1 || '%'
-               OR last_name ILIKE '%' || $1 || '%'
-            ORDER BY
-                CASE
-                    WHEN LOWER(full_name) = LOWER($1) THEN 1
-                    WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                    WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                    ELSE 4
-                END,
-                full_name ASC
-            LIMIT 1
-            """,
-            name,
-        )
+            row = await self.pool.fetchrow(query, *params)
+        else:
+            # Single-word search: original logic
+            row = await self.pool.fetchrow(
+                """
+                SELECT id, full_name, first_name, last_name,
+                       phone_primary, phone_mobile, phone_work, email
+                FROM contacts
+                WHERE full_name ILIKE '%' || $1 || '%'
+                   OR first_name ILIKE '%' || $1 || '%'
+                   OR last_name ILIKE '%' || $1 || '%'
+                ORDER BY
+                    CASE
+                        WHEN LOWER(full_name) = LOWER($1) THEN 1
+                        WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
+                        WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
+                        ELSE 4
+                    END,
+                    full_name ASC
+                LIMIT 1
+                """,
+                name,
+            )
 
         if not row:
             return None
 
-        # Phone priority: mobile > primary > work
-        raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
-        phone = normalize_phone(raw_phone) if raw_phone else None
+        # Fetch all phone numbers from contact_phones table
+        contact_id = row["id"]
+        phone_rows = await self.pool.fetch(
+            """
+            SELECT type, number FROM contact_phones
+            WHERE contact_id = $1
+            ORDER BY
+                CASE type
+                    WHEN 'mobile' THEN 1
+                    WHEN 'home' THEN 2
+                    WHEN 'work' THEN 3
+                    ELSE 4
+                END
+            """,
+            contact_id,
+        )
+
+        phones = [
+            {"type": p["type"], "number": normalize_phone(p["number"])}
+            for p in phone_rows
+        ]
+
+        # Preferred phone: first from sorted list (mobile > home > work > other)
+        preferred = phones[0]["number"] if phones else None
+
+        # Fallback to legacy columns if contact_phones is empty (pre-migration)
+        if not phones:
+            raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
+            preferred = normalize_phone(raw_phone) if raw_phone else None
 
         return {
             "full_name": row["full_name"],
-            "phone": phone,
+            "phone": preferred,
+            "phones": phones,
             "email": row["email"],
         }

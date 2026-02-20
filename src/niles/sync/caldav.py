@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import httpx
 
-from .ical_parser import parse_icalendar
+from .ical_parser import expand_recurring_event, parse_icalendar
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +87,46 @@ async def upsert_event(pool: asyncpg.Pool, event: dict, source_id: int | None) -
     )
 
 
+async def cleanup_recurring_occurrences(
+    pool: asyncpg.Pool, master_uid: str, source_id: int | None = None,
+) -> int:
+    """Delete old expanded occurrences and the master row for a recurring event.
+
+    Returns number of rows deleted. Uses master_uid to match:
+    - The master event row (caldav_uid = master_uid)
+    - All expanded occurrence rows (caldav_uid LIKE 'master_uid@%')
+    """
+    # Escape SQL LIKE wildcards in the UID to prevent unintended matches
+    escaped = master_uid.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like_pattern = f"{escaped}@%"
+
+    if source_id is not None:
+        result = await pool.execute(
+            "DELETE FROM events WHERE source_id = $1 AND "
+            "(caldav_uid = $2 OR caldav_uid LIKE $3 ESCAPE '\\')",
+            source_id, master_uid, like_pattern,
+        )
+    else:
+        result = await pool.execute(
+            "DELETE FROM events WHERE caldav_uid = $1 OR caldav_uid LIKE $2 ESCAPE '\\'",
+            master_uid, like_pattern,
+        )
+    # asyncpg returns "DELETE N"
+    deleted = int(result.split()[-1]) if result else 0
+    if deleted:
+        logger.debug("Cleaned up %d old occurrences for %s", deleted, master_uid)
+    return deleted
+
+
 class CalDAVSync:
     """Syncs calendar events from a CalDAV server to PostgreSQL.
 
+    Recurring events (RRULE) are expanded into individual occurrences within
+    the sync window (30 days past to 365 days future).
+
     Known limitations:
-    - No RRULE expansion (recurring events stored as single instance)
     - Only first VEVENT per .ics file is parsed
+    - RECURRENCE-ID overrides are not supported (modified occurrences ignored)
     - VTIMEZONE blocks are ignored (uses ZoneInfo from TZID parameter)
     - No VALARM (reminder) support
     - No ATTENDEE support
@@ -149,14 +183,17 @@ class CalDAVSync:
         """Run a CalDAV sync using REPORT with time-range filter.
 
         Only syncs events from 30 days ago to 365 days in the future.
+        Recurring events (RRULE) are expanded into individual occurrences.
         Uses CalDAV REPORT (RFC 4791) to fetch matching events inline,
         avoiding thousands of individual GET requests.
         """
         logger.info("Starting CalDAV event sync...")
 
         now = datetime.now(timezone.utc)
-        start = (now - timedelta(days=_SYNC_DAYS_PAST)).strftime("%Y%m%dT%H%M%SZ")
-        end = (now + timedelta(days=_SYNC_DAYS_FUTURE)).strftime("%Y%m%dT%H%M%SZ")
+        window_start = now - timedelta(days=_SYNC_DAYS_PAST)
+        window_end = now + timedelta(days=_SYNC_DAYS_FUTURE)
+        start_str = window_start.strftime("%Y%m%dT%H%M%SZ")
+        end_str = window_end.strftime("%Y%m%dT%H%M%SZ")
 
         # Discover collections
         try:
@@ -172,16 +209,24 @@ class CalDAVSync:
         count = 0
         for col_url in collections:
             try:
-                events = await self._report_time_range(col_url, start, end)
+                events = await self._report_time_range(col_url, start_str, end_str)
                 for ics_text, href in events:
                     event = parse_icalendar(ics_text, href)
                     if event:
-                        await self._upsert_event(event)
-                        count += 1
+                        expanded = expand_recurring_event(
+                            event, window_start, window_end,
+                        )
+                        if event.get("rrule"):
+                            await cleanup_recurring_occurrences(
+                                self.pool, event["caldav_uid"], self.source_id,
+                            )
+                        for occ in expanded:
+                            await self._upsert_event(occ)
+                            count += 1
             except Exception:
                 logger.exception("REPORT failed for %s", col_url)
 
-        logger.info("Synced %d events (range: %s to %s)", count, start, end)
+        logger.info("Synced %d events (range: %s to %s)", count, start_str, end_str)
         return count
 
     async def _report_time_range(
