@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import asyncpg
@@ -39,13 +39,23 @@ class CalendarAction:
             List of event dicts (max 10), sorted by dtstart ascending.
         """
         # Parse date parameters; default to "from now" when no range given
+        explicit_from = bool(date_from)
         if date_from:
             ts_from = self._parse_date(date_from)
         elif not date_to:
             ts_from = datetime.now(tz=self.tz)
         else:
             ts_from = None
-        ts_to = self._parse_date(date_to, end_of_day=True) if date_to else None
+
+        if date_to:
+            ts_to = self._parse_date(date_to, end_of_day=True)
+        elif explicit_from and ts_from:
+            # LLM asked for a specific date without date_to: cap at end of
+            # that day so only relevant events are returned.  Without this,
+            # LIMIT 10 pulls events weeks ahead and small models hallucinate.
+            ts_to = ts_from.replace(hour=23, minute=59, second=59)
+        else:
+            ts_to = None
 
         rows = await self.pool.fetch(
             """
@@ -67,7 +77,26 @@ class CalendarAction:
         return [self._row_to_dict(row) for row in rows]
 
     def _parse_date(self, value: str, end_of_day: bool = False) -> datetime | None:
-        """Parse an ISO date string to a timezone-aware datetime."""
+        """Parse an ISO date string or relative term to a timezone-aware datetime."""
+        # Handle relative date terms (small LLMs sometimes send these)
+        now = datetime.now(tz=self.tz)
+        relative = value.strip().lower()
+        if relative in ("heute", "today"):
+            dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            if end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        if relative in ("morgen", "tomorrow"):
+            dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            if end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        if relative in ("übermorgen", "uebermorgen"):
+            dt = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+            if end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+
         try:
             dt = datetime.fromisoformat(value)
             if dt.tzinfo is None:
