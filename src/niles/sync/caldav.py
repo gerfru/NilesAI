@@ -439,6 +439,18 @@ class CalDAVSync:
             event["caldav_url"],
         )
 
+    async def _resolve_write_collection(self) -> str:
+        """Return a collection URL suitable for creating events.
+
+        If caldav_url already points to a specific collection (contains .ics
+        files), return it directly. Otherwise, discover sub-collections and
+        return the first one.
+        """
+        collections = await self._get_sync_collections()
+        if not collections:
+            raise RuntimeError("No writable calendar collection found")
+        return collections[0]
+
     async def create_event(
         self,
         summary: str,
@@ -487,8 +499,9 @@ class CalDAVSync:
             ics_body += f"LOCATION:{_escape_ical_text(location)}\r\n"
         ics_body += "END:VEVENT\r\n" "END:VCALENDAR\r\n"
 
-        # PUT to CalDAV server
-        put_url = f"{self.caldav_url.rstrip('/')}/{uid}.ics"
+        # Resolve target collection (root URL requires discovery)
+        target_url = await self._resolve_write_collection()
+        put_url = f"{target_url.rstrip('/')}/{uid}.ics"
 
         async with httpx.AsyncClient() as client:
             response = await client.put(

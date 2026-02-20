@@ -445,6 +445,17 @@ class TestSyncEvents:
 
 
 class TestCreateEvent:
+    """Tests for CalDAVSync.create_event with collection discovery."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_resolve(self, sync):
+        """Mock _resolve_write_collection to return the fixture caldav_url."""
+        with patch.object(
+            sync, "_resolve_write_collection",
+            return_value=sync.caldav_url,
+        ):
+            yield
+
     async def test_creates_event_on_server(self, sync, pool):
         mock_response = MagicMock()
         mock_response.status_code = 201
@@ -548,3 +559,48 @@ class TestCreateEvent:
                 summary="Bad",
                 dtstart_str="not-a-date",
             )
+
+
+class TestResolveWriteCollection:
+    """Tests for _resolve_write_collection (discovery before PUT)."""
+
+    async def test_uses_first_discovered_collection(self, pool):
+        """Root CalDAV URL discovers sub-collections; first one is used."""
+        root_sync = CalDAVSync(pool, Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            caldav_url="https://dav.example.com/caldav/",
+            caldav_user="testuser",
+            caldav_password="testpass",
+        ))
+
+        with patch.object(root_sync, "_get_sync_collections", return_value=[
+            "https://dav.example.com/caldav/Y2FsOi8vMC8zMQ/",
+            "https://dav.example.com/caldav/Y2FsOi8vMTUvMA/",
+        ]):
+            url = await root_sync._resolve_write_collection()
+
+        assert url == "https://dav.example.com/caldav/Y2FsOi8vMC8zMQ/"
+
+    async def test_direct_collection_url_returned(self, sync):
+        """When caldav_url is already a collection, return it."""
+        with patch.object(sync, "_get_sync_collections", return_value=[
+            "https://dav.example.com/caldav/123/",
+        ]):
+            url = await sync._resolve_write_collection()
+
+        assert url == "https://dav.example.com/caldav/123/"
+
+    async def test_raises_when_no_collections(self, pool):
+        """Raises RuntimeError when no writable collection is found."""
+        root_sync = CalDAVSync(pool, Settings(
+            postgres_password="test",
+            evolution_api_key="test",
+            caldav_url="https://dav.example.com/caldav/",
+            caldav_user="testuser",
+            caldav_password="testpass",
+        ))
+
+        with patch.object(root_sync, "_get_sync_collections", return_value=[]):
+            with pytest.raises(RuntimeError, match="No writable calendar"):
+                await root_sync._resolve_write_collection()
