@@ -59,3 +59,6 @@ yarn-error.log*
 # Tailwind CSS standalone CLI binary (local dev)
 tailwindcss
 tailwindcss-*
+
+# Tailwind CSS compiled output (built from input.css via CLI)
+src/niles/static/css/style.css
