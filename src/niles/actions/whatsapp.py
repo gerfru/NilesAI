@@ -4,6 +4,7 @@ import logging
 
 import httpx
 
+from ..actions.contacts import normalize_phone
 from ..config import Settings
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,9 @@ class WhatsAppAction:
             text: Message text
             instance: Evolution API instance name (defaults to global instance)
         """
-        # Ensure JID format if plain number
+        # Normalize and ensure JID format if plain number
         if "@" not in to:
-            to = f"{to}@s.whatsapp.net"
+            to = f"{normalize_phone(to)}@s.whatsapp.net"
 
         inst = instance or self.instance
         url = f"{self.base_url}/message/sendText/{inst}"
