@@ -113,15 +113,17 @@ async def lifespan(app: FastAPI):
     carddav_sync = CardDAVSync(pool, settings)
     await carddav_sync.initialize()
 
-    # CalDAV Sync (kept for discover_collections in settings UI)
-    caldav_sync = CalDAVSync(
-        pool=pool,
-        caldav_url=settings.caldav_url,
-        auth=httpx.BasicAuth(settings.caldav_user, settings.caldav_password),
-        timezone=settings.timezone,
-        caldav_calendars=settings.caldav_calendars,
-    )
-    await caldav_sync.initialize()
+    # CalDAV Sync (only for legacy discover_collections in settings UI)
+    caldav_sync = None
+    if settings.feature_caldav_sync:
+        caldav_sync = CalDAVSync(
+            pool=pool,
+            caldav_url=settings.caldav_url,
+            auth=httpx.BasicAuth(settings.caldav_user, settings.caldav_password),
+            timezone=settings.timezone,
+            caldav_calendars=settings.caldav_calendars,
+        )
+        await caldav_sync.initialize()
 
     # Calendar Source Manager (unified sync for ICS + CalDAV + Google)
     calendar_manager = CalendarSourceManager(pool, settings)
@@ -196,7 +198,7 @@ async def lifespan(app: FastAPI):
     app.state.history = history
     app.state.settings_store = settings_store
     app.state.user_store = user_store
-    app.state.caldav = caldav_sync if settings.feature_caldav_sync else None
+    app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
 
     yield
