@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/chat_bubble.html" import user_bubble, assistant_bubble %}
 {% block title %}Chat - Niles AI{% endblock %}
 {% block content %}
 <div class="flex flex-col h-[calc(100dvh-120px)]">
@@ -19,38 +20,16 @@
         {% endif %}
         {% for msg in messages %}
         {% if msg.role == 'user' %}
-        <div class="flex items-start gap-3 mb-4 flex-row-reverse">
-            {% if user.avatar_url %}
-            <img src="{{ user.avatar_url }}" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5" referrerpolicy="no-referrer">
-            {% else %}
-            <div class="w-9 h-9 rounded-full shrink-0 mt-0.5 bg-blue-500 flex items-center justify-center text-white text-xs font-bold">Du</div>
-            {% endif %}
-            <div class="max-w-[75%]">
-                <div class="flex items-baseline gap-2 mb-1 justify-end">
-                    {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-                    <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Du</span>
-                </div>
-                <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tr-md bg-blue-500 text-white" data-user-content>{{ msg.content }}</div>
-            </div>
-        </div>
+        {{ user_bubble(msg.content, msg.timestamp, user) }}
         {% else %}
-        <div class="flex items-start gap-3 mb-4">
-            <img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
-            <div class="max-w-[75%]">
-                <div class="flex items-baseline gap-2 mb-1">
-                    <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>
-                    {% if msg.timestamp %}<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500" data-iso="{{ msg.timestamp }}"></span>{% endif %}
-                </div>
-                <div class="whitespace-pre-wrap break-words px-4 py-2.5 rounded-2xl rounded-tl-md bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 markdown">{{ msg.content }}</div>
-            </div>
-        </div>
+        {{ assistant_bubble(msg.content, msg.timestamp) }}
         {% endif %}
         {% endfor %}
     </div>
 
-    <div id="thinking-indicator" class="hidden mb-4" aria-live="assertive">
+    <div id="thinking-indicator" class="hidden mb-4" aria-live="polite">
         <div class="flex items-start gap-3">
-            <img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
+            <img src="/static/img/niles-avatar.webp" alt="Niles" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
             <div>
                 <div class="flex items-baseline gap-2 mb-1">
                     <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>
@@ -72,7 +51,7 @@
                           data-autogrow></textarea>
                 <div class="invisible whitespace-pre-wrap break-words" aria-hidden="true" data-autogrow-mirror></div>
             </div>
-            <button type="submit"
+            <button type="submit" aria-label="Senden"
                     class="w-10 h-10 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
                     <path d="M3.105 2.29a.75.75 0 0 0-.826.95l1.414 4.926A1.5 1.5 0 0 0 5.135 9.25h6.115a.75.75 0 0 1 0 1.5H5.135a1.5 1.5 0 0 0-1.442 1.084L2.28 16.76a.75.75 0 0 0 .826.95l15.202-7.23a.75.75 0 0 0 0-1.36L3.105 2.29Z"/>

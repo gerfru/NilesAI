@@ -79,10 +79,15 @@ function convertTimestamps() {
 /* --- Chat message helpers (bubble layout with avatars) --- */
 
 function getUserAvatarHTML() {
-    var messagesEl = document.getElementById("chat-messages");
-    var url = messagesEl ? messagesEl.dataset.userAvatar : "";
+    const messagesEl = document.getElementById("chat-messages");
+    const url = messagesEl ? messagesEl.dataset.userAvatar : "";
     if (url) {
-        return '<img src="' + url + '" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5" referrerpolicy="no-referrer">';
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "";
+        img.className = "w-9 h-9 rounded-full shrink-0 mt-0.5";
+        img.referrerPolicy = "no-referrer";
+        return img.outerHTML;
     }
     return '<div class="w-9 h-9 rounded-full shrink-0 mt-0.5 bg-blue-500 flex items-center justify-center text-white text-xs font-bold">Du</div>';
 }
@@ -107,7 +112,7 @@ function createAssistantBubble() {
     const div = document.createElement("div");
     div.className = "flex items-start gap-3 mb-4";
     div.innerHTML =
-        '<img src="/static/img/niles-avatar.webp" alt="" class="w-9 h-9 rounded-full shrink-0 mt-0.5">' +
+        '<img src="/static/img/niles-avatar.webp" alt="Niles" class="w-9 h-9 rounded-full shrink-0 mt-0.5">' +
         '<div class="max-w-[75%]">' +
         '<div class="flex items-baseline gap-2 mb-1">' +
         '<span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Niles</span>' +
@@ -142,7 +147,7 @@ async function handleChatSubmit(form) {
     messagesEl.appendChild(createUserBubble(message));
     input.value = "";
     /* Reset auto-grow mirror */
-    var mirror = input.parentNode && input.parentNode.querySelector("[data-autogrow-mirror]");
+    const mirror = input.parentNode && input.parentNode.querySelector("[data-autogrow-mirror]");
     if (mirror) mirror.textContent = "";
     scrollChat();
 
@@ -308,7 +313,7 @@ document.body.addEventListener("htmx:afterRequest", function(evt) {
 /* Calendar source add form -- show/hide auth fields based on type + populate hidden fields */
 document.body.addEventListener("change", function(evt) {
     if (evt.target.id !== "cal-source-type") return;
-    var authFields = document.getElementById("caldav-auth-fields");
+    const authFields = document.getElementById("caldav-auth-fields");
     if (authFields) {
         if (evt.target.value === "caldav") {
             authFields.classList.remove("hidden");
@@ -321,11 +326,11 @@ document.body.addEventListener("change", function(evt) {
 document.body.addEventListener("click", function(evt) {
     if (!evt.target.hasAttribute("data-calendar-add")) return;
     /* Populate hidden form fields from visible inputs before htmx submit */
-    var type = document.getElementById("cal-source-type");
-    var name = document.getElementById("cal-source-name");
-    var url = document.getElementById("cal-source-url");
-    var user = document.getElementById("cal-source-user");
-    var password = document.getElementById("cal-source-password");
+    const type = document.getElementById("cal-source-type");
+    const name = document.getElementById("cal-source-name");
+    const url = document.getElementById("cal-source-url");
+    const user = document.getElementById("cal-source-user");
+    const password = document.getElementById("cal-source-password");
 
     if (type) document.getElementById("cal-form-type").value = type.value;
     if (name) document.getElementById("cal-form-name").value = name.value;
@@ -349,7 +354,7 @@ document.body.addEventListener("htmx:afterSettle", function() {
 /* Textarea auto-grow: mirror content to invisible div (CSP-safe, no inline styles) */
 document.body.addEventListener("input", function(evt) {
     if (!evt.target.hasAttribute("data-autogrow")) return;
-    var mirror = evt.target.parentNode.querySelector("[data-autogrow-mirror]");
+    const mirror = evt.target.parentNode.querySelector("[data-autogrow-mirror]");
     if (mirror) mirror.textContent = evt.target.value + "\n";
 });
 
@@ -358,7 +363,7 @@ document.body.addEventListener("keydown", function(evt) {
     if (!evt.target.hasAttribute("data-autogrow")) return;
     if (evt.key === "Enter" && !evt.shiftKey) {
         evt.preventDefault();
-        var form = evt.target.closest("form");
+        const form = evt.target.closest("form");
         if (form) form.requestSubmit();
     }
 });
