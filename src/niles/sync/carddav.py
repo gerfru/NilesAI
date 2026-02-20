@@ -138,6 +138,9 @@ class CardDAVSync:
 
     async def sync_contacts(self) -> int:
         """Run a full CardDAV sync. Returns number of synced contacts."""
+        if not self.carddav_url:
+            return 0
+
         logger.info("Starting CardDAV contact sync...")
 
         try:
