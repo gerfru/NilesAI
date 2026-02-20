@@ -235,7 +235,7 @@ Gibt die Liste aller konfigurierten Kalenderquellen als HTML-Fragment (htmx) zur
 
 ### POST /ui/api/calendar/sources
 
-Fuegt eine neue Kalenderquelle hinzu. Erwartet Form-Felder: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+Fuegt eine neue Kalenderquelle hinzu. Erwartet Form-Felder: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Google-Kalender werden nicht ueber dieses Formular hinzugefuegt, sondern ueber den OAuth-Flow (siehe unten). Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
 
 **Validierung:** Nur HTTPS-URLs, max 2048 Zeichen URL, max 200 Zeichen Name.
 
@@ -246,6 +246,14 @@ Entfernt eine Kalenderquelle. Events der Quelle werden via CASCADE automatisch g
 ### POST /ui/api/calendar/sources/{source_id}/sync
 
 Triggert einen manuellen Sync fuer eine einzelne Kalenderquelle. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+
+### GET /ui/api/calendar/google/connect
+
+Leitet zu Google OAuth mit Calendar-Scope weiter (erfordert Login-Session). Setzt einen `gcal_oauth_state`-Cookie fuer CSRF-Schutz. Nur sichtbar wenn `GOOGLE_CLIENT_ID` und `GOOGLE_CLIENT_SECRET` konfiguriert sind.
+
+### GET /ui/callback/google/calendar
+
+Google OAuth Callback fuer Calendar-Verbindung. Tauscht Authorization-Code gegen Access+Refresh-Token, entdeckt alle Kalender via Google Calendar REST API und erstellt automatisch `calendar_sources`-Eintraege (owner/writer als beschreibbar, reader als nur-lesen). Triggert initialen Sync im Hintergrund. Redirect-URI muss in der Google Cloud Console registriert sein: `https://<HOST>/ui/callback/google/calendar`.
 
 ### POST /ui/api/settings/{key}
 
