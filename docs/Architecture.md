@@ -74,6 +74,7 @@ src/niles/
 ├── sync/
 │   ├── carddav.py       # CardDAV Kontakt-Sync
 │   ├── caldav.py        # CalDAV Kalender-Sync
+│   ├── google_auth.py   # Google Calendar OAuth (Bearer Token + Refresh)
 │   ├── ical_parser.py   # Shared iCalendar Parser (VEVENT -> dict)
 │   └── manager.py       # CalendarSourceManager (CRUD, Sync, Migration)
 ├── mcp/
@@ -109,7 +110,7 @@ Event-Quellen, die eingehende Nachrichten empfangen und an den Agent weiterleite
 
 ### sync/
 
-Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events via CalDAV-Protokoll (PROPFIND/REPORT). `ical_parser.py` ist ein Shared Parser fuer iCalendar-Daten (VEVENT -> dict), genutzt von CalDAV und ICS-Sync. `manager.py` enthaelt den `CalendarSourceManager`, der alle Kalenderquellen verwaltet (CRUD, Sync-Orchestrierung, Auto-Migration von `.env` CalDAV-Config). Sync-Jobs laufen als Cronjobs via APScheduler.
+Hintergrund-Synchronisation externer Datenquellen. `carddav.py` synchronisiert Kontakte, `caldav.py` synchronisiert Kalender-Events via CalDAV-Protokoll (PROPFIND/REPORT). `ical_parser.py` ist ein Shared Parser fuer iCalendar-Daten (VEVENT -> dict), genutzt von CalDAV und ICS-Sync. `google_auth.py` implementiert eine httpx.Auth-Klasse fuer Google Calendar OAuth (Bearer Token mit automatischem Refresh via refresh_token). `manager.py` enthaelt den `CalendarSourceManager`, der alle Kalenderquellen verwaltet (CRUD, Sync-Orchestrierung, Auto-Migration von `.env` CalDAV-Config). Sync-Jobs laufen als Cronjobs via APScheduler.
 
 ### templates/ & static/
 
