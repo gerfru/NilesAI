@@ -677,7 +677,7 @@ async def calendar_sources_list(request: Request):
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
         return HTMLResponse(
-            '<p class="text-sm text-gray-500 dark:text-gray-400 py-2">'
+            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
             "Kalender-Manager nicht verfuegbar.</p>"
         )
 

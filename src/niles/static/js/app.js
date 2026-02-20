@@ -76,26 +76,30 @@ function convertTimestamps() {
     });
 }
 
-/* --- Chat bubble helpers --- */
+/* --- Chat message helpers (flat layout) --- */
 
 function createUserBubble(text) {
     const div = document.createElement("div");
-    div.className = "flex flex-col mb-3 items-end";
+    div.className = "mb-5";
     div.innerHTML =
-        '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Du</span>' +
-        '<div class="max-w-[90%] sm:max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-blue-600 text-white"></div>' +
-        '<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1">' + formatTimestamp() + '</span>';
-    div.querySelector(".bg-blue-600").textContent = text;
+        '<div class="flex items-baseline gap-2 mb-1">' +
+        '<span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Du</span>' +
+        '<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500">' + formatTimestamp() + '</span>' +
+        '</div>' +
+        '<div class="whitespace-pre-wrap break-words px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950 text-zinc-900 dark:text-zinc-100" data-user-content></div>';
+    div.querySelector("[data-user-content]").textContent = text;
     return div;
 }
 
 function createAssistantBubble() {
     const div = document.createElement("div");
-    div.className = "flex flex-col mb-3 items-start";
+    div.className = "mb-5";
     div.innerHTML =
-        '<span class="text-[0.65rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5 px-1">Niles</span>' +
-        '<div class="max-w-[90%] sm:max-w-[75%] px-4 py-3 rounded-2xl whitespace-pre-wrap break-words bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 markdown"></div>' +
-        '<span class="text-[0.6rem] text-gray-400 dark:text-gray-500 mt-0.5 px-1">' + formatTimestamp() + '</span>';
+        '<div class="flex items-baseline gap-2 mb-1">' +
+        '<span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Niles</span>' +
+        '<span class="text-[0.6rem] text-zinc-400 dark:text-zinc-500">' + formatTimestamp() + '</span>' +
+        '</div>' +
+        '<div class="whitespace-pre-wrap break-words text-zinc-900 dark:text-zinc-100 markdown"></div>';
     return div;
 }
 
@@ -107,7 +111,7 @@ let chatAbortController = null;
 async function handleChatSubmit(form) {
     if (chatStreaming) return;
 
-    const input = form.querySelector("input[name='message']");
+    const input = form.querySelector("[name='message']");
     const message = input.value.trim();
     if (!message) return;
 
@@ -122,6 +126,9 @@ async function handleChatSubmit(form) {
     /* Show user bubble immediately */
     messagesEl.appendChild(createUserBubble(message));
     input.value = "";
+    /* Reset auto-grow mirror */
+    var mirror = input.parentNode && input.parentNode.querySelector("[data-autogrow-mirror]");
+    if (mirror) mirror.textContent = "";
     scrollChat();
 
     /* Show thinking indicator + disable button */
@@ -322,4 +329,21 @@ document.body.addEventListener("click", function(evt) {
 document.body.addEventListener("htmx:afterSettle", function() {
     convertTimestamps();
     renderAllMarkdown();
+});
+
+/* Textarea auto-grow: mirror content to invisible div (CSP-safe, no inline styles) */
+document.body.addEventListener("input", function(evt) {
+    if (!evt.target.hasAttribute("data-autogrow")) return;
+    var mirror = evt.target.parentNode.querySelector("[data-autogrow-mirror]");
+    if (mirror) mirror.textContent = evt.target.value + "\n";
+});
+
+/* Textarea: Enter sends, Shift+Enter inserts newline */
+document.body.addEventListener("keydown", function(evt) {
+    if (!evt.target.hasAttribute("data-autogrow")) return;
+    if (evt.key === "Enter" && !evt.shiftKey) {
+        evt.preventDefault();
+        var form = evt.target.closest("form");
+        if (form) form.requestSubmit();
+    }
 });
