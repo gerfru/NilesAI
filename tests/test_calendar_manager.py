@@ -104,9 +104,6 @@ class TestAddSource:
             "source_type": "ics", "writable": False, "enabled": True,
             "last_synced": None, "last_error": None, "created_at": "2026-01-01",
         }
-        pool.fetchrow.return_value = MagicMock(**{"__iter__": lambda s: iter(mock_row.items()), "keys": lambda s: mock_row.keys()})
-        pool.fetchrow.return_value.__getitem__ = lambda s, k: mock_row[k]
-        # Use a real dict-like mock
         pool.fetchrow.return_value = mock_row
 
         result = await manager.add_source(
@@ -197,6 +194,32 @@ END:VCALENDAR"""
             count = await manager._sync_ics(source)
 
         assert count == 0
+
+    async def test_rejects_oversized_ics(self, manager, pool):
+        source = {
+            "id": 8, "name": "Huge", "url": "https://example.com/huge.ics",
+            "source_type": "ics", "auth_user": None, "auth_password": None,
+            "google_refresh_token": None, "google_token_expiry": None,
+        }
+
+        mock_response = MagicMock()
+        mock_response.text = "x"
+        mock_response.content = b"x" * (6 * 1024 * 1024)  # 6 MB > 5 MB limit
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_response
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ValueError, match="too large"):
+                await manager._sync_ics(source)
+
+        # Verify error was recorded
+        pool.execute.assert_called()
+        error_call = pool.execute.call_args
+        assert "last_error" in error_call[0][0]
 
     async def test_records_error_on_http_failure(self, manager, pool):
         source = {
@@ -350,3 +373,7 @@ class TestBuildAuth:
         }
         auth = manager._build_auth(source)
         assert isinstance(auth, httpx.BasicAuth)
+
+    def test_ics_returns_none(self, manager):
+        source = {"source_type": "ics"}
+        assert manager._build_auth(source) is None

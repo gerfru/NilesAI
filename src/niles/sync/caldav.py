@@ -52,6 +52,41 @@ def _escape_ical_text(text: str) -> str:
     )
 
 
+_UPSERT_EVENT_SQL = """
+    INSERT INTO events (
+        summary, dtstart, dtend, all_day,
+        description, location, caldav_uid, caldav_url,
+        source_id, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    ON CONFLICT (caldav_uid) DO UPDATE SET
+        summary = EXCLUDED.summary,
+        dtstart = EXCLUDED.dtstart,
+        dtend = EXCLUDED.dtend,
+        all_day = EXCLUDED.all_day,
+        description = EXCLUDED.description,
+        location = EXCLUDED.location,
+        caldav_url = EXCLUDED.caldav_url,
+        source_id = EXCLUDED.source_id,
+        updated_at = NOW()
+"""
+
+
+async def upsert_event(pool: asyncpg.Pool, event: dict, source_id: int | None) -> None:
+    """Insert or update an event by caldav_uid (shared by CalDAVSync + CalendarSourceManager)."""
+    await pool.execute(
+        _UPSERT_EVENT_SQL,
+        event["summary"],
+        event["dtstart"],
+        event["dtend"],
+        event["all_day"],
+        event["description"],
+        event["location"],
+        event["caldav_uid"],
+        event["caldav_url"],
+        source_id,
+    )
+
+
 class CalDAVSync:
     """Syncs calendar events from a CalDAV server to PostgreSQL.
 
@@ -309,34 +344,7 @@ class CalDAVSync:
 
     async def _upsert_event(self, event: dict) -> None:
         """Insert or update an event by caldav_uid."""
-        await self.pool.execute(
-            """
-            INSERT INTO events (
-                summary, dtstart, dtend, all_day,
-                description, location, caldav_uid, caldav_url,
-                source_id, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (caldav_uid) DO UPDATE SET
-                summary = EXCLUDED.summary,
-                dtstart = EXCLUDED.dtstart,
-                dtend = EXCLUDED.dtend,
-                all_day = EXCLUDED.all_day,
-                description = EXCLUDED.description,
-                location = EXCLUDED.location,
-                caldav_url = EXCLUDED.caldav_url,
-                source_id = EXCLUDED.source_id,
-                updated_at = NOW()
-            """,
-            event["summary"],
-            event["dtstart"],
-            event["dtend"],
-            event["all_day"],
-            event["description"],
-            event["location"],
-            event["caldav_uid"],
-            event["caldav_url"],
-            self.source_id,
-        )
+        await upsert_event(self.pool, event, self.source_id)
 
     async def _resolve_write_collection(self) -> str:
         """Return a collection URL suitable for creating events.
