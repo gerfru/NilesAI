@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
-    # LM Studio
-    llm_base_url: str = "http://host.docker.internal:1234/v1"
-    llm_model: str = "qwen2.5-coder-7b-instruct-mlx"
+    # Ollama (runs natively on the host for full GPU performance)
+    llm_base_url: str = "http://host.docker.internal:11434/v1"
+    llm_model: str = "llama3.1:8b"
 
     # PostgreSQL (bestehende Verbindung)
     postgres_host: str = "evolution_postgres"
