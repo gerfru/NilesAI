@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import httpx
 
-from ..config import Settings
+from .ical_parser import parse_icalendar
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,6 @@ _MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 # Cache TTL for discover_collections (seconds)
 _DISCOVERY_CACHE_TTL = 60
 
-# Regex to parse DTSTART/DTEND lines with optional parameters
-_DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
-
 
 def _escape_ical_text(text: str) -> str:
     """Escape special characters for iCalendar TEXT values (RFC 5545 section 3.3.11)."""
@@ -55,54 +52,39 @@ def _escape_ical_text(text: str) -> str:
     )
 
 
-def _unfold_ics(text: str) -> str:
-    """Unfold iCalendar line continuations (RFC 5545 section 3.1)."""
-    return re.sub(r"\r?\n[ \t]", "", text)
+_UPSERT_EVENT_SQL = """
+    INSERT INTO events (
+        summary, dtstart, dtend, all_day,
+        description, location, caldav_uid, caldav_url,
+        source_id, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    ON CONFLICT (caldav_uid) DO UPDATE SET
+        summary = EXCLUDED.summary,
+        dtstart = EXCLUDED.dtstart,
+        dtend = EXCLUDED.dtend,
+        all_day = EXCLUDED.all_day,
+        description = EXCLUDED.description,
+        location = EXCLUDED.location,
+        caldav_url = EXCLUDED.caldav_url,
+        source_id = EXCLUDED.source_id,
+        updated_at = NOW()
+"""
 
 
-def _parse_dt(line: str) -> tuple[datetime | None, bool]:
-    """Parse a DTSTART or DTEND line. Returns (datetime_utc, is_all_day)."""
-    match = _DT_LINE_REGEX.match(line)
-    if not match:
-        return None, False
-
-    params = match.group(2)
-    value = match.group(3).strip()
-
-    # All-day event: VALUE=DATE
-    if "VALUE=DATE" in params.upper():
-        try:
-            dt = datetime.strptime(value, "%Y%m%d").replace(tzinfo=timezone.utc)
-            return dt, True
-        except ValueError:
-            return None, False
-
-    # With timezone: TZID=...
-    tzid_match = re.search(r"TZID=([^;:]+)", params)
-    if tzid_match:
-        tz_name = tzid_match.group(1).strip()
-        try:
-            tz = ZoneInfo(tz_name)
-            dt = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=tz)
-            return dt, False
-        except (ValueError, KeyError):
-            logger.warning("Failed to parse datetime with TZID=%s: %s", tz_name, value)
-            return None, False
-
-    # UTC (trailing Z)
-    if value.endswith("Z"):
-        try:
-            dt = datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-            return dt, False
-        except ValueError:
-            return None, False
-
-    # Naive datetime (assume UTC)
-    try:
-        dt = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
-        return dt, False
-    except ValueError:
-        return None, False
+async def upsert_event(pool: asyncpg.Pool, event: dict, source_id: int | None) -> None:
+    """Insert or update an event by caldav_uid (shared by CalDAVSync + CalendarSourceManager)."""
+    await pool.execute(
+        _UPSERT_EVENT_SQL,
+        event["summary"],
+        event["dtstart"],
+        event["dtend"],
+        event["all_day"],
+        event["description"],
+        event["location"],
+        event["caldav_uid"],
+        event["caldav_url"],
+        source_id,
+    )
 
 
 class CalDAVSync:
@@ -116,14 +98,23 @@ class CalDAVSync:
     - No ATTENDEE support
     """
 
-    def __init__(self, pool: asyncpg.Pool, config: Settings):
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        caldav_url: str,
+        auth: httpx.Auth,
+        timezone: str,
+        caldav_calendars: str = "",
+        source_id: int | None = None,
+    ):
         self.pool = pool
-        self.config = config
-        self.caldav_url = config.caldav_url
-        self.auth = httpx.BasicAuth(config.caldav_user, config.caldav_password)
-        self.tz = ZoneInfo(config.timezone)
+        self.caldav_url = caldav_url
+        self.auth = auth
+        self.tz = ZoneInfo(timezone)
+        self.source_id = source_id
+        self._caldav_calendars = caldav_calendars
         # Base URL for fetching individual .ics files (scheme + host)
-        self._base_url = re.match(r"https?://[^/]+", config.caldav_url)
+        self._base_url = re.match(r"https?://[^/]+", caldav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
         # Cache for discover_collections (avoids PROPFIND on every settings page load)
         self._collections_cache: list[dict] | None = None
@@ -183,7 +174,7 @@ class CalDAVSync:
             try:
                 events = await self._report_time_range(col_url, start, end)
                 for ics_text, href in events:
-                    event = self._parse_icalendar(ics_text, href)
+                    event = parse_icalendar(ics_text, href)
                     if event:
                         await self._upsert_event(event)
                         count += 1
@@ -320,7 +311,7 @@ class CalDAVSync:
 
     def allowed_collections(self) -> set[str] | None:
         """Parse caldav_calendars setting into a set of allowed hrefs, or None for all."""
-        raw = self.config.caldav_calendars
+        raw = self._caldav_calendars
         if not raw or not raw.strip():
             return None
         return {h.strip() for h in raw.split(",") if h.strip()}
@@ -351,93 +342,9 @@ class CalDAVSync:
             return None
         return xml
 
-    def _parse_icalendar(self, ics_text: str, url: str) -> dict | None:
-        """Parse iCalendar text into an event dict. Returns None if invalid."""
-        unfolded = _unfold_ics(ics_text)
-        lines = unfolded.split("\n")
-
-        event = {
-            "summary": "",
-            "dtstart": None,
-            "dtend": None,
-            "all_day": False,
-            "description": "",
-            "location": "",
-            "caldav_uid": "",
-            "caldav_url": url,
-        }
-
-        in_vevent = False
-        for raw_line in lines:
-            line = raw_line.strip()
-
-            if line == "BEGIN:VEVENT":
-                in_vevent = True
-                continue
-            if line == "END:VEVENT":
-                break
-            if not in_vevent:
-                continue
-
-            if line.startswith("SUMMARY:"):
-                event["summary"] = line[8:].strip()
-            elif line.startswith("DESCRIPTION:"):
-                event["description"] = line[12:].strip()
-            elif line.startswith("LOCATION:"):
-                event["location"] = line[9:].strip()
-            elif line.startswith("UID:"):
-                event["caldav_uid"] = line[4:].strip()
-            elif line.startswith("DTSTART"):
-                dt, all_day = _parse_dt(line)
-                if dt:
-                    event["dtstart"] = dt
-                    event["all_day"] = all_day
-            elif line.startswith("DTEND"):
-                dt, _ = _parse_dt(line)
-                if dt:
-                    event["dtend"] = dt
-
-        # Skip events without summary
-        if not event["summary"]:
-            return None
-
-        # Skip events without start time
-        if not event["dtstart"]:
-            return None
-
-        # Fallback UID from URL
-        if not event["caldav_uid"]:
-            event["caldav_uid"] = url.rsplit("/", 1)[-1].replace(".ics", "")
-
-        return event
-
     async def _upsert_event(self, event: dict) -> None:
         """Insert or update an event by caldav_uid."""
-        await self.pool.execute(
-            """
-            INSERT INTO events (
-                summary, dtstart, dtend, all_day,
-                description, location, caldav_uid, caldav_url, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-            ON CONFLICT (caldav_uid) DO UPDATE SET
-                summary = EXCLUDED.summary,
-                dtstart = EXCLUDED.dtstart,
-                dtend = EXCLUDED.dtend,
-                all_day = EXCLUDED.all_day,
-                description = EXCLUDED.description,
-                location = EXCLUDED.location,
-                caldav_url = EXCLUDED.caldav_url,
-                updated_at = NOW()
-            """,
-            event["summary"],
-            event["dtstart"],
-            event["dtend"],
-            event["all_day"],
-            event["description"],
-            event["location"],
-            event["caldav_uid"],
-            event["caldav_url"],
-        )
+        await upsert_event(self.pool, event, self.source_id)
 
     async def _resolve_write_collection(self) -> str:
         """Return a collection URL suitable for creating events.

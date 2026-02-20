@@ -23,7 +23,7 @@ Niles ist ein lokaler, privater AI-Butler auf einem Mac Mini M4. Er empfaengt Ev
 
 | Komponente | Interner Port | Externer Zugang | Zweck |
 | ---------- | ------------- | --------------- | ----- |
-| LM Studio (Qwen 2.5 Coder 7B MLX) | 1234 (Host) | `http://localhost:1234` | LLM Inference (OpenAI-kompatibel) |
+| Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM Inference (OpenAI-kompatibel) |
 | PostgreSQL | 5432 | Nicht exponiert | Datenbank (evolution_db) |
 | Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp Gateway |
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python Backend + Web-UI |
@@ -59,7 +59,7 @@ Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
                          │    │ Google OAuth + Sessions    │
                          │    │                           │
                          │         v                      │
-POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> LM Studio :1234
+POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> Ollama :11434
                          │    │  Tool-Call Loop (max 5)   │
                          │    │                           │
                          │    ├─ memory/store.py          │──> PostgreSQL :5432
@@ -106,7 +106,9 @@ Niles/
 │       │   └── web.py                # Web-UI Router (OAuth, htmx, Sessions)
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV Kontakt-Sync
-│       │   └── caldav.py             # CalDAV Kalender-Sync
+│       │   ├── caldav.py             # CalDAV Kalender-Sync
+│       │   ├── ical_parser.py        # Shared iCalendar Parser
+│       │   └── manager.py            # CalendarSourceManager (CRUD, Sync, Migration)
 │       ├── mcp/
 │       │   └── client.py             # MCP Server Manager
 │       ├── templates/
@@ -118,7 +120,8 @@ Niles/
 │       │       ├── message.html
 │       │       ├── history.html
 │       │       ├── toast.html
-│       │       └── calendars.html
+│       │       ├── calendars.html
+│       │       └── calendar_sources.html
 │       └── static/
 │           ├── css/
 │           │   ├── input.css         # Tailwind Direktiven + Custom Components
@@ -133,6 +136,8 @@ Niles/
 │   ├── test_features.py              # Feature Flags + Webhook Auth
 │   ├── test_carddav.py               # CardDAV Sync
 │   ├── test_caldav.py                # CalDAV Sync
+│   ├── test_ical_parser.py           # iCalendar Parser
+│   ├── test_calendar_manager.py      # CalendarSourceManager
 │   ├── test_mcp.py                   # MCP Integration
 │   ├── test_security.py              # API Auth, Rate Limiting
 │   ├── test_settings_store.py        # Runtime Settings
@@ -173,9 +178,10 @@ Einstiegspunkt. Verwaltet den Application Lifecycle via `lifespan()`:
 6. UserStore initialisieren (Users-Tabelle fuer Google OAuth)
 7. SettingsStore initialisieren (Runtime Overrides aus DB laden)
 8. CardDAV + CalDAV Sync initialisieren (+ Scheduler wenn Feature aktiv)
-9. MCP Manager starten
-10. Actions und Agent instanziieren
-11. Alles auf `app.state` speichern
+9. CalendarSourceManager initialisieren (DB-Schema, Auto-Migration von .env CalDAV-Config, Sync-Scheduler)
+10. MCP Manager starten
+11. Actions und Agent instanziieren
+12. Alles auf `app.state` speichern
 
 **Middleware:**
 
@@ -191,8 +197,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     # LLM
-    llm_base_url: str = "http://host.docker.internal:1234/v1"
-    llm_model: str = "qwen2.5-coder-7b-instruct-mlx"
+    llm_base_url: str = "http://host.docker.internal:11434/v1"
+    llm_model: str = "llama3.1:8b"
     # PostgreSQL
     postgres_password: str  # validation_alias="EVOLUTION_POSTGRES_PASSWORD"
     # Evolution API
@@ -223,7 +229,7 @@ Laedt aus `.env` und Environment-Variablen. `extra = "ignore"`.
 ```python
 class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
-                 mcp_manager, calendar, caldav_sync): ...
+                 mcp_manager, calendar, calendar_manager): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call) -> dict: ...
@@ -384,10 +390,16 @@ Telefon-Normalisierung: Oesterreich-spezifisch (fuehrende 0 -> 43).
 PROPFIND fuer vCard-URLs, vCard-Parsing (TEL, EMAIL, FN, N), UPSERT via UID.
 APScheduler fuer taeglichen Sync (03:00). Feature Flag: `FEATURE_CARDDAV_SYNC`.
 
-### 3.14 CalDAV Sync (`src/niles/sync/caldav.py`)
+### 3.14 Kalender-Sync (`src/niles/sync/`)
 
-CalDAV Calendar-Sync mit PROPFIND/REPORT. APScheduler fuer taeglichen Sync (03:15).
-Feature Flag: `FEATURE_CALDAV_SYNC`.
+**CalendarSourceManager** (`manager.py`) verwaltet alle Kalenderquellen (ICS, CalDAV, Google) ueber die `calendar_sources`-Tabelle. CRUD-Operationen, Sync-Orchestrierung und Auto-Migration von `.env` CalDAV-Config beim ersten Start.
+
+**CalDAVSync** (`caldav.py`) synchronisiert einzelne CalDAV-Quellen via PROPFIND/REPORT. Parameterisierter Constructor (URL, Auth, Timezone, source_id).
+
+**iCalendar Parser** (`ical_parser.py`) ist ein Shared Parser fuer VEVENT-Daten, genutzt von CalDAV und ICS-Sync.
+
+APScheduler fuer taeglichen Sync: CardDAV 03:00, CalDAV 03:15, Kalenderquellen 03:20.
+Feature Flag `FEATURE_CALDAV_SYNC` aktiviert den Legacy-CalDAV-Sync. Neue Kalenderquellen werden unabhaengig davon ueber die Web-UI verwaltet und automatisch gesynct.
 
 ### 3.15 MCP Client (`src/niles/mcp/client.py`)
 
@@ -561,7 +573,7 @@ Alle Container im `niles_network`. Container-Namen als Hostnamen:
 - `evolution_postgres` (PostgreSQL)
 - `evolution_api` (Evolution API)
 - `niles_core` (Niles, auch fuer Webhooks)
-- `host.docker.internal:1234` (LM Studio auf dem Host)
+- `host.docker.internal:11434` (Ollama auf dem Host)
 
 ### Evolution API Webhook
 
@@ -581,7 +593,7 @@ Format v2.3.7 (nested):
 
 Pflicht: `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-Optional: `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_USER`, `CALDAV_PASSWORD`, `FEATURE_CARDDAV_SYNC`, `FEATURE_CALDAV_SYNC`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`.
+Optional: `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_USER`, `CALDAV_PASSWORD` (Legacy, auto-migriert in DB), `FEATURE_CARDDAV_SYNC`, `FEATURE_CALDAV_SYNC`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`.
 
 Siehe `.env.example` fuer vollstaendige Dokumentation.
 
