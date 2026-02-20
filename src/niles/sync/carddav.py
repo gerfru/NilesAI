@@ -35,6 +35,14 @@ class CardDAVSync:
         self._base_url = re.match(r"https?://[^/]+", config.carddav_url)
         self._base_url = self._base_url.group(0) if self._base_url else ""
 
+    def update_config(self, config: Settings) -> None:
+        """Hot-reload credentials from updated settings."""
+        self.carddav_url = config.carddav_url
+        self.auth = (config.carddav_user, config.carddav_password)
+        match = re.match(r"https?://[^/]+", config.carddav_url)
+        self._base_url = match.group(0) if match else ""
+        logger.info("CardDAV credentials updated via settings UI")
+
     async def initialize(self) -> None:
         """Create contacts table and indexes if they don't exist."""
         await self.pool.execute("""

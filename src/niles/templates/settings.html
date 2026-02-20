@@ -162,6 +162,60 @@
 </div>
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kontakte (CardDAV)</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Synchronisiere Kontakte von einem CardDAV-Server.</p>
+
+    <form hx-post="/ui/api/settings/carddav_url" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">CardDAV URL</label>
+        <div class="flex gap-2">
+            <input type="url" name="value" value="{{ carddav.carddav_url }}"
+                   maxlength="2048" required placeholder="https://dav.example.com/carddav/32"
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+
+    <form hx-post="/ui/api/settings/carddav_user" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Benutzername</label>
+        <div class="flex gap-2">
+            <input type="text" name="value" value="{{ carddav.carddav_user }}"
+                   maxlength="256" required placeholder="user@mailbox.org"
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+
+    <form hx-post="/ui/api/settings/carddav_password" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Passwort</label>
+        <div class="flex gap-2">
+            <input type="password" name="value" value=""
+                   maxlength="256" required placeholder="{{ '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' if carddav.carddav_has_password else '' }}"
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+
+    <div id="carddav-status-container"
+         hx-get="/ui/api/contacts/status"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 text-sm">
+            <svg class="animate-spin h-4 w-4" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Status wird geladen...
+        </div>
+    </div>
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Infrastructure (read-only)</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Diese Werte koennen nur in der <code class="bg-zinc-100 dark:bg-zinc-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
     <div class="overflow-x-auto">

@@ -198,12 +198,15 @@ def _safe_settings_dict(settings) -> dict:
         "postgres_password": "********",
         "evolution_api_url": settings.evolution_api_url,
         "evolution_api_key": "********",
-        "carddav_url": settings.carddav_url,
-        "carddav_user": settings.carddav_user,
-        "carddav_password": "********" if settings.carddav_password else "(not set)",
         "caldav_url (Legacy)": settings.caldav_url,
         "caldav_user (Legacy)": settings.caldav_user,
         "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
+    }
+
+    carddav = {
+        "carddav_url": settings.carddav_url,
+        "carddav_user": settings.carddav_user,
+        "carddav_has_password": bool(settings.carddav_password),
     }
 
     return {
@@ -211,6 +214,7 @@ def _safe_settings_dict(settings) -> dict:
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
+        "carddav": carddav,
     }
 
 
@@ -618,6 +622,11 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
         caldav = getattr(request.app.state, "caldav", None)
         if caldav:
             caldav.config = new_settings
+        # Hot-reload CardDAV credentials when they change
+        if key.startswith("carddav_"):
+            carddav_sync = getattr(request.app.state, "carddav_sync", None)
+            if carddav_sync:
+                carddav_sync.update_config(new_settings)
         # Hot-reload LLM settings on the running agent
         agent = request.app.state.agent
         if agent is not None:
@@ -1060,3 +1069,75 @@ async def whatsapp_disconnect(request: Request):
             "wa_qr": "",
         }
     )
+
+
+# --- CardDAV contacts endpoints ---
+
+
+@router.get("/api/contacts/status", response_class=HTMLResponse)
+async def contacts_status(request: Request):
+    """Return CardDAV sync status fragment."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    pool = request.app.state.pool
+    contact_count = 0
+    last_sync = None
+    try:
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
+        )
+        if row:
+            contact_count = row["cnt"]
+            last_sync = row["last_sync"]
+    except Exception:
+        logger.warning("Failed to fetch contact status")
+
+    return templates.TemplateResponse(request, "fragments/carddav_status.html", {
+        "contact_count": contact_count,
+        "last_sync": last_sync,
+        "carddav_error": None,
+    })
+
+
+@router.post("/api/contacts/sync", response_class=HTMLResponse)
+async def contacts_sync(request: Request):
+    """Trigger a manual CardDAV contact sync."""
+    _user, error = _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    carddav_sync = getattr(request.app.state, "carddav_sync", None)
+    if not carddav_sync:
+        return templates.TemplateResponse(request, "fragments/carddav_status.html", {
+            "contact_count": 0,
+            "last_sync": None,
+            "carddav_error": "CardDAV Sync nicht verfuegbar.",
+        })
+
+    error_msg = None
+    try:
+        await carddav_sync.sync_contacts()
+    except Exception:
+        logger.exception("Manual CardDAV sync failed")
+        error_msg = "Sync fehlgeschlagen. Details im Server-Log."
+
+    pool = request.app.state.pool
+    contact_count = 0
+    last_sync = None
+    try:
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
+        )
+        if row:
+            contact_count = row["cnt"]
+            last_sync = row["last_sync"]
+    except Exception:
+        logger.warning("Failed to fetch contact status after sync")
+
+    return templates.TemplateResponse(request, "fragments/carddav_status.html", {
+        "contact_count": contact_count,
+        "last_sync": last_sync,
+        "carddav_error": error_msg,
+    })
