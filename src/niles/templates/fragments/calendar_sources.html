@@ -3,7 +3,7 @@
     <p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ error }}</p>
     {% endif %}
     {% for src in sources %}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 border-b border-gray-100 dark:border-gray-700 last:border-0 gap-2">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 border-b border-zinc-100 dark:border-zinc-700 last:border-0 gap-2">
         <div class="flex items-start gap-3 flex-1 min-w-0">
             {% if src.source_type == 'google' %}
             <svg class="w-5 h-5 mt-0.5 shrink-0" width="20" height="20" viewBox="0 0 24 24">
@@ -17,22 +17,22 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z"/>
             </svg>
             {% else %}
-            <svg class="w-5 h-5 mt-0.5 shrink-0 text-gray-400 dark:text-gray-500" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <svg class="w-5 h-5 mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-4.072a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.374" />
             </svg>
             {% endif %}
             <div class="min-w-0">
                 <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{{ src.name }}</span>
+                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">{{ src.name }}</span>
                     <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider
                         {% if src.source_type == 'caldav' %}bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300
                         {% elif src.source_type == 'google' %}bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300
-                        {% else %}bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ src.source_type }}</span>
+                        {% else %}bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400{% endif %}">{{ src.source_type }}</span>
                     {% if src.writable %}
                     <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-semibold uppercase tracking-wider">R/W</span>
                     {% endif %}
                 </div>
-                <span class="text-xs text-gray-400 dark:text-gray-500 block truncate">{{ src.url }}</span>
+                <span class="text-xs text-zinc-400 dark:text-zinc-500 block truncate">{{ src.url }}</span>
                 {% if src.last_synced %}
                 <span class="text-xs text-green-600 dark:text-green-400">Letzter Sync: {{ src.last_synced.strftime('%d.%m.%Y %H:%M') }}</span>
                 {% endif %}
@@ -45,17 +45,17 @@
             <button hx-post="/ui/api/calendar/sources/{{ src.id }}/sync"
                     hx-target="#calendar-sources-container"
                     hx-swap="innerHTML"
-                    class="px-2.5 py-1 text-xs text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-600 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer">Sync</button>
+                    class="px-2.5 py-1 text-xs text-blue-500 dark:text-blue-400 border border-blue-300 dark:border-blue-500 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Sync</button>
             <button hx-delete="/ui/api/calendar/sources/{{ src.id }}"
                     hx-target="#calendar-sources-container"
                     hx-swap="innerHTML"
                     hx-confirm="'{{ src.name }}' und alle zugehoerigen Termine loeschen?"
-                    class="px-2.5 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Entfernen</button>
+                    class="px-2.5 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-zinc-700 cursor-pointer">Entfernen</button>
         </div>
     </div>
     {% endfor %}
     {% if not sources %}
-    <div class="flex flex-col items-center py-6 text-gray-400 dark:text-gray-500">
+    <div class="flex flex-col items-center py-6 text-zinc-400 dark:text-zinc-500">
         <svg class="w-8 h-8 mb-2" width="32" height="32" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
         </svg>
