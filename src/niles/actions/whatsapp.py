@@ -50,7 +50,7 @@ class WhatsAppAction:
                 result = response.json()
                 logger.info("Message sent to %s via %s", to, inst)
                 return result
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to send message to %s: %s", to, e)
                 return {"error": str(e)}
 
@@ -86,7 +86,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to create instance %s: %s", instance_name, e)
                 return {"error": str(e)}
 
@@ -106,7 +106,7 @@ class WhatsAppAction:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("instance", {}).get("state", "close")
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to get connection state for %s: %s",
                     instance_name, e,
@@ -128,11 +128,32 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to get QR code for %s: %s", instance_name, e,
                 )
                 return {"error": str(e)}
+
+    async def get_owner_jid(self, instance_name: str) -> str | None:
+        """Get the ownerJid (phone@s.whatsapp.net) for a connected instance."""
+        url = f"{self.base_url}/instance/fetchInstances"
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._headers(),
+                    params={"instanceName": instance_name},
+                    timeout=10,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data and isinstance(data, list):
+                    return data[0].get("ownerJid")
+            except (httpx.HTTPError, IndexError, KeyError, ValueError) as e:
+                logger.error(
+                    "Failed to get ownerJid for %s: %s", instance_name, e,
+                )
+        return None
 
     async def logout_instance(self, instance_name: str) -> dict:
         """Logout a WhatsApp instance (unlink device)."""
@@ -145,7 +166,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to logout instance %s: %s", instance_name, e,
                 )
@@ -162,7 +183,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to delete instance %s: %s", instance_name, e,
                 )
