@@ -205,7 +205,7 @@ class CalendarAction:
             result["description"] = self._sanitize_field(row["description"])
         if row["location"]:
             result["location"] = self._sanitize_field(row["location"])
-        if row["transp"] and row["transp"] != "OPAQUE":
+        if row["transp"] == "TRANSPARENT":
             result["status"] = "verfuegbar"
 
         return result

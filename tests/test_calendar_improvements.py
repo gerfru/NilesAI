@@ -249,6 +249,23 @@ class TestRowToDictAllDay:
         result = action._row_to_dict(row)
         assert "status" not in result
 
+    def test_malformed_transp_not_treated_as_free(self, action):
+        """Non-standard TRANSP values must NOT mark the event as free (RFC 5545)."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Corrupt Event",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "FREE",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert "status" not in result
+
     def test_all_day_no_one_am(self, action):
         """Regression: midnight UTC must NOT become 01:00 Vienna for all-day events."""
         row = MagicMock()
