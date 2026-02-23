@@ -69,17 +69,27 @@ else
     echo "  Not reachable"
 fi
 
-# Check LM Studio (simple port check)
+# Check Vikunja (via Caddy HTTPS)
 echo ""
-echo "LM Studio:"
-if nc -z localhost 1234 2>/dev/null; then
-    echo "  Server running on http://localhost:1234"
+echo "Vikunja:"
+if RESPONSE=$(curl -sk https://localhost:3457/ 2>&1); then
+    echo "  Running on https://localhost:3457"
 else
-    echo "  Server not running (start manually in LM Studio)"
+    echo "  Not reachable"
+fi
+
+# Check Ollama (simple port check)
+echo ""
+echo "Ollama:"
+if curl -s http://localhost:11434/ >/dev/null 2>&1; then
+    echo "  Server running on http://localhost:11434"
+else
+    echo "  Server not running (start with: ollama serve)"
 fi
 
 echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
 echo "  - Niles Web UI:         https://localhost/ui/login"
 echo "  - Evolution Manager:    https://localhost:8443/manager"
-echo "  - LM Studio API:        http://localhost:1234/v1"
+echo "  - Vikunja (Todos):      https://localhost:3457"
+echo "  - Ollama API:           http://localhost:11434/v1"
