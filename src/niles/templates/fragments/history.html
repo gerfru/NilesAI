@@ -1,7 +1,7 @@
 {% from "macros/chat_bubble.html" import user_bubble, assistant_bubble %}
 {% if has_more %}
 <div id="load-more-container" class="text-center mb-4">
-    <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
+    <button hx-get="/ui/api/chat/history?offset={{ next_offset }}&channel={{ channel | default('web') }}"
             hx-target="#load-more-container"
             hx-swap="outerHTML"
             class="text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150">
