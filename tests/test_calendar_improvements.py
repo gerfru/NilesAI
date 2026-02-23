@@ -53,6 +53,19 @@ class TestParseDateMalformedLLM:
         assert result.year == 2026
         assert result.hour == 14
 
+    def test_dict_wrapped_datetime_with_tz(self, action):
+        """{'date': '2026-02-24T14:00:00+01:00'} should extract with timezone."""
+        result = action._parse_date("{'date': '2026-02-24T14:00:00+01:00'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.hour == 14
+
+    def test_dict_wrapped_datetime_utc(self, action):
+        """{'date': '2026-02-24T14:00:00Z'} should extract with Z suffix."""
+        result = action._parse_date("{'date': '2026-02-24T14:00:00Z'}")
+        assert result is not None
+        assert result.year == 2026
+
     def test_normal_date_unchanged(self, action):
         """Normal ISO dates should still work."""
         result = action._parse_date("2026-02-24")

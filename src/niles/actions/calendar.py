@@ -14,7 +14,9 @@ _CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MAX_FIELD_LENGTH = 500
 
 # Extract ISO date from malformed LLM output like "{'date': '2026-02-24'}"
-_ISO_DATE_REGEX = re.compile(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?)?")
+_ISO_DATE_REGEX = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?"
+)
 
 
 # Weekday name → Python weekday index (Monday=0 … Sunday=6)

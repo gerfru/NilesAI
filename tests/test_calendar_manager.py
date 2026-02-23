@@ -170,11 +170,12 @@ END:VCALENDAR"""
             count = await manager._sync_ics(source)
 
         assert count == 1
-        # Verify UID was prefixed
+        # Verify UID was prefixed (find the string arg that starts with "ics-")
         upsert_call = pool.execute.call_args_list[-2]  # last execute before _set_synced
         args = upsert_call[0]
-        uid_arg = args[7]  # caldav_uid is the 7th positional param (index 7)
-        assert uid_arg.startswith("ics-5-")
+        uid_args = [a for a in args if isinstance(a, str) and a.startswith("ics-")]
+        assert uid_args, "No ics-prefixed UID found in upsert args"
+        assert uid_args[0].startswith("ics-5-")
 
     async def test_handles_empty_ics(self, manager, pool):
         source = {

@@ -8,7 +8,13 @@ from urllib.parse import urlparse
 import asyncpg
 import httpx
 
-from .caldav import CalDAVSync, cleanup_recurring_occurrences, upsert_event
+from .caldav import (
+    CalDAVSync,
+    _SYNC_DAYS_FUTURE,
+    _SYNC_DAYS_PAST,
+    cleanup_recurring_occurrences,
+    upsert_event,
+)
 from .google_auth import GoogleCalendarAuth
 from .ical_parser import expand_recurring_event, parse_icalendar
 
@@ -246,8 +252,8 @@ class CalendarSourceManager:
         count = 0
 
         now = datetime.now(timezone.utc)
-        window_start = now - timedelta(days=30)
-        window_end = now + timedelta(days=365)
+        window_start = now - timedelta(days=_SYNC_DAYS_PAST)
+        window_end = now + timedelta(days=_SYNC_DAYS_FUTURE)
 
         for vevent_text in _split_vevents(ics_text):
             event = parse_icalendar(vevent_text, url)
