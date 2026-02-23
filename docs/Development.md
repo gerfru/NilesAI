@@ -6,12 +6,13 @@
 
 ## 1. Voraussetzungen
 
+Laufzeitvoraussetzungen (Docker, Ollama, etc.) siehe [Deployment Guide §1](DEPLOYMENT.md#1-voraussetzungen).
+
+Zusaetzlich fuer die Entwicklung:
+
 | Software | Version | Zweck |
 | -------- | ------- | ----- |
-| Python | >= 3.11 | Runtime |
-| Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
-| Ollama | >= 0.13 | Lokale LLM Inference (nativ auf Host) |
-| Git | aktuell | Versionskontrolle |
+| Python | >= 3.11 | Runtime + Tests |
 | Tailwind CSS CLI | v3.4.17 | CSS Build (Standalone Binary, kein Node.js) |
 
 ---
@@ -39,118 +40,14 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Die `.env.example` dokumentiert jede Variable inline. Hier die Uebersicht, woher die Werte kommen:
+Alle Environment-Variablen, Ollama-Setup und Service-Konfiguration (Google OAuth, WhatsApp, Vikunja, etc.) sind im [Deployment Guide](DEPLOYMENT.md) dokumentiert:
 
-**Pflicht:**
-
-| Variable | Herkunft |
-| -------- | -------- |
-| `EVOLUTION_POSTGRES_PASSWORD` | Frei waehlbar. Wird beim ersten Start als DB-Passwort gesetzt. |
-| `EVOLUTION_API_KEY` | Frei waehlbar. Authentifiziert Niles gegenueber Evolution API und Webhook. |
-
-**Empfohlen (stabile Sessions ueber Restarts):**
-
-| Variable | Herkunft |
-| -------- | -------- |
-| `NILES_API_KEY` | Frei waehlbar, z.B. `openssl rand -hex 32`. Auto-generiert wenn leer. |
-| `SESSION_SECRET` | Frei waehlbar, z.B. `openssl rand -hex 64`. Auto-generiert wenn leer. |
-| `BASE_URL` | Eigene URL, z.B. `https://niles.tail1d4a0f.ts.net`. Fuer OAuth Redirect URIs. |
-
-**Google OAuth (fuer Web-UI Login + Google Calendar):**
-
-| Variable | Herkunft |
-| -------- | -------- |
-| `GOOGLE_CLIENT_ID` | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) > OAuth 2.0 Client erstellen. |
-| `GOOGLE_CLIENT_SECRET` | Gleiche Stelle. Redirect URIs: `<BASE_URL>/ui/callback/google` und `<BASE_URL>/ui/callback/google/calendar`. |
-| `GOOGLE_ALLOWED_EMAILS` | Komma-separierte Whitelist, z.B. `user@gmail.com`. Leer = alle Google-Accounts erlaubt. |
-
-**CardDAV / CalDAV (Kontakt- und Kalender-Sync):**
-
-| Variable | Herkunft |
-| -------- | -------- |
-| `CARDDAV_USER` / `CARDDAV_PASSWORD` | Login-Daten des CardDAV-Anbieters (z.B. mailbox.org). Alternativ ueber Web-UI konfigurierbar. |
-| `CALDAV_*` | Legacy. Wird beim ersten Start automatisch in die DB migriert. Neue Kalenderquellen ueber Web-UI (Settings > Kalenderquellen). |
-
-**Vikunja (Todo/Task Management):**
-
-| Variable | Herkunft |
-| -------- | -------- |
-| `VIKUNJA_JWT_SECRET` | Frei waehlbar, z.B. `openssl rand -hex 32`. Wird nur vom Vikunja-Container gebraucht. |
-| `VIKUNJA_API_URL` | Fix: `http://vikunja:3456/api/v1` (Docker-interner Hostname). |
-| `VIKUNJA_API_TOKEN` | In Vikunja Web-UI generieren: Settings > API Tokens > Create Token. Siehe Vikunja-Setup unten. |
-| `FEATURE_VIKUNJA` | `true` zum Aktivieren, `false` zum Deaktivieren. |
+- [Schnellstart](DEPLOYMENT.md#2-schnellstart) -- Pflicht-Variablen
+- [Environment-Referenz](DEPLOYMENT.md#environment-variablen) -- Vollstaendige Variablen-Tabelle
+- [Ollama](DEPLOYMENT.md#3-ollama-llm-backend) -- LLM-Setup
+- [Vikunja](DEPLOYMENT.md#8-aufgaben-vikunja) -- Aufgaben-Setup
 
 Vollstaendige Settings-Tabelle mit Defaults: [Niles-Core-Spec.md §6.1](Niles-Core-Spec.md#61-settings).
-
-### Ollama
-
-1. Ollama installieren: `brew install ollama`
-2. Modell laden: `ollama pull llama3.1:8b`
-3. Ollama laeuft automatisch auf Port 11434
-
-### Vikunja (optional -- Todo/Task Management)
-
-Vikunja laeuft als separater Docker-Container. Die Datenbank `vikunja_db` wird von `./scripts/start.sh` automatisch erstellt.
-
-**Ersteinrichtung:**
-
-1. **JWT Secret generieren** (fuer stabile Login-Sessions ueber Restarts):
-
-    ```bash
-    openssl rand -hex 32
-    ```
-
-    Ergebnis in `.env` eintragen:
-
-    ```bash
-    VIKUNJA_JWT_SECRET=<generierter-hex-string>
-    ```
-
-2. **Weitere `.env`-Variablen setzen:**
-
-    ```bash
-    VIKUNJA_API_URL=http://vikunja:3456/api/v1
-    VIKUNJA_API_TOKEN=               # kommt in Schritt 5
-    FEATURE_VIKUNJA=true
-    ```
-
-    **Wichtig:** `VIKUNJA_API_URL` muss den Docker-internen Hostnamen `vikunja` verwenden (nicht `localhost`). Niles Core erreicht Vikunja ueber das Docker-Netzwerk.
-
-3. **Container starten:**
-
-    ```bash
-    ./scripts/start.sh
-    ```
-
-    Erstellt automatisch die `vikunja_db` Datenbank. Beim allerersten Start ist die Registrierung in `docker-compose.yml` aktiviert (`ENABLEREGISTRATION: "true"`).
-
-4. **Admin-Account erstellen:** Vikunja Web-UI oeffnen unter `http://localhost:3456` (oder `http://<tailscale-ip>:3456` bei Remote-Zugriff). Auf "Konto erstellen" klicken, Username und Passwort waehlen.
-
-    Nach der Registrierung: Ein Standard-Projekt anlegen (z.B. "Inbox").
-
-    **Danach Registrierung deaktivieren** in `docker-compose.yml`:
-
-    ```yaml
-    VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
-    ```
-
-5. **API-Token generieren:** In Vikunja einloggen, dann: Settings > API Tokens > Create Token. Rechte: mindestens `tasks` (Read + Write). Den generierten Token in `.env` eintragen:
-
-    ```bash
-    VIKUNJA_API_TOKEN=<token-aus-vikunja>
-    ```
-
-6. **Niles neu starten:**
-
-    ```bash
-    ./scripts/start.sh
-    ```
-
-    `start.sh` gibt einen Hinweis aus, falls `FEATURE_VIKUNJA=true` aber `VIKUNJA_API_TOKEN` noch leer ist.
-
-**Verifizierung:** Im Chat "Was steht auf meiner Todo-Liste?" fragen -- Niles ruft `list_tasks` auf.
-
-**Deaktivieren:** `FEATURE_VIKUNJA=false` in `.env` oder ueber die Web-UI (Settings). Task-Tools werden dann nicht an das LLM gesendet.
 
 ---
 
@@ -391,5 +288,6 @@ Hinweis: LLM-Parameter werden dabei manchmal als String statt als korrektem Typ 
 
 ## 9. Weitere Dokumentation
 
+- [Deployment Guide](DEPLOYMENT.md) -- Setup, Konfiguration, Backup, Troubleshooting
 - [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
 - [API Reference](API.md) -- Endpoints, Payloads, Beispiele
