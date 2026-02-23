@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 _CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MAX_FIELD_LENGTH = 500
 
+# Extract ISO date from malformed LLM output like "{'date': '2026-02-24'}"
+_ISO_DATE_REGEX = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?"
+)
+
+
 # Weekday name → Python weekday index (Monday=0 … Sunday=6)
 _WEEKDAY_MAP = {
     "montag": 0, "monday": 0,
@@ -77,7 +83,7 @@ class CalendarAction:
 
         rows = await self.pool.fetch(
             """
-            SELECT summary, dtstart, dtend, all_day, description, location
+            SELECT summary, dtstart, dtend, all_day, description, location, transp
             FROM events
             WHERE ($1 = '' OR summary ILIKE '%' || $1 || '%'
                    OR description ILIKE '%' || $1 || '%'
@@ -106,6 +112,15 @@ class CalendarAction:
 
     def _parse_date(self, value: str, end_of_day: bool = False) -> datetime | None:
         """Parse an ISO date string or relative term to a timezone-aware datetime."""
+        # Small LLMs sometimes wrap dates in dicts: "{'date': '2026-02-24'}"
+        # Extract the ISO date if the raw value isn't parseable as-is.
+        stripped = value.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            match = _ISO_DATE_REGEX.search(stripped)
+            if match:
+                logger.debug("Extracted date from malformed LLM output: %s → %s", value, match.group())
+                value = match.group()
+
         # Handle relative date terms (small LLMs sometimes send these)
         now = datetime.now(tz=self.tz)
         relative = value.strip().lower()
@@ -190,5 +205,7 @@ class CalendarAction:
             result["description"] = self._sanitize_field(row["description"])
         if row["location"]:
             result["location"] = self._sanitize_field(row["location"])
+        if row["transp"] == "TRANSPARENT":
+            result["status"] = "verfuegbar"
 
         return result

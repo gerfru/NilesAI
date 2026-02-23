@@ -8,7 +8,13 @@ from urllib.parse import urlparse
 import asyncpg
 import httpx
 
-from .caldav import CalDAVSync, cleanup_recurring_occurrences, upsert_event
+from .caldav import (
+    CalDAVSync,
+    _SYNC_DAYS_FUTURE,
+    _SYNC_DAYS_PAST,
+    cleanup_recurring_occurrences,
+    upsert_event,
+)
 from .google_auth import GoogleCalendarAuth
 from .ical_parser import expand_recurring_event, parse_icalendar
 
@@ -50,6 +56,7 @@ class CalendarSourceManager:
                 location TEXT,
                 caldav_uid TEXT UNIQUE,
                 caldav_url TEXT,
+                transp TEXT DEFAULT 'OPAQUE',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -85,6 +92,11 @@ class CalendarSourceManager:
         """)
         await self.pool.execute("""
             CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id)
+        """)
+        # Add transparency field (OPAQUE = busy, TRANSPARENT = free)
+        await self.pool.execute("""
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS
+                transp TEXT DEFAULT 'OPAQUE'
         """)
         await self._migrate_env_source()
         logger.info("Calendar source manager initialized")
@@ -228,7 +240,7 @@ class CalendarSourceManager:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url, timeout=_ICS_TIMEOUT, follow_redirects=False,
+                    url, timeout=_ICS_TIMEOUT, follow_redirects=True,
                 )
                 response.raise_for_status()
                 if len(response.content) > _MAX_ICS_SIZE:
@@ -241,8 +253,8 @@ class CalendarSourceManager:
         count = 0
 
         now = datetime.now(timezone.utc)
-        window_start = now - timedelta(days=30)
-        window_end = now + timedelta(days=365)
+        window_start = now - timedelta(days=_SYNC_DAYS_PAST)
+        window_end = now + timedelta(days=_SYNC_DAYS_FUTURE)
 
         for vevent_text in _split_vevents(ics_text):
             event = parse_icalendar(vevent_text, url)
