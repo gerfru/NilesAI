@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     evolution_api_key: str  # Via EVOLUTION_API_KEY
     evolution_instance: str = "niles-whatsapp"
 
+    # Internal base URL for webhooks (Evolution API → Niles Core, Docker-internal)
+    webhook_base_url: str = "http://niles_core:8000"
+
     # Niles API authentication
     niles_api_key: str = Field(
         default_factory=lambda: secrets.token_urlsafe(32),
@@ -49,8 +52,7 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Vienna"
 
     # Features
-    feature_whatsapp_auto_reply: bool = False
-    feature_tool_send_whatsapp: bool = True
+    feature_whatsapp_send_others: bool = True
 
     # CardDAV (configured via Settings UI)
     carddav_url: str = ""
