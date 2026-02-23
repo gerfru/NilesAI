@@ -77,18 +77,15 @@ class CalendarAction:
 
         rows = await self.pool.fetch(
             """
-            SELECT e.summary, e.dtstart, e.dtend, e.all_day,
-                   e.description, e.location,
-                   cs.name AS source_name
-            FROM events e
-            LEFT JOIN calendar_sources cs ON e.source_id = cs.id
-            WHERE ($1 = '' OR e.summary ILIKE '%' || $1 || '%'
-                   OR e.description ILIKE '%' || $1 || '%'
-                   OR e.location ILIKE '%' || $1 || '%')
-              AND ($2::timestamptz IS NULL OR e.dtstart >= $2)
-              AND ($3::timestamptz IS NULL OR e.dtstart <= $3)
-              AND ($4::integer IS NULL OR e.source_id = $4)
-            ORDER BY e.dtstart ASC
+            SELECT summary, dtstart, dtend, all_day, description, location
+            FROM events
+            WHERE ($1 = '' OR summary ILIKE '%' || $1 || '%'
+                   OR description ILIKE '%' || $1 || '%'
+                   OR location ILIKE '%' || $1 || '%')
+              AND ($2::timestamptz IS NULL OR dtstart >= $2)
+              AND ($3::timestamptz IS NULL OR dtstart <= $3)
+              AND ($4::integer IS NULL OR source_id = $4)
+            ORDER BY dtstart ASC
             LIMIT 10
             """,
             query,
@@ -193,7 +190,5 @@ class CalendarAction:
             result["description"] = self._sanitize_field(row["description"])
         if row["location"]:
             result["location"] = self._sanitize_field(row["location"])
-        if row["source_name"]:
-            result["calendar"] = row["source_name"]
 
         return result
