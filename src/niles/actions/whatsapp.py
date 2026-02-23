@@ -50,7 +50,7 @@ class WhatsAppAction:
                 result = response.json()
                 logger.info("Message sent to %s via %s", to, inst)
                 return result
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to send message to %s: %s", to, e)
                 return {"error": str(e)}
 
@@ -86,7 +86,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to create instance %s: %s", instance_name, e)
                 return {"error": str(e)}
 
@@ -106,7 +106,7 @@ class WhatsAppAction:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("instance", {}).get("state", "close")
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to get connection state for %s: %s",
                     instance_name, e,
@@ -128,7 +128,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to get QR code for %s: %s", instance_name, e,
                 )
@@ -166,7 +166,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to logout instance %s: %s", instance_name, e,
                 )
@@ -183,7 +183,7 @@ class WhatsAppAction:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to delete instance %s: %s", instance_name, e,
                 )

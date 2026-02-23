@@ -2,6 +2,7 @@
 
 import hmac
 import logging
+import time
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -11,6 +12,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
 TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
+
+# ---------------------------------------------------------------------------
+# Echo-loop guard: cache of message IDs sent by the agent.
+# When the agent sends a self-chat reply, Evolution API echoes the outbound
+# message back as a MESSAGES_UPSERT with fromMe=True.  If the reply text
+# happens to start with a trigger phrase (e.g. "Niles hier: ..."), the
+# webhook would fire again — causing an infinite loop.
+# ---------------------------------------------------------------------------
+_sent_ids: dict[str, float] = {}  # msg_id → monotonic timestamp
+_SENT_TTL = 10.0  # seconds
+
+
+def _record_sent(msg_id: str) -> None:
+    """Record a message ID we just sent (with TTL-based pruning)."""
+    now = time.monotonic()
+    _sent_ids[msg_id] = now
+    expired = [k for k, v in _sent_ids.items() if now - v > _SENT_TTL]
+    for k in expired:
+        del _sent_ids[k]
+
+
+def _was_echo(msg_id: str) -> bool:
+    """Check if a message ID is one we recently sent."""
+    ts = _sent_ids.get(msg_id)
+    if ts is None:
+        return False
+    return (time.monotonic() - ts) <= _SENT_TTL
 """Case-insensitive trigger phrases. Checked against the start of the message."""
 
 
@@ -80,7 +108,12 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     key = data.get("key", {})
     is_from_me = key.get("fromMe", False)
     remote_jid = key.get("remoteJid", "")
+    msg_id = key.get("id", "")
     message = data.get("message", {})
+
+    # Skip echoed messages that the agent itself sent (prevents reply loops)
+    if is_from_me and msg_id and _was_echo(msg_id):
+        return {"status": "ignored", "reason": "echo of own reply"}
 
     # Extract text from different message types
     text = (
@@ -128,11 +161,15 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
             response_text = await agent.process_event(event)
             if response_text:
                 whatsapp_action = request.app.state.whatsapp_action
-                await whatsapp_action.send_message(
+                result = await whatsapp_action.send_message(
                     to=remote_jid,
                     text=response_text,
                     instance=instance_for_reply,
                 )
+                # Record sent message ID so the echoed webhook is skipped
+                sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
+                if sent_id:
+                    _record_sent(sent_id)
                 logger.info("Self-chat reply sent to %s", remote_jid)
         except Exception:
             logger.exception("Failed to process self-chat message")
