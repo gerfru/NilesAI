@@ -1,0 +1,41 @@
+{% if vikunja_error %}
+<p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ vikunja_error }}</p>
+{% endif %}
+
+{% if vikunja_connected %}
+<div class="flex items-center gap-3 py-2">
+    <span class="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+        Verbunden{% if vikunja_project_count %} ({{ vikunja_project_count }} Projekte){% endif %}
+    </span>
+</div>
+<form hx-post="/ui/api/vikunja/disconnect"
+      hx-target="#vikunja-container"
+      hx-swap="innerHTML"
+      hx-confirm="Vikunja-Token wirklich entfernen?"
+      class="mt-2">
+    <button type="submit"
+            class="px-4 py-2 text-sm text-red-500 dark:text-red-400 border border-red-500 dark:border-red-400 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Trennen</button>
+</form>
+
+{% else %}
+<div class="flex items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+    <span class="w-2.5 h-2.5 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0"></span>
+    Nicht verbunden
+</div>
+<form hx-post="/ui/api/vikunja/connect"
+      hx-target="#vikunja-container"
+      hx-swap="innerHTML"
+      class="mt-3">
+    <div class="flex flex-col gap-2 mb-3">
+        <input type="password" name="api_token" placeholder="Vikunja API-Token"
+               maxlength="256" required
+               class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <input type="url" name="api_url" placeholder="API-URL (optional, leer = globale URL)"
+               maxlength="512"
+               class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg cursor-pointer transition-colors duration-150">Verbinden</button>
+</form>
+{% endif %}
