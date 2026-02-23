@@ -310,6 +310,81 @@ class TestCreateTask:
         put_call = mock_client.put.call_args
         assert put_call.kwargs["json"]["priority"] == 4
 
+    async def test_priority_as_string(self, action):
+        """Priority passed as string (common with local LLMs) is coerced to int."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
+        mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
+
+        with patch("niles.actions.tasks.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await action.create_task(title="Test", priority="3")
+
+        put_call = mock_client.put.call_args
+        assert put_call.kwargs["json"]["priority"] == 3
+
+    async def test_priority_zero_string_excluded(self, action):
+        """Priority '0' as string should not be included in payload."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
+        mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
+
+        with patch("niles.actions.tasks.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await action.create_task(title="Test", priority="0")
+
+        put_call = mock_client.put.call_args
+        assert "priority" not in put_call.kwargs["json"]
+
+    async def test_due_date_date_only(self, action):
+        """Date-only due_date gets midnight UTC appended."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
+        mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
+
+        with patch("niles.actions.tasks.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await action.create_task(title="Test", due_date="2026-02-24")
+
+        put_call = mock_client.put.call_args
+        assert put_call.kwargs["json"]["due_date"] == "2026-02-24T00:00:00Z"
+
+    async def test_due_date_with_time(self, action):
+        """Datetime due_date gets timezone suffix appended."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
+        mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
+
+        with patch("niles.actions.tasks.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await action.create_task(title="Test", due_date="2026-02-24T14:00")
+
+        put_call = mock_client.put.call_args
+        assert put_call.kwargs["json"]["due_date"] == "2026-02-24T14:00:00+00:00"
+
+    async def test_due_date_already_utc(self, action):
+        """Due date ending with Z is passed through unchanged."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
+        mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
+
+        with patch("niles.actions.tasks.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await action.create_task(title="Test", due_date="2026-02-24T14:00:00Z")
+
+        put_call = mock_client.put.call_args
+        assert put_call.kwargs["json"]["due_date"] == "2026-02-24T14:00:00Z"
+
 
 class TestCompleteTask:
     async def test_found_and_completed(self, action):

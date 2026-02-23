@@ -261,7 +261,7 @@ tests/
 ├── conftest.py                  # Shared Fixtures (Environment-Variablen)
 ├── test_config.py               # Settings-Validierung
 ├── test_contacts.py             # ContactsAction, normalize_phone, Multi-Phone
-├── test_core.py                 # NilesAgent, Tool-Call-Pipeline
+├── test_core.py                 # NilesAgent, Tool-Call-Pipeline, Text-Tool-Call-Fallback
 ├── test_health.py               # GET /health Endpoint
 ├── test_memory.py               # MemoryStore, ConversationHistory
 ├── test_features.py             # Feature Flags + Webhook Auth
@@ -368,6 +368,18 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 - LLM-Fehler: Fehlermeldung an User, kein Exception-Propagation
 - Tool-Call-Fehler: `{"error": "..."}` als Tool-Result zurueck an LLM
 - Startup: `ValidationError` bei fehlenden Pflicht-Variablen -> `sys.exit(1)`
+
+### Text-basierter Tool-Call Fallback
+
+Kleinere lokale LLMs (z.B. `llama3.1:8b` via Ollama) nutzen manchmal nicht die Function-Calling-API, sondern geben den Tool-Call als JSON-Text aus:
+
+```json
+{"name": "create_task", "parameters": {"title": "Einkaufen", "due_date": "2026-02-24"}}
+```
+
+`NilesAgent._try_parse_text_tool_call()` erkennt solche Antworten und fuehrt den Tool-Call trotzdem aus. Im Streaming-Modus werden JSON-artige Antworten gepuffert (nicht sofort an den User gestreamt), damit kein rohes JSON in der Chat-Bubble erscheint.
+
+Hinweis: LLM-Parameter werden dabei manchmal als String statt als korrektem Typ geliefert (z.B. `"priority": "0"` statt `"priority": 0`). Actions muessen solche Typen robust handhaben (`int()` mit Fallback).
 
 ### Logging
 
