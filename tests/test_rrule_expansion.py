@@ -136,6 +136,7 @@ class TestExpandRecurringEvent:
             "all_day": False,
             "description": "",
             "location": "",
+            "transp": "OPAQUE",
             "caldav_uid": "test-uid-123",
             "caldav_url": "/test.ics",
             "rrule": "",
@@ -317,6 +318,20 @@ class TestExpandRecurringEvent:
         result = expand_recurring_event(event, window_start, window_end)
 
         assert result == []
+
+    def test_preserves_transp(self):
+        """Expanded occurrences carry over transp from master."""
+        event = self._make_event(
+            transp="TRANSPARENT",
+            rrule="RRULE:FREQ=DAILY;COUNT=2",
+        )
+        window_start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        window_end = datetime(2026, 12, 31, tzinfo=timezone.utc)
+
+        result = expand_recurring_event(event, window_start, window_end)
+
+        for occ in result:
+            assert occ["transp"] == "TRANSPARENT"
 
     def test_preserves_description_and_location(self):
         """Expanded occurrences carry over description/location from master."""
