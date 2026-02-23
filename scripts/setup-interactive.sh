@@ -263,7 +263,8 @@ cat << EOF
 Service URLs (HTTPS via Caddy, self-signed):
    - Niles Web UI:       https://localhost/ui/login
    - Evolution Manager:  https://localhost:8443/manager
-   - LM Studio API:      http://localhost:1234/v1
+   - Vikunja (Todos):    https://localhost:3457
+   - Ollama API:         http://localhost:11434/v1
 
 Daily Usage:
    ./scripts/start.sh   - Start all services

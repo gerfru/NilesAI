@@ -444,6 +444,89 @@ Erstellt einen neuen Kalender-Eintrag auf der ersten beschreibbaren Kalenderquel
 
 ---
 
+### list_tasks
+
+Listet offene Aufgaben aus Vikunja. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+
+**Parameter:**
+
+| Name | Typ | Pflicht | Beschreibung |
+| ---- | --- | ------- | ------------ |
+| `project` | string | Nein | Projektname zum Filtern. Leer = alle Projekte. |
+| `include_done` | boolean | Nein | Auch erledigte Aufgaben anzeigen. Standard: false. |
+
+**Return (Erfolg):**
+
+```json
+{"tasks": [{"id": 1, "title": "Milch kaufen", "done": false, "due_date": "2026-02-25T18:00:00Z"}], "count": 1}
+```
+
+**Return (Fehler):**
+
+```json
+{"error": "Keine Aufgaben gefunden"}
+```
+
+---
+
+### create_task
+
+Erstellt eine neue Aufgabe in Vikunja. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+
+**Parameter:**
+
+| Name | Typ | Pflicht | Beschreibung |
+| ---- | --- | ------- | ------------ |
+| `title` | string | Ja | Titel der Aufgabe |
+| `description` | string | Nein | Beschreibung der Aufgabe |
+| `due_date` | string | Nein | Faelligkeitsdatum (ISO-Format, z.B. `"2026-02-25T18:00"`) |
+| `priority` | integer | Nein | Prioritaet: 0=keine, 1=niedrig, 2=mittel, 3=hoch, 4=dringend. Standard: 0. |
+| `project` | string | Nein | Projektname. Leer = Standard-Projekt. |
+
+**Return (Erfolg):**
+
+```json
+{"created": true, "id": 20, "title": "Zahnarzt anrufen", "project_id": 1}
+```
+
+**Return (Fehler):**
+
+```json
+{"error": "Projekt 'Nonexistent' nicht gefunden"}
+```
+
+---
+
+### complete_task
+
+Markiert eine Aufgabe als erledigt. Sucht nach dem Titel in offenen Aufgaben. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+
+**Parameter:**
+
+| Name | Typ | Pflicht | Beschreibung |
+| ---- | --- | ------- | ------------ |
+| `title` | string | Ja | Titel oder Teil des Titels der Aufgabe |
+
+**Return (Erfolg):**
+
+```json
+{"completed": true, "title": "Milch kaufen"}
+```
+
+**Return (Fehler -- nicht gefunden):**
+
+```json
+{"error": "Keine offene Aufgabe gefunden: 'Nonexistent'"}
+```
+
+**Return (Fehler -- mehrdeutig):**
+
+```json
+{"error": "Mehrere Aufgaben gefunden. Welche meinst du?", "matches": ["Einkaufen", "Email schreiben"]}
+```
+
+---
+
 ## Evolution API Webhook-Konfiguration
 
 Die Evolution API muss so konfiguriert werden, dass sie Webhooks an Niles sendet:
