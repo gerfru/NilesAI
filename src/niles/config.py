@@ -49,8 +49,7 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Vienna"
 
     # Features
-    feature_whatsapp_auto_reply: bool = False
-    feature_tool_send_whatsapp: bool = True
+    feature_whatsapp_send_others: bool = True
 
     # CardDAV (configured via Settings UI)
     carddav_url: str = ""
