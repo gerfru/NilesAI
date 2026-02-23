@@ -21,15 +21,15 @@ def _make_settings(**overrides):
     return Settings(**defaults)
 
 
-class TestVikunjCredentialStore:
-    """Test VikunjCredentialStore CRUD operations."""
+class TestVikunjaCredentialStore:
+    """Test VikunjaCredentialStore CRUD operations."""
 
     @pytest.fixture
     def store(self):
-        from niles.vikunja_store import VikunjCredentialStore
+        from niles.vikunja_store import VikunjaCredentialStore
 
         pool = AsyncMock()
-        return VikunjCredentialStore(pool)
+        return VikunjaCredentialStore(pool)
 
     async def test_initialize_creates_table(self, store):
         await store.initialize()

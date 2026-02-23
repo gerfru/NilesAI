@@ -30,7 +30,7 @@ from .memory.store import MemoryStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
-from .vikunja_store import VikunjCredentialStore
+from .vikunja_store import VikunjaCredentialStore
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     await wa_store.initialize()
 
     # Vikunja credential store (per-user API tokens)
-    vikunja_store = VikunjCredentialStore(pool)
+    vikunja_store = VikunjaCredentialStore(pool)
     await vikunja_store.initialize()
 
     # Settings store (runtime overrides from DB)

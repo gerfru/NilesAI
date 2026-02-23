@@ -356,7 +356,7 @@ class TestCreateTask:
         assert put_call.kwargs["json"]["due_date"] == "2026-02-24T00:00:00Z"
 
     async def test_due_date_with_time(self, action):
-        """Datetime due_date gets timezone suffix appended."""
+        """Datetime due_date without seconds gets normalized."""
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=_resp(SAMPLE_PROJECTS))
         mock_client.put = AsyncMock(return_value=_resp(SAMPLE_CREATED_TASK))
@@ -368,7 +368,7 @@ class TestCreateTask:
             await action.create_task(title="Test", due_date="2026-02-24T14:00")
 
         put_call = mock_client.put.call_args
-        assert put_call.kwargs["json"]["due_date"] == "2026-02-24T14:00:00+00:00"
+        assert put_call.kwargs["json"]["due_date"] == "2026-02-24T14:00:00Z"
 
     async def test_due_date_already_utc(self, action):
         """Due date ending with Z is passed through unchanged."""
