@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
 TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
+# Case-insensitive trigger phrases. Checked against the start of the message.
 
 # ---------------------------------------------------------------------------
 # Echo-loop guard: cache of message IDs sent by the agent.
@@ -19,6 +20,9 @@ TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
 # message back as a MESSAGES_UPSERT with fromMe=True.  If the reply text
 # happens to start with a trigger phrase (e.g. "Niles hier: ..."), the
 # webhook would fire again — causing an infinite loop.
+# NOTE: This cache is per-process.  With multiple uvicorn workers (--workers N)
+# each worker maintains its own _sent_ids, so an echo could slip through if a
+# different worker handles it.  Single-worker (the default) is fully safe.
 # ---------------------------------------------------------------------------
 _sent_ids: dict[str, float] = {}  # msg_id → monotonic timestamp
 _SENT_TTL = 10.0  # seconds
@@ -39,7 +43,6 @@ def _was_echo(msg_id: str) -> bool:
     if ts is None:
         return False
     return (time.monotonic() - ts) <= _SENT_TTL
-"""Case-insensitive trigger phrases. Checked against the start of the message."""
 
 
 def _is_niles_trigger(text: str) -> bool:
@@ -170,6 +173,10 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
                 sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
                 if sent_id:
                     _record_sent(sent_id)
+                else:
+                    logger.warning(
+                        "No message ID in send_message response — echo guard not armed"
+                    )
                 logger.info("Self-chat reply sent to %s", remote_jid)
         except Exception:
             logger.exception("Failed to process self-chat message")
