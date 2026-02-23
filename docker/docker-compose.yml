@@ -58,6 +58,8 @@ services:
   vikunja:
     image: vikunja/vikunja:latest
     container_name: vikunja
+    # Root required: upstream vikunja image writes to /app/vikunja/files as root;
+    # non-root user causes permission errors on the named volume.
     user: "0:0"
     environment:
       VIKUNJA_DATABASE_TYPE: postgres
@@ -65,7 +67,7 @@ services:
       VIKUNJA_DATABASE_USER: evolution
       VIKUNJA_DATABASE_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
       VIKUNJA_DATABASE_DATABASE: vikunja_db
-      VIKUNJA_SERVICE_PUBLICURL: http://vikunja:3456
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://localhost:3457}
       VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
