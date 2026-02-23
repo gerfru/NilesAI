@@ -320,29 +320,58 @@ class NilesAgent:
         # Pending phone choice: chat_id → {phones, text, contact_name}
         self._pending_phone_choices: dict[str, dict] = {}
 
+    async def _resolve_user_id(self, chat_id: str) -> int | None:
+        """Extract user_id from chat_id, resolving phone lookups as needed.
+
+        Supports:
+          - web-user-{uid}  → uid directly
+          - wa-self-{phone}  → phone lookup via wa_store
+        """
+        if chat_id.startswith("web-user-"):
+            try:
+                return int(chat_id.split("-", 2)[2])
+            except (ValueError, IndexError):
+                return None
+        if chat_id.startswith("wa-self-") and self.wa_store:
+            phone = chat_id.split("-", 2)[2]
+            session = await self.wa_store.get_by_phone(phone)
+            if session:
+                return session["user_id"]
+        return None
+
     async def _resolve_wa_instance(self, chat_id: str) -> str | None:
         """Look up per-user WhatsApp instance from chat_id."""
-        if self.wa_store and chat_id.startswith("web-user-"):
-            try:
-                uid = int(chat_id.split("-", 2)[2])
-                session = await self.wa_store.get_session(uid)
-                if session and session["status"] == "connected":
-                    return session["instance_name"]
-            except (ValueError, IndexError):
-                pass
+        uid = await self._resolve_user_id(chat_id)
+        if uid is not None and self.wa_store:
+            session = await self.wa_store.get_session(uid)
+            if session and session["status"] == "connected":
+                return session["instance_name"]
+        return None
+
+    async def _get_own_phone_number(self, chat_id: str) -> str | None:
+        """Get the user's own WhatsApp phone number from their session.
+
+        For self-chat (wa-self-{phone}), extracts the phone directly.
+        For web users (web-user-{uid}), looks up from wa_store.
+        """
+        if chat_id.startswith("wa-self-"):
+            return chat_id.split("-", 2)[2]
+        uid = await self._resolve_user_id(chat_id)
+        if uid is not None and self.wa_store:
+            session = await self.wa_store.get_session(uid)
+            if session and session.get("phone_number"):
+                return session["phone_number"].replace("+", "").replace(" ", "")
         return None
 
     async def _resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:
         """Resolve per-user Vikunja credentials, falling back to global."""
-        if self.vikunja_store and chat_id.startswith("web-user-"):
-            try:
-                uid = int(chat_id.split("-", 2)[2])
+        if self.vikunja_store:
+            uid = await self._resolve_user_id(chat_id)
+            if uid is not None:
                 creds = await self.vikunja_store.get_credentials(uid)
                 if creds and creds["api_token"]:
                     api_url = creds["api_url"] or self.config.vikunja_api_url
                     return TasksAction(api_url=api_url, api_token=creds["api_token"])
-            except (ValueError, IndexError):
-                pass
         return self.tasks  # Global fallback (or None)
 
     # Known tool names for text-based tool call detection
@@ -766,14 +795,11 @@ class NilesAgent:
             return {"error": f"Kontakt '{args['name']}' nicht gefunden"}
 
         if name == "send_whatsapp":
-            if not self.config.feature_tool_send_whatsapp:
-                logger.info("send_whatsapp tool disabled via feature flag")
-                return {"error": "WhatsApp senden ist derzeit deaktiviert"}
-
             to = args["to"]
             text = args["text"]
+            resolved_number = None
 
-            # If 'to' looks like a name (not a number), resolve it first
+            # 1. Contact resolution (if name instead of number)
             if not to.replace("+", "").replace(" ", "").isdigit():
                 contact = await self.contacts.find_by_name(to)
                 if not contact:
@@ -793,14 +819,32 @@ class NilesAgent:
                     return {"choose_phone": "\n".join(lines)}
                 if not contact.get("phone"):
                     return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
-                to = contact["phone"]
+                resolved_number = contact["phone"]
+            else:
+                resolved_number = to
 
+            # 2. Self-check: own number is always allowed
+            is_self = False
+            own_number = await self._get_own_phone_number(chat_id)
+            if own_number:
+                normalized = resolved_number.replace("+", "").replace(" ", "")
+                is_self = normalized == own_number or normalized.endswith(own_number)
+
+            # 3. Sending to others: only if feature flag is active
+            if not is_self and not self.config.feature_whatsapp_send_others:
+                logger.info("send_whatsapp to others disabled via feature flag")
+                return {
+                    "error": "Das Senden an andere Personen ist deaktiviert. "
+                    "Du kannst diese Funktion in den Einstellungen aktivieren."
+                }
+
+            # 4. Send message
             instance = await self._resolve_wa_instance(chat_id)
 
             result = await self.whatsapp.send_message(
-                to=to, text=text, instance=instance,
+                to=resolved_number, text=text, instance=instance,
             )
-            return {"status": "sent", "to": to} if "error" not in result else result
+            return {"status": "sent", "to": resolved_number} if "error" not in result else result
 
         if name == "remember":
             await self.memory.set(args["key"], args["value"])

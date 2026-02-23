@@ -161,7 +161,8 @@ tests/
 ├── test_core.py                 # NilesAgent, Tool-Call-Pipeline, Text-Tool-Call-Fallback
 ├── test_health.py               # GET /health Endpoint
 ├── test_memory.py               # MemoryStore, ConversationHistory
-├── test_features.py             # Feature Flags + Webhook Auth
+├── test_features.py             # Feature Flags (send_others, Self-Check) + Webhook Auth
+├── test_self_chat.py            # WhatsApp Self-Chat (Trigger, Strip, Webhook-Integration)
 ├── test_carddav.py              # CardDAV Sync
 ├── test_caldav.py               # CalDAV Sync
 ├── test_ical_parser.py          # iCalendar Parser

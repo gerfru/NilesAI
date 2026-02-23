@@ -175,6 +175,21 @@ def _user_chat_id(user: dict) -> str:
     return f"web-user-{user['uid']}"
 
 
+async def _resolve_channel(
+    user: dict, channel: str, wa_store,
+) -> tuple[str, bool]:
+    """Resolve channel name to (chat_id, readonly).
+
+    Returns web-chat as fallback for unknown/invalid channels.
+    """
+    if channel == "whatsapp" and wa_store:
+        session = await wa_store.get_session(user["uid"])
+        if session and session.get("phone_number"):
+            chat_id = f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
+            return chat_id, True
+    return _user_chat_id(user), False
+
+
 def _google_configured(request: Request) -> bool:
     """Check if Google OAuth credentials are configured."""
     s = request.app.state.settings
@@ -198,7 +213,7 @@ def _safe_settings_dict(settings) -> dict:
     """Build a safe dict of settings values for templates (no __dict__ access)."""
     feature_flags = {}
     for key in [
-        "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
+        "feature_whatsapp_send_others",
     ]:
         feature_flags[key] = getattr(settings, key)
 
@@ -435,16 +450,27 @@ async def logout(request: Request):
 
 
 @router.get("/chat", response_class=HTMLResponse)
-async def chat_page(request: Request):
-    """Chat page with per-user conversation history (paginated)."""
+async def chat_page(
+    request: Request,
+    channel: str = Query(default="web"),
+):
+    """Chat page with channel selection and per-user conversation history."""
     user = _get_session_user(request)
     if user is None:
         return RedirectResponse(url="/ui/login", status_code=303)
 
-    chat_id = _user_chat_id(user)
+    wa_store = getattr(request.app.state, "wa_store", None)
+    chat_id, readonly = await _resolve_channel(user, channel, wa_store)
     history = request.app.state.history
     messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE)
     has_more = len(messages) == _CHAT_PAGE_SIZE
+
+    # Determine available channels (WhatsApp only if connected with phone)
+    available_channels = [("web", "Web-Chat")]
+    if wa_store:
+        session = await wa_store.get_session(user["uid"])
+        if session and session.get("phone_number") and session["status"] == "connected":
+            available_channels.append(("whatsapp", "WhatsApp"))
 
     response = templates.TemplateResponse(request, "chat.html", {
         "messages": messages,
@@ -452,6 +478,9 @@ async def chat_page(request: Request):
         "next_offset": _CHAT_PAGE_SIZE,
         "active_page": "chat",
         "user": user,
+        "channel": channel if not readonly or channel == "whatsapp" else "web",
+        "readonly": readonly,
+        "available_channels": available_channels,
     })
     _ensure_csrf_cookie(request, response)
     return response
@@ -488,13 +517,15 @@ async def settings_page(request: Request, error: str = Query(default="")):
 async def chat_history(
     request: Request,
     offset: int = Query(default=0, ge=0),
+    channel: str = Query(default="web"),
 ):
-    """Load older chat messages (pagination)."""
+    """Load older chat messages (pagination), channel-aware."""
     user = _get_session_user(request)
     if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
-    chat_id = _user_chat_id(user)
+    wa_store = getattr(request.app.state, "wa_store", None)
+    chat_id, _readonly = await _resolve_channel(user, channel, wa_store)
     history = request.app.state.history
     messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE, offset=offset)
     has_more = len(messages) == _CHAT_PAGE_SIZE
@@ -503,6 +534,7 @@ async def chat_history(
         "has_more": has_more,
         "next_offset": offset + _CHAT_PAGE_SIZE,
         "user": user,
+        "channel": channel,
     })
 
 
@@ -1004,10 +1036,19 @@ async def whatsapp_status(request: Request):
         state = await whatsapp_action.get_connection_state(session["instance_name"])
 
         if state == "open":
-            if session["status"] != "connected":
-                await wa_store.update_status(user["uid"], "connected")
+            phone = session.get("phone_number")
+            if not phone or session["status"] != "connected":
+                # Fetch phone from Evolution API (ownerJid)
+                owner_jid = await whatsapp_action.get_owner_jid(
+                    session["instance_name"],
+                )
+                if owner_jid and "@" in owner_jid:
+                    phone = owner_jid.split("@")[0]
+                await wa_store.update_status(
+                    user["uid"], "connected", phone_number=phone,
+                )
             ctx["wa_status"] = "connected"
-            ctx["wa_phone"] = session.get("phone_number") or ""
+            ctx["wa_phone"] = phone or ""
         elif session["status"] == "connecting":
             ctx["wa_status"] = "connecting"
             # Fetch fresh QR code
@@ -1041,10 +1082,12 @@ async def whatsapp_connect(request: Request):
         )
 
     instance_name = f"niles-wa-{user['uid']}"
-    webhook_url = _build_redirect_uri(request, "/webhook/whatsapp")
-    # TODO: use a dedicated WEBHOOK_SECRET instead of the Evolution API key
-    # to limit exposure if Evolution's stored webhook URLs are ever leaked.
-    webhook_url += f"?token={request.app.state.settings.evolution_api_key}"
+    # Use internal Docker address — Evolution API and Niles Core are on the
+    # same Docker network, so no TLS needed (avoids self-signed cert errors).
+    webhook_url = (
+        f"http://niles_core:8000/webhook/whatsapp"
+        f"?token={request.app.state.settings.evolution_api_key}"
+    )
 
     result = await whatsapp_action.create_instance(instance_name, webhook_url)
 
