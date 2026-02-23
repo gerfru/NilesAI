@@ -215,6 +215,16 @@ async function handleChatSubmit(form) {
                             indicator.classList.remove("hidden");
                         }
                     }
+                    if (item.type === "clear") {
+                        /* LLM output was a text-based tool call — clear it */
+                        rawText = "";
+                        if (content) content.textContent = "";
+                        if (bubble) {
+                            bubble.remove();
+                            bubble = null;
+                            content = null;
+                        }
+                    }
                     if (item.type === "done") {
                         if (indicator) indicator.classList.add("hidden");
                         if (content) renderMarkdown(content);

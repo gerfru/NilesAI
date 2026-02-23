@@ -1,5 +1,6 @@
 """Tests for NilesAgent.process_event_stream (SSE streaming pipeline)."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -236,4 +237,158 @@ class TestProcessEventStream:
 
         # Should end with error message + done
         assert any("nicht abschliessen" in e.get("text", "") for e in events)
+        assert events[-1] == {"type": "done"}
+
+
+class TestTextToolCallParsing:
+    """Unit tests for _try_parse_text_tool_call (local LLM fallback)."""
+
+    _TOOLS = frozenset(["create_task", "list_tasks", "find_contact", "recall"])
+
+    def test_valid_tool_call(self):
+        text = '{"name": "create_task", "parameters": {"title": "Gerald", "due_date": "2026-02-24"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+        args = json.loads(result["arguments"])
+        assert args["title"] == "Gerald"
+        assert args["due_date"] == "2026-02-24"
+
+    def test_valid_with_code_fence(self):
+        text = '```json\n{"name": "list_tasks", "parameters": {}}\n```'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "list_tasks"
+
+    def test_valid_with_plain_code_fence(self):
+        text = '```\n{"name": "recall", "parameters": {"key": "foo"}}\n```'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "recall"
+
+    def test_arguments_key_instead_of_parameters(self):
+        text = '{"name": "create_task", "arguments": {"title": "Test"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+
+    def test_unknown_tool_returns_none(self):
+        text = '{"name": "hack_the_planet", "parameters": {}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    def test_regular_text_returns_none(self):
+        text = "Ich habe die Aufgabe erstellt."
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    def test_partial_json_returns_none(self):
+        text = '{"name": "create_task", "parameters": {"title":'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    def test_empty_string_returns_none(self):
+        result = NilesAgent._try_parse_text_tool_call("", self._TOOLS)
+        assert result is None
+
+    def test_json_without_name_returns_none(self):
+        text = '{"title": "Gerald", "due_date": "2026-02-24"}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    def test_no_parameters_uses_empty_dict(self):
+        text = '{"name": "list_tasks"}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert json.loads(result["arguments"]) == {}
+
+    def test_whitespace_around_json(self):
+        text = '  \n  {"name": "recall", "parameters": {"key": "test"}}  \n  '
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "recall"
+
+    def test_uses_default_tool_names(self):
+        """Without explicit known_tools, uses TOOLS from module."""
+        text = '{"name": "find_contact", "parameters": {"name": "Mama"}}'
+        result = NilesAgent._try_parse_text_tool_call(text)
+        assert result is not None
+        assert result["name"] == "find_contact"
+
+
+class TestTextToolCallStreamIntegration:
+    """Integration test: text-based tool call in streaming pipeline."""
+
+    async def test_stream_text_tool_call_executes(self):
+        """LLM outputs JSON text → detected, tool executed, response generated."""
+        agent = _make_agent()
+
+        # First LLM call: outputs tool call as text (no function calling)
+        json_chunks = [
+            _make_delta(content='{"name": "recall", "parameters": {"key": "foo"}}'),
+            _make_delta(finish_reason="stop"),
+        ]
+
+        # Second LLM call: generates natural language from tool result
+        text_chunks = [
+            _make_delta(content="Der Wert ist bar."),
+            _make_delta(finish_reason="stop"),
+        ]
+
+        create_mock = AsyncMock(side_effect=[_aiter(json_chunks), _aiter(text_chunks)])
+        agent.llm = AsyncMock()
+        agent.llm.chat.completions.create = create_mock
+        agent.memory.get = AsyncMock(return_value="bar")
+
+        event = {"type": "web", "from": "test-chat", "content": "Was ist foo?"}
+        events = await _collect(agent.process_event_stream(event))
+
+        # JSON should NOT appear as a chunk (buffered, not streamed)
+        json_chunks_found = [e for e in events if e.get("type") == "chunk" and "{" in e.get("text", "")]
+        assert len(json_chunks_found) == 0
+
+        # Should have status event, natural language chunk, done
+        assert any(e.get("type") == "status" and "recall" in e.get("text", "") for e in events)
+        assert any(e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events)
+        assert events[-1] == {"type": "done"}
+
+        # LLM called twice
+        assert create_mock.call_count == 2
+
+    async def test_stream_regular_text_not_affected(self):
+        """Normal text response is streamed directly (not buffered)."""
+        agent = _make_agent()
+
+        chunks = [
+            _make_delta(content="Alles klar!"),
+            _make_delta(finish_reason="stop"),
+        ]
+        agent.llm = AsyncMock()
+        agent.llm.chat.completions.create = AsyncMock(return_value=_aiter(chunks))
+
+        event = {"type": "web", "from": "test-chat", "content": "Danke"}
+        events = await _collect(agent.process_event_stream(event))
+
+        # Regular text is streamed immediately (not buffered)
+        assert events[0] == {"type": "chunk", "text": "Alles klar!"}
+        assert events[-1] == {"type": "done"}
+
+    async def test_stream_buffered_non_tool_json_flushed(self):
+        """JSON-like text that is NOT a tool call gets flushed as a single chunk."""
+        agent = _make_agent()
+
+        chunks = [
+            _make_delta(content='{"some": "random json"}'),
+            _make_delta(finish_reason="stop"),
+        ]
+        agent.llm = AsyncMock()
+        agent.llm.chat.completions.create = AsyncMock(return_value=_aiter(chunks))
+
+        event = {"type": "web", "from": "test-chat", "content": "Give me JSON"}
+        events = await _collect(agent.process_event_stream(event))
+
+        # Buffered but flushed since it's not a tool call
+        chunk_events = [e for e in events if e.get("type") == "chunk"]
+        assert len(chunk_events) == 1
+        assert '{"some": "random json"}' in chunk_events[0]["text"]
         assert events[-1] == {"type": "done"}
