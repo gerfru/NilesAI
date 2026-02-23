@@ -6,12 +6,13 @@
 
 ## 1. Voraussetzungen
 
+Laufzeitvoraussetzungen (Docker, Ollama, etc.) siehe [Deployment Guide §1](DEPLOYMENT.md#1-voraussetzungen).
+
+Zusaetzlich fuer die Entwicklung:
+
 | Software | Version | Zweck |
 | -------- | ------- | ----- |
-| Python | >= 3.11 | Runtime |
-| Docker Desktop | aktuell | Container (PostgreSQL, Evolution API, Caddy) |
-| Ollama | >= 0.13 | Lokale LLM Inference (nativ auf Host) |
-| Git | aktuell | Versionskontrolle |
+| Python | >= 3.11 | Runtime + Tests |
 | Tailwind CSS CLI | v3.4.17 | CSS Build (Standalone Binary, kein Node.js) |
 
 ---
@@ -39,33 +40,14 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Pflichtfelder in `.env`:
+Alle Environment-Variablen, Ollama-Setup und Service-Konfiguration (Google OAuth, WhatsApp, Vikunja, etc.) sind im [Deployment Guide](DEPLOYMENT.md) dokumentiert:
 
-```bash
-EVOLUTION_POSTGRES_PASSWORD=<passwort>
-EVOLUTION_API_KEY=<api-key>
-```
+- [Schnellstart](DEPLOYMENT.md#2-schnellstart) -- Pflicht-Variablen
+- [Environment-Referenz](DEPLOYMENT.md#environment-variablen) -- Vollstaendige Variablen-Tabelle
+- [Ollama](DEPLOYMENT.md#3-ollama-llm-backend) -- LLM-Setup
+- [Vikunja](DEPLOYMENT.md#8-aufgaben-vikunja) -- Aufgaben-Setup
 
-Optionale Felder fuer Web-UI und Google OAuth:
-
-```bash
-# Fuer stabile Sessions ueber Container-Restarts:
-SESSION_SECRET=<zufaelliger-string>
-
-# Fuer Google OAuth Login:
-GOOGLE_CLIENT_ID=<client-id>
-GOOGLE_CLIENT_SECRET=<client-secret>
-GOOGLE_ALLOWED_EMAILS=user1@gmail.com
-BASE_URL=https://niles.example.com
-```
-
-Siehe [Niles-Core-Spec.md](Niles-Core-Spec.md#61-settings) fuer alle Konfigurationsoptionen.
-
-### Ollama
-
-1. Ollama installieren: `brew install ollama`
-2. Modell laden: `ollama pull llama3.1:8b`
-3. Ollama laeuft automatisch auf Port 11434
+Vollstaendige Settings-Tabelle mit Defaults: [Niles-Core-Spec.md §6.1](Niles-Core-Spec.md#61-settings).
 
 ---
 
@@ -176,7 +158,7 @@ tests/
 ├── conftest.py                  # Shared Fixtures (Environment-Variablen)
 ├── test_config.py               # Settings-Validierung
 ├── test_contacts.py             # ContactsAction, normalize_phone, Multi-Phone
-├── test_core.py                 # NilesAgent, Tool-Call-Pipeline
+├── test_core.py                 # NilesAgent, Tool-Call-Pipeline, Text-Tool-Call-Fallback
 ├── test_health.py               # GET /health Endpoint
 ├── test_memory.py               # MemoryStore, ConversationHistory
 ├── test_features.py             # Feature Flags + Webhook Auth
@@ -191,7 +173,9 @@ tests/
 ├── test_security.py             # API Auth, Rate Limiting
 ├── test_settings_store.py       # Runtime Settings Store
 ├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
-└── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
+├── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
+├── test_tasks.py                # Vikunja Task Management
+└── test_vikunja_store.py        # Per-User Vikunja Credentials + Agent Resolution
 ```
 
 ### Konventionen
@@ -282,6 +266,18 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 - Tool-Call-Fehler: `{"error": "..."}` als Tool-Result zurueck an LLM
 - Startup: `ValidationError` bei fehlenden Pflicht-Variablen -> `sys.exit(1)`
 
+### Text-basierter Tool-Call Fallback
+
+Kleinere lokale LLMs (z.B. `llama3.1:8b` via Ollama) nutzen manchmal nicht die Function-Calling-API, sondern geben den Tool-Call als JSON-Text aus:
+
+```json
+{"name": "create_task", "parameters": {"title": "Einkaufen", "due_date": "2026-02-24"}}
+```
+
+`NilesAgent._try_parse_text_tool_call()` erkennt solche Antworten und fuehrt den Tool-Call trotzdem aus. Im Streaming-Modus werden JSON-artige Antworten gepuffert (nicht sofort an den User gestreamt), damit kein rohes JSON in der Chat-Bubble erscheint.
+
+Hinweis: LLM-Parameter werden dabei manchmal als String statt als korrektem Typ geliefert (z.B. `"priority": "0"` statt `"priority": 0`). Actions muessen solche Typen robust handhaben (`int()` mit Fallback).
+
 ### Logging
 
 - `logging.getLogger(__name__)` in jedem Modul
@@ -292,5 +288,6 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ## 9. Weitere Dokumentation
 
+- [Deployment Guide](DEPLOYMENT.md) -- Setup, Konfiguration, Backup, Troubleshooting
 - [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
 - [API Reference](API.md) -- Endpoints, Payloads, Beispiele
