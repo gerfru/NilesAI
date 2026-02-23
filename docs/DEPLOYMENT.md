@@ -320,9 +320,12 @@ VIKUNJA_JWT_SECRET=<generierter-hex-string>
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
 VIKUNJA_API_TOKEN=               # kommt in Schritt 5
 FEATURE_VIKUNJA=true
+
+# Bei Tailscale/Remote-Zugriff: Externe URL setzen (fuer E-Mail-Links etc.)
+#VIKUNJA_PUBLIC_URL=https://niles.tail1d4a0f.ts.net:3457
 ```
 
-**Wichtig:** `VIKUNJA_API_URL` muss den Docker-internen Hostnamen `vikunja` verwenden (nicht `localhost`).
+**Wichtig:** `VIKUNJA_API_URL` muss den Docker-internen Hostnamen `vikunja` verwenden (nicht `localhost`). `VIKUNJA_PUBLIC_URL` hingegen muss die **extern erreichbare** URL sein.
 
 #### 3. Container starten
 
@@ -343,6 +346,8 @@ Danach **Registrierung deaktivieren** in `docker/docker-compose.yml`:
 ```yaml
 VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
 ```
+
+> **Sicherheitshinweis:** Solange `ENABLEREGISTRATION=true`, kann **jeder mit Netzwerkzugriff** auf Port 3457 ein Vikunja-Konto erstellen. Auf Tailscale-only Setups ist das durch Netzwerk-ACLs geschuetzt. Wenn der Host im Internet erreichbar ist, Registrierung nach Account-Erstellung unbedingt deaktivieren.
 
 #### 5. API-Token generieren
 
@@ -391,6 +396,8 @@ https://localhost, https://100.85.159.70, https://192.168.0.248, https://niles.t
     reverse_proxy niles_core:8000
 }
 ```
+
+**Wichtig:** Die Caddyfile enthaelt hartcodierte IPs (`100.85.159.70` = Tailscale, `192.168.0.248` = LAN). Diese muessen fuer jede Deployment-Umgebung angepasst werden -- in **allen drei** Server-Bloecken (Niles Core :443, Evolution API :8443, Vikunja :3457).
 
 Eigene IPs/Hostnamen hier eintragen. Nach Aenderungen:
 
@@ -561,6 +568,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `CALDAV_USER` | nein | -- | CalDAV-Benutzername (Legacy) |
 | `CALDAV_PASSWORD` | nein | -- | CalDAV-Passwort (Legacy) |
 | `VIKUNJA_JWT_SECRET` | nein | -- | JWT Secret fuer Vikunja-Container |
+| `VIKUNJA_PUBLIC_URL` | nein | `https://localhost:3457` | Oeffentliche Vikunja-URL (fuer E-Mail-Links, Passwort-Reset) |
 | `VIKUNJA_API_URL` | nein | -- | Vikunja API Endpoint |
 | `VIKUNJA_API_TOKEN` | nein | -- | Vikunja API Token (Fallback) |
 | `FEATURE_VIKUNJA` | nein | `false` | Vikunja aktivieren/deaktivieren |
