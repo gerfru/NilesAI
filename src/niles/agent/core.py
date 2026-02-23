@@ -828,7 +828,9 @@ class NilesAgent:
             own_number = await self._get_own_phone_number(chat_id)
             if own_number:
                 normalized = resolved_number.replace("+", "").replace(" ", "")
-                is_self = normalized == own_number or normalized.endswith(own_number)
+                is_self = normalized == own_number or (
+                    len(own_number) >= 8 and normalized.endswith(own_number)
+                )
 
             # 3. Sending to others: only if feature flag is active
             if not is_self and not self.config.feature_whatsapp_send_others:

@@ -26,6 +26,10 @@ class WhatsAppSessionStore:
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS whatsapp_sessions_phone_idx
+            ON whatsapp_sessions (phone_number)
+        """)
         logger.info("WhatsApp session store initialized")
 
     async def get_session(self, user_id: int) -> dict | None:
