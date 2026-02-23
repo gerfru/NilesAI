@@ -31,7 +31,7 @@ https://localhost, https://192.168.1.100, https://192.168.1.100, https://niles.e
 }
 
 # Evolution API (:8443)
-https://localhost:8443, https://192.168.1.100:8443, https://192.168.1.100:8443 {
+https://localhost:8443, https://192.168.1.100:8443, https://192.168.1.100:8443, https://niles.example.ts.net:8443 {
 	tls internal
 	import security_headers
 	log {
@@ -46,7 +46,7 @@ https://localhost:8443, https://192.168.1.100:8443, https://192.168.1.100:8443 {
 }
 
 # Vikunja (Todos) (:3457)
-https://localhost:3457, https://192.168.1.100:3457, https://192.168.1.100:3457 {
+https://localhost:3457, https://192.168.1.100:3457, https://192.168.1.100:3457, https://niles.example.ts.net:3457 {
 	tls internal
 	import security_headers
 	log {
