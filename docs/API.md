@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Stand:** 2026-02-19
+> **Stand:** 2026-02-23
 
 ---
 
@@ -259,9 +259,41 @@ Google OAuth Callback fuer Calendar-Verbindung. Tauscht Authorization-Code gegen
 
 Aendert eine einzelne Runtime-Einstellung. Erwartet `value` als Form-Feld + CSRF-Token.
 
-- Nur Keys in `EDITABLE_SETTINGS` sind erlaubt (Feature-Flags, LLM-Config, Timezone, Log-Level)
+- Nur Keys in `EDITABLE_SETTINGS` sind erlaubt (Feature-Flags, LLM-Config, Timezone, Log-Level, CardDAV-Credentials)
 - Unbekannte Keys werden mit Fehlermeldung abgelehnt
 - Aenderungen werden in `settings_overrides` Tabelle persistiert
+
+### GET /ui/api/whatsapp/status
+
+Gibt den WhatsApp-Verbindungsstatus des aktuellen Users als HTML-Fragment zurueck. Zeigt verbundene Telefonnummer, QR-Code (wenn connecting), oder Verbindungs-Button.
+
+### POST /ui/api/whatsapp/connect
+
+Erstellt eine neue Evolution API Instance fuer den aktuellen User und gibt den QR-Code zur WhatsApp-Verknuepfung zurueck. Instance-Name: `niles-wa-{user_id}`. Webhook wird automatisch konfiguriert.
+
+### POST /ui/api/whatsapp/disconnect
+
+Trennt die WhatsApp-Verbindung des aktuellen Users. Fuehrt Logout und Delete der Evolution API Instance durch und entfernt die Session aus der DB.
+
+### GET /ui/api/contacts/status
+
+Gibt den CardDAV-Verbindungsstatus als HTML-Fragment zurueck. Zeigt Anzahl synchronisierter Kontakte und letzte Sync-Zeit.
+
+### POST /ui/api/contacts/connect
+
+Testet CardDAV-Verbindung mit den uebergebenen Credentials (`url`, `username`, `password`). Bei Erfolg: Credentials in Settings-Store speichern, initialen Sync starten und taeglichen Sync-Job registrieren.
+
+### POST /ui/api/contacts/disconnect
+
+Entfernt CardDAV-Credentials aus dem Settings-Store, loescht alle synchronisierten Kontakte und entfernt den Sync-Job.
+
+### POST /ui/api/contacts/sync
+
+Triggert einen manuellen CardDAV-Kontakt-Sync. Gibt den aktualisierten Status als HTML-Fragment zurueck.
+
+### GET /ui/api/caldav/calendars
+
+Gibt die verfuegbaren CalDAV-Kalender-Collections als HTML-Fragment zurueck (via PROPFIND Discovery).
 
 ---
 
@@ -271,13 +303,13 @@ Der Agent kann ueber LLM Tool-Calls folgende Funktionen ausfuehren:
 
 ### find_contact
 
-Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank.
+Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank. Unterstuetzt Multi-Word-Suche (z.B. "Thomas Brunner" matcht auch "Brunner Thomas").
 
 **Parameter:**
 
 | Name | Typ | Pflicht | Beschreibung |
 | ---- | --- | ------- | ------------ |
-| `name` | string | Ja | Name oder Namensteil |
+| `name` | string | Ja | Name oder Namensteil (ein- oder mehrwortig) |
 
 **Return (Erfolg):**
 
@@ -285,6 +317,10 @@ Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank.
 {
   "full_name": "Max Mustermann",
   "phone": "436601234567",
+  "phones": [
+    {"type": "mobile", "number": "436601234567"},
+    {"type": "work", "number": "4312345678"}
+  ],
   "email": "max@example.com"
 }
 ```
@@ -295,7 +331,7 @@ Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank.
 {"error": "Kontakt 'Maxl' nicht gefunden"}
 ```
 
-**Suchpriorisierung:** exakt > prefix > partial > first/last name.
+**Suchpriorisierung:** exakt > prefix > partial > multi-word across name fields.
 
 ---
 
@@ -319,7 +355,9 @@ Sendet eine WhatsApp-Nachricht. Akzeptiert Telefonnummern oder Kontaktnamen (wir
 **Hinweise:**
 
 - Wenn `to` keine Zahl ist, wird zuerst `find_contact` ausgefuehrt
+- **Multi-Phone:** Hat der Kontakt mehrere Nummern, wird der User nach einer Auswahl gefragt (nummerierte Liste, 5 min TTL). Diese Auswahl umgeht das LLM komplett (Bypass-Flow).
 - Telefonnummern werden automatisch in JID-Format konvertiert (`@s.whatsapp.net`)
+- **Per-User Instance:** Bei Web-UI Users wird die per-User WhatsApp Instance verwendet (Fallback: globale Instance)
 - Timeout: 30 Sekunden
 
 ---
@@ -363,15 +401,30 @@ Ruft einen gespeicherten Fakt aus dem Memory ab.
 
 ---
 
-### find_events
+### find_event
 
-Sucht Kalender-Events aus allen konfigurierten Kalenderquellen (ICS, CalDAV, Google).
+Sucht Kalender-Events aus allen konfigurierten Kalenderquellen (ICS, CalDAV, Google). Max 10 Ergebnisse, sortiert nach Startzeit.
 
 **Parameter:**
 
 | Name | Typ | Pflicht | Beschreibung |
 | ---- | --- | ------- | ------------ |
-| `query` | string | Ja | Suchbegriff oder Zeitraum |
+| `query` | string | Nein | Suchbegriff (Name, Ort, Beschreibung). Leer fuer reine Datumssuche. |
+| `date_from` | string | Nein | Startdatum (ISO-Format, z.B. `"2026-02-20"`). |
+| `date_to` | string | Nein | Enddatum (ISO-Format). Nur bei expliziten Zeitraeumen. |
+| `calendar` | string | Nein | Name des Kalenders fuer gezielte Suche. |
+
+**Return (Erfolg):**
+
+```json
+{"events": [...], "count": 3}
+```
+
+**Return (Fehler):**
+
+```json
+{"error": "Keine Termine gefunden"}
+```
 
 ---
 
@@ -383,9 +436,11 @@ Erstellt einen neuen Kalender-Eintrag auf der ersten beschreibbaren Kalenderquel
 
 | Name | Typ | Pflicht | Beschreibung |
 | ---- | --- | ------- | ------------ |
-| `title` | string | Ja | Titel des Events |
-| `start` | string | Ja | Start-Zeitpunkt |
-| `end` | string | Ja | End-Zeitpunkt |
+| `summary` | string | Ja | Titel des Events |
+| `start` | string | Ja | Startzeit (ISO-Format, z.B. `"2026-02-20T14:00"`) |
+| `end` | string | Nein | Endzeit (ISO-Format). Standard: 1 Stunde nach Start. |
+| `description` | string | Nein | Beschreibung des Termins |
+| `location` | string | Nein | Ort des Termins |
 
 ---
 
@@ -432,6 +487,5 @@ curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
 
 ## Weitere Dokumentation
 
-- [Technische Spezifikation](Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
-- [Architektur](Architecture.md) -- Systemuebersicht, Module, Datenfluss
+- [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
 - [Development Guide](Development.md) -- Setup, Testing, Konventionen
