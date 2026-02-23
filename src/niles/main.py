@@ -30,6 +30,7 @@ from .memory.store import MemoryStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
+from .vikunja_store import VikunjCredentialStore
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
@@ -106,6 +107,10 @@ async def lifespan(app: FastAPI):
     wa_store = WhatsAppSessionStore(pool)
     await wa_store.initialize()
 
+    # Vikunja credential store (per-user API tokens)
+    vikunja_store = VikunjCredentialStore(pool)
+    await vikunja_store.initialize()
+
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool)
     await settings_store.initialize()
@@ -176,6 +181,16 @@ async def lifespan(app: FastAPI):
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings)
 
+    # Vikunja (Todo/Task Management)
+    tasks_action = None
+    if settings.feature_vikunja and settings.vikunja_api_url:
+        from .actions.tasks import TasksAction
+        tasks_action = TasksAction(
+            api_url=settings.vikunja_api_url,
+            api_token=settings.vikunja_api_token,
+        )
+        logger.info("Vikunja task management enabled")
+
     # Agent
     agent = NilesAgent(
         config=settings,
@@ -187,6 +202,8 @@ async def lifespan(app: FastAPI):
         calendar=calendar,
         calendar_manager=calendar_manager,
         wa_store=wa_store,
+        tasks=tasks_action,
+        vikunja_store=vikunja_store,
     )
 
     # Store on app state for access in route handlers
@@ -201,6 +218,7 @@ async def lifespan(app: FastAPI):
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
     app.state.carddav_sync = carddav_sync
+    app.state.vikunja_store = vikunja_store
     app.state.scheduler = scheduler
 
     yield

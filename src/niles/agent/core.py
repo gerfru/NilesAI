@@ -10,12 +10,14 @@ from openai import AsyncOpenAI
 
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction
+from ..actions.tasks import TasksAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
 from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
+from ..vikunja_store import VikunjCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
@@ -161,6 +163,106 @@ TOOLS = [
             },
         },
     },
+    # --- Vikunja Task Tools ---
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tasks",
+            "description": (
+                "Listet offene Aufgaben aus Vikunja. "
+                "Ohne Parameter werden alle offenen Aufgaben zurückgegeben."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Projektname zum Filtern. Optional. "
+                            "Leer = alle Projekte."
+                        ),
+                    },
+                    "include_done": {
+                        "type": "boolean",
+                        "description": (
+                            "Auch erledigte Aufgaben anzeigen. "
+                            "Standard: false."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_task",
+            "description": (
+                "Erstellt eine neue Aufgabe in Vikunja. "
+                "Nur verwenden wenn der Benutzer explizit eine Aufgabe "
+                "oder ein Todo anlegen will."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titel der Aufgabe.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Beschreibung der Aufgabe. Optional.",
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": (
+                            "Fälligkeitsdatum (ISO-Format, "
+                            "z.B. '2026-02-25T18:00'). Optional."
+                        ),
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": (
+                            "Priorität: 0=keine, 1=niedrig, 2=mittel, "
+                            "3=hoch, 4=dringend. Standard: 0."
+                        ),
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Projektname. Optional. "
+                            "Leer = Standard-Projekt."
+                        ),
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_task",
+            "description": (
+                "Markiert eine Aufgabe als erledigt. "
+                "Sucht nach dem Titel in offenen Aufgaben."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": (
+                            "Titel oder Teil des Titels der Aufgabe "
+                            "die erledigt werden soll."
+                        ),
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 MAX_TOOL_ROUNDS = 5
@@ -191,6 +293,8 @@ class NilesAgent:
         calendar: CalendarAction | None = None,
         calendar_manager: CalendarSourceManager | None = None,
         wa_store: WhatsAppSessionStore | None = None,
+        tasks: TasksAction | None = None,
+        vikunja_store: VikunjCredentialStore | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -206,6 +310,8 @@ class NilesAgent:
         self.calendar = calendar
         self.calendar_manager = calendar_manager
         self.wa_store = wa_store
+        self.tasks = tasks
+        self.vikunja_store = vikunja_store
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -224,6 +330,19 @@ class NilesAgent:
             except (ValueError, IndexError):
                 pass
         return None
+
+    async def _resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:
+        """Resolve per-user Vikunja credentials, falling back to global."""
+        if self.vikunja_store and chat_id.startswith("web-user-"):
+            try:
+                uid = int(chat_id.split("-", 2)[2])
+                creds = await self.vikunja_store.get_credentials(uid)
+                if creds and creds["api_token"]:
+                    api_url = creds["api_url"] or self.config.vikunja_api_url
+                    return TasksAction(api_url=api_url, api_token=creds["api_token"])
+            except (ValueError, IndexError):
+                pass
+        return self.tasks  # Global fallback (or None)
 
     async def _handle_phone_choice(self, chat_id: str, content: str) -> str | None:
         """If user is responding to a phone choice prompt, send directly.
@@ -290,7 +409,13 @@ class NilesAgent:
         messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
         messages.append({"role": "user", "content": event["content"]})
 
-        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        all_tools = [t for t in TOOLS]
+        # Remove task tools when Vikunja feature is disabled
+        if not self.config.feature_vikunja:
+            _task_tools = {"list_tasks", "create_task", "complete_task"}
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
+        if self.mcp:
+            all_tools.extend(self.mcp.get_openai_tools())
         return chat_id, messages, all_tools
 
     _SOURCE_CACHE_TTL = 300  # 5 minutes
@@ -605,6 +730,36 @@ class NilesAgent:
             except Exception as e:
                 logger.error("Failed to create event: %s", e)
                 return {"error": "Termin konnte nicht erstellt werden"}
+
+        if name == "list_tasks":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            tasks = await tasks_action.list_tasks(
+                project=args.get("project", ""),
+                include_done=args.get("include_done", False),
+            )
+            if tasks:
+                return {"tasks": tasks, "count": len(tasks)}
+            return {"error": "Keine Aufgaben gefunden"}
+
+        if name == "create_task":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            return await tasks_action.create_task(
+                title=args["title"],
+                description=args.get("description", ""),
+                due_date=args.get("due_date", ""),
+                priority=args.get("priority", 0),
+                project=args.get("project", ""),
+            )
+
+        if name == "complete_task":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            return await tasks_action.complete_task(title=args["title"])
 
         # MCP tools (prefixed with mcp__)
         if self.mcp and self.mcp.is_mcp_tool(name):
