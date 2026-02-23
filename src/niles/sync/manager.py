@@ -56,6 +56,7 @@ class CalendarSourceManager:
                 location TEXT,
                 caldav_uid TEXT UNIQUE,
                 caldav_url TEXT,
+                transp TEXT DEFAULT 'OPAQUE',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
