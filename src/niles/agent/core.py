@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from types import SimpleNamespace
 
@@ -344,6 +345,50 @@ class NilesAgent:
                 pass
         return self.tasks  # Global fallback (or None)
 
+    # Known tool names for text-based tool call detection
+    _TOOL_NAMES = frozenset(t["function"]["name"] for t in TOOLS)
+
+    @staticmethod
+    def _try_parse_text_tool_call(
+        text: str, known_tools: frozenset[str] | None = None,
+    ) -> dict | None:
+        """Detect a tool call embedded as JSON in the LLM text response.
+
+        Some local models (e.g. llama3.1 via Ollama) output tool calls as
+        plain text instead of using the function-calling API.  This method
+        tries to extract a valid tool call from the text.
+
+        Returns {"name": str, "arguments": str} or None.
+        """
+        if known_tools is None:
+            known_tools = NilesAgent._TOOL_NAMES
+
+        # Strip markdown code fences if present
+        cleaned = text.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+        # Must look like JSON
+        if not cleaned.startswith("{"):
+            return None
+
+        try:
+            obj = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(obj, dict):
+            return None
+
+        # Format: {"name": "tool", "parameters": {...}}
+        name = obj.get("name")
+        if name and name in known_tools:
+            params = obj.get("parameters") or obj.get("arguments") or {}
+            return {"name": name, "arguments": json.dumps(params, ensure_ascii=False)}
+
+        return None
+
     async def _handle_phone_choice(self, chat_id: str, content: str) -> str | None:
         """If user is responding to a phone choice prompt, send directly.
 
@@ -481,6 +526,9 @@ class NilesAgent:
             full_content = ""
             tool_calls_by_idx: dict[int, dict] = {}
             finish_reason = None
+            # Buffer responses that look like JSON tool calls instead of
+            # streaming them — avoids showing raw JSON to the user.
+            _buffering = False
 
             async for chunk in stream:
                 choice = chunk.choices[0]
@@ -488,7 +536,11 @@ class NilesAgent:
 
                 if choice.delta.content:
                     full_content += choice.delta.content
-                    yield {"type": "chunk", "text": choice.delta.content}
+                    # If the first content looks like JSON, buffer it
+                    if not _buffering and full_content.lstrip()[:1] in ("{", "`"):
+                        _buffering = True
+                    if not _buffering:
+                        yield {"type": "chunk", "text": choice.delta.content}
 
                 if choice.delta.tool_calls:
                     for tc_delta in choice.delta.tool_calls:
@@ -503,16 +555,31 @@ class NilesAgent:
                             if tc_delta.function.arguments:
                                 tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
 
-            # No tool calls → text was already streamed, save and finish
+            # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
-                if full_content:
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", full_content)
+                parsed = self._try_parse_text_tool_call(full_content) if full_content else None
+                if parsed:
+                    logger.info("Detected text-based tool call: %s", parsed["name"])
+                    # Content was buffered, not streamed — nothing to clear
+                    tool_calls_by_idx = {0: {
+                        "id": f"text_{parsed['name']}",
+                        "name": parsed["name"],
+                        "arguments": parsed["arguments"],
+                    }}
+                    full_content = ""  # Don't pass JSON as assistant content
+                    # Don't save or return — fall through to tool execution below
                 else:
-                    logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
-                    yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
-                yield {"type": "done"}
-                return
+                    # Flush buffered content that turned out not to be a tool call
+                    if _buffering and full_content:
+                        yield {"type": "chunk", "text": full_content}
+                    if full_content:
+                        await self.history.add_message(chat_id, "user", event["content"])
+                        await self.history.add_message(chat_id, "assistant", full_content)
+                    else:
+                        logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
+                        yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
+                    yield {"type": "done"}
+                    return
 
             # Tool calls detected → build assistant message and execute tools
             assistant_msg = {
@@ -596,9 +663,43 @@ class NilesAgent:
 
             choice = response.choices[0]
 
-            # No tool calls – return the text response
+            # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
                 content = choice.message.content or ""
+                parsed = self._try_parse_text_tool_call(content) if content else None
+                if parsed:
+                    logger.info("Detected text-based tool call: %s", parsed["name"])
+                    # Build a synthetic tool call and inject it
+                    tc = SimpleNamespace(
+                        id=f"text_{parsed['name']}",
+                        function=SimpleNamespace(
+                            name=parsed["name"],
+                            arguments=parsed["arguments"],
+                        ),
+                    )
+                    messages.append({
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }],
+                    })
+                    result = await self._execute_tool_call(tc, chat_id)
+                    logger.info("Tool result [%s]: %s", tc.id, result)
+                    if isinstance(result, dict) and "choose_phone" in result:
+                        text = result["choose_phone"]
+                        await self.history.add_message(chat_id, "user", event["content"])
+                        await self.history.add_message(chat_id, "assistant", text)
+                        return text
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result, ensure_ascii=False),
+                    })
+                    continue  # Next LLM round to generate natural language response
+
                 if not content:
                     logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
                 # Save both messages together to avoid orphaned records
