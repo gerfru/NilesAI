@@ -56,8 +56,8 @@ _UPSERT_EVENT_SQL = """
     INSERT INTO events (
         summary, dtstart, dtend, all_day,
         description, location, caldav_uid, caldav_url,
-        source_id, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        source_id, transp, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
     ON CONFLICT (caldav_uid) DO UPDATE SET
         summary = EXCLUDED.summary,
         dtstart = EXCLUDED.dtstart,
@@ -67,6 +67,7 @@ _UPSERT_EVENT_SQL = """
         location = EXCLUDED.location,
         caldav_url = EXCLUDED.caldav_url,
         source_id = EXCLUDED.source_id,
+        transp = EXCLUDED.transp,
         updated_at = NOW()
 """
 
@@ -84,6 +85,7 @@ async def upsert_event(pool: asyncpg.Pool, event: dict, source_id: int | None) -
         event["caldav_uid"],
         event["caldav_url"],
         source_id,
+        event.get("transp", "OPAQUE"),
     )
 
 
@@ -449,6 +451,7 @@ class CalDAVSync:
             ics_body += f"DESCRIPTION:{_escape_ical_text(description)}\r\n"
         if location:
             ics_body += f"LOCATION:{_escape_ical_text(location)}\r\n"
+        ics_body += "TRANSP:OPAQUE\r\n"
         ics_body += "END:VEVENT\r\n" "END:VCALENDAR\r\n"
 
         # Resolve target collection (root URL requires discovery)
@@ -476,6 +479,7 @@ class CalDAVSync:
             "all_day": False,
             "description": description,
             "location": location,
+            "transp": "OPAQUE",
             "caldav_uid": uid,
             "caldav_url": put_url,
         }

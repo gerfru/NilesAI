@@ -420,6 +420,18 @@ Sucht Kalender-Events aus allen konfigurierten Kalenderquellen (ICS, CalDAV, Goo
 {"events": [...], "count": 3}
 ```
 
+Jedes Event-Objekt enthaelt:
+
+| Feld | Typ | Immer | Beschreibung |
+| ---- | --- | ----- | ------------ |
+| `summary` | string | Ja | Titel des Termins |
+| `start` | string | Ja | Startzeit (ISO) oder Datum bei Ganztags-Events |
+| `all_day` | boolean | Ja | `true` fuer ganztaegige Termine |
+| `end` | string | Nein | Endzeit (ISO), nur wenn vorhanden |
+| `description` | string | Nein | Beschreibung, nur wenn vorhanden |
+| `location` | string | Nein | Ort, nur wenn vorhanden |
+| `status` | string | Nein | `"verfuegbar"` wenn der Termin die Zeit nicht blockiert (iCal `TRANSP:TRANSPARENT`). Fehlt bei normalen (blockierenden) Terminen. |
+
 **Return (Fehler):**
 
 ```json
