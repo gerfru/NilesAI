@@ -126,8 +126,8 @@ class TestWebhookPerUserRouting:
         call_args = mock_app.state.agent.process_event.call_args[0][0]
         assert call_args["from"] == "wa-436601234567"
 
-    async def test_auto_reply_uses_instance(self, mock_app, webhook_payload):
-        """Auto-reply sends via the correct per-user instance."""
+    async def test_incoming_message_never_auto_replies(self, mock_app, webhook_payload):
+        """Incoming messages from others are processed but never auto-replied."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = {
@@ -137,7 +137,6 @@ class TestWebhookPerUserRouting:
             "status": "connected",
         }
         mock_app.state.agent.process_event.return_value = "Reply text"
-        mock_app.state.settings.feature_whatsapp_auto_reply = True
 
         request = AsyncMock()
         request.app = mock_app
@@ -145,11 +144,9 @@ class TestWebhookPerUserRouting:
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        mock_app.state.whatsapp_action.send_message.assert_called_once_with(
-            to="436601234567@s.whatsapp.net",
-            text="Reply text",
-            instance="niles-wa-42",
-        )
+        # Agent processes the message but no reply is sent
+        mock_app.state.agent.process_event.assert_called_once()
+        mock_app.state.whatsapp_action.send_message.assert_not_called()
 
 
 class TestAgentPerUserInstance:

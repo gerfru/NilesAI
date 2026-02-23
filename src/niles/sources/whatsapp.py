@@ -10,6 +10,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
+TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
+"""Case-insensitive trigger phrases. Checked against the start of the message."""
+
+
+def _is_niles_trigger(text: str) -> bool:
+    """Check if a message starts with a Niles trigger phrase."""
+    lower = text.strip().lower()
+    for phrase in TRIGGER_PHRASES:
+        if lower.startswith(phrase):
+            return True
+    return False
+
+
+def _strip_trigger(text: str) -> str:
+    """Remove the trigger phrase from the beginning of the message.
+
+    Returns the remaining text after the trigger, stripped of leading
+    whitespace, commas, and colons.
+
+    Examples:
+        "Hey Niles, was steht heute an?" → "was steht heute an?"
+        "Hey Niles was steht heute an?"  → "was steht heute an?"
+        "Niles: Termin morgen?"          → "Termin morgen?"
+        "Hey Niles"                      → ""
+    """
+    lower = text.strip().lower()
+    for phrase in TRIGGER_PHRASES:
+        if lower.startswith(phrase):
+            rest = text.strip()[len(phrase):]
+            # Strip common separators: comma, colon, dash, whitespace
+            return rest.lstrip(" ,:-").strip()
+    return text.strip()
+
 
 @router.post("/whatsapp")
 async def whatsapp_webhook(request: Request, token: str = Query(default="")):
@@ -39,11 +72,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
     data = payload.get("data", {})
     key = data.get("key", {})
-
-    # Ignore own messages
-    if key.get("fromMe", False):
-        return {"status": "ignored", "reason": "own message"}
-
+    is_from_me = key.get("fromMe", False)
     remote_jid = key.get("remoteJid", "")
     message = data.get("message", {})
 
@@ -56,22 +85,69 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     if not text:
         return {"status": "ignored", "reason": "no text content"}
 
-    # Extract phone number from JID (e.g. "4366012345678@s.whatsapp.net")
-    sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
+    # --- Self-Chat Trigger Logic ---
+    if is_from_me:
+        if not _is_niles_trigger(text):
+            return {"status": "ignored", "reason": "own message without trigger"}
 
+        # Trigger recognised — strip trigger phrase
+        clean_text = _strip_trigger(text)
+        if not clean_text:
+            # Just "Hey Niles" without content → greeting
+            clean_text = "Hallo!"
+
+        sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
+        logger.info("Self-chat trigger from %s: %s", sender, clean_text[:100])
+
+        # Self-Chat uses its own chat_id for separate history
+        chat_id = f"wa-self-{sender}"
+
+        # Resolve per-user instance (for multi-user setups)
+        instance_name = payload.get("instance")
+        instance_for_reply = instance_name
+
+        agent = request.app.state.agent
+        event = {
+            "type": "whatsapp",
+            "from": chat_id,
+            "content": clean_text,
+            "metadata": {
+                "jid": remote_jid,
+                "sender": sender,
+                "self_chat": True,
+            },
+        }
+
+        try:
+            response_text = await agent.process_event(event)
+            if response_text:
+                whatsapp_action = request.app.state.whatsapp_action
+                await whatsapp_action.send_message(
+                    to=remote_jid,
+                    text=response_text,
+                    instance=instance_for_reply,
+                )
+                logger.info("Self-chat reply sent to %s", remote_jid)
+        except Exception:
+            logger.exception("Failed to process self-chat message")
+
+        return {"status": "processed", "trigger": "self-chat"}
+
+    # --- Incoming messages from other people ---
+    # Agent processes the message (History, Memory) but NEVER sends
+    # an auto-reply. Niles never responds to other people automatically.
+    sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
     logger.info("WhatsApp message from %s: %s", sender, text[:100])
 
     # Determine per-user chat ID from Evolution instance name
     instance_name = payload.get("instance")
     wa_store = getattr(request.app.state, "wa_store", None)
     chat_id = None
-    instance_for_reply = None
 
     if wa_store and instance_name:
         session = await wa_store.get_by_instance(instance_name)
         if session:
             chat_id = f"web-user-{session['user_id']}"
-            instance_for_reply = instance_name
         else:
             logger.warning(
                 "Webhook from unknown instance '%s' — falling back to global instance",
@@ -82,7 +158,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     if not chat_id:
         chat_id = f"wa-{sender}"
 
-    # Process via agent
+    # Process via agent (learn/remember), but NEVER send reply
     agent = request.app.state.agent
     event = {
         "type": "whatsapp",
@@ -93,16 +169,12 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
     try:
         response_text = await agent.process_event(event)
-
-        # Send reply only if auto-reply is enabled
-        settings = request.app.state.settings
-        if response_text and settings.feature_whatsapp_auto_reply:
-            whatsapp_action = request.app.state.whatsapp_action
-            await whatsapp_action.send_message(
-                to=remote_jid, text=response_text, instance=instance_for_reply,
+        if response_text:
+            logger.info(
+                "Agent generated reply for %s but auto-reply is disabled "
+                "(only self-chat replies are sent)",
+                sender,
             )
-        elif response_text:
-            logger.info("Auto-reply disabled, suppressed response to %s", sender)
     except Exception:
         logger.exception("Failed to process WhatsApp message from %s", sender)
 

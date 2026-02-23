@@ -217,6 +217,31 @@ BASE_URL=https://niles.example.ts.net
 4. **QR-Code mit WhatsApp scannen** (Telefon > Verknuepfte Geraete > Geraet hinzufuegen)
 5. Status wechselt zu "Verbunden"
 
+### Self-Chat ("Hey Niles")
+
+Niles kann direkt im eigenen WhatsApp-Chat angesprochen werden -- ohne dass eine zweite Person beteiligt ist.
+
+**So funktioniert es:**
+
+1. Im eigenen WhatsApp-Chat (Nachricht an sich selbst) eine Nachricht schreiben, die mit einem Trigger beginnt:
+   - `Hey Niles, was steht morgen an?`
+   - `Hi Niles, erinnere mich an den Termin`
+   - `Hallo Niles!`
+   - `Niles Termin morgen`
+2. Niles erkennt den Trigger, verarbeitet die Nachricht und antwortet direkt im selben Chat
+3. Nachrichten ohne Trigger (z.B. eine normale Einkaufsliste) werden ignoriert
+
+**Verhalten nach Kanal:**
+
+| Kanal | Verarbeitung | Auto-Antwort |
+| ----- | ------------ | ------------ |
+| Self-Chat mit Trigger | ja | ja (immer) |
+| Self-Chat ohne Trigger | nein | nein |
+| Eingehend (fremde Personen) | ja (Memory, History) | nein (nie) |
+| Web-UI | ja | ja (Streaming) |
+
+**Web-UI WhatsApp-Log:** Unter `/ui/chat?channel=whatsapp` ist der Self-Chat-Verlauf als Read-Only-Log einsehbar. Der Tab erscheint automatisch, sobald eine WhatsApp-Verbindung besteht.
+
 ### Evolution API Manager
 
 Die Evolution API hat eine eigene Web-Oberflaeche:
@@ -572,8 +597,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `VIKUNJA_API_URL` | nein | -- | Vikunja API Endpoint |
 | `VIKUNJA_API_TOKEN` | nein | -- | Vikunja API Token (Fallback) |
 | `FEATURE_VIKUNJA` | nein | `false` | Vikunja aktivieren/deaktivieren |
-| `FEATURE_WHATSAPP_AUTO_REPLY` | nein | `false` | Automatische WhatsApp-Antworten |
-| `FEATURE_TOOL_SEND_WHATSAPP` | nein | `true` | WhatsApp-Senden Tool verfuegbar |
+| `FEATURE_WHATSAPP_SEND_OTHERS` | nein | `true` | Darf Niles an andere Personen senden? (Self-Chat immer aktiv) |
 | `POSTGRES_HOST_PORT` | nein | zufaellig | Postgres-Port auf Host (Debugging) |
 
 ### Ports

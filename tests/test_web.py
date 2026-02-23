@@ -51,8 +51,8 @@ def _make_settings(**overrides):
 
 
 def _make_request(*, cookies=None, settings=None, agent=None, history=None,
-                  settings_store=None, user_store=None, headers=None,
-                  client_ip="127.0.0.1"):
+                  settings_store=None, user_store=None, wa_store=None,
+                  headers=None, client_ip="127.0.0.1"):
     """Build a mock Request with app.state."""
     request = MagicMock()
     request.cookies = cookies or {}
@@ -62,6 +62,7 @@ def _make_request(*, cookies=None, settings=None, agent=None, history=None,
     request.app.state.history = history or AsyncMock()
     request.app.state.settings_store = settings_store or AsyncMock()
     request.app.state.user_store = user_store or AsyncMock()
+    request.app.state.wa_store = wa_store
     request.client.host = client_ip
     request.url.scheme = "http"
     return request
@@ -297,12 +298,12 @@ class TestSettingsEndpoints:
             settings_store=settings_store,
         )
 
-        await update_setting(request, key="feature_whatsapp_auto_reply", value="true")
+        await update_setting(request, key="feature_whatsapp_send_others", value="false")
 
-        settings_store.set.assert_called_once_with("feature_whatsapp_auto_reply", True)
+        settings_store.set.assert_called_once_with("feature_whatsapp_send_others", False)
         # apply_overrides updates app.state.settings
         new_settings = request.app.state.settings
-        assert new_settings.feature_whatsapp_auto_reply is True
+        assert new_settings.feature_whatsapp_send_others is False
 
     async def test_update_text_setting(self):
         settings = _make_settings()

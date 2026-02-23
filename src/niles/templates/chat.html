@@ -3,11 +3,40 @@
 {% block title %}Chat - Niles AI{% endblock %}
 {% block content %}
 <div class="flex flex-col h-[calc(100dvh-120px)]">
+
+    {# --- Channel Tabs --- #}
+    {% if available_channels | length > 1 %}
+    <div class="flex gap-1 mb-3 border-b border-zinc-200 dark:border-zinc-700 pb-2">
+        {% for ch_key, ch_label in available_channels %}
+        <a href="/ui/chat?channel={{ ch_key }}"
+           class="px-4 py-1.5 rounded-full text-sm transition-colors duration-150
+                  {% if ch_key == channel %}
+                    bg-blue-500 text-white
+                  {% else %}
+                    text-zinc-500 dark:text-zinc-400
+                    hover:bg-zinc-100 dark:hover:bg-zinc-800
+                  {% endif %}">
+            {{ ch_label }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# --- Read-Only Banner --- #}
+    {% if readonly %}
+    <div class="text-center text-xs text-zinc-400 dark:text-zinc-500
+                bg-zinc-50 dark:bg-zinc-800/50 rounded-lg py-2 mb-2">
+        WhatsApp Self-Chat Log (nur lesen)
+    </div>
+    {% endif %}
+
     <div id="chat-messages" role="log" aria-live="polite" class="flex-1 overflow-y-auto py-4 thin-scrollbar"
-         data-user-avatar="{{ user.avatar_url }}">
+         data-user-avatar="{{ user.avatar_url }}"
+         data-channel="{{ channel }}"
+         data-readonly="{{ 'true' if readonly else 'false' }}">
         {% if has_more %}
         <div id="load-more-container" class="text-center mb-4">
-            <button hx-get="/ui/api/chat/history?offset={{ next_offset }}"
+            <button hx-get="/ui/api/chat/history?offset={{ next_offset }}&channel={{ channel }}"
                     hx-target="#load-more-container"
                     hx-swap="outerHTML"
                     class="text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg px-4 py-2 bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-800 cursor-pointer">
@@ -16,7 +45,13 @@
         </div>
         {% endif %}
         {% if not messages and not has_more %}
-        <div class="chat-empty flex items-center justify-center h-full text-zinc-400 italic">Starte eine Unterhaltung...</div>
+        <div class="chat-empty flex items-center justify-center h-full text-zinc-400 italic">
+            {% if readonly %}
+                Noch keine WhatsApp-Interaktionen.
+            {% else %}
+                Starte eine Unterhaltung...
+            {% endif %}
+        </div>
         {% endif %}
         {% for msg in messages %}
         {% if msg.role == 'user' %}
@@ -27,6 +62,8 @@
         {% endfor %}
     </div>
 
+    {# --- Thinking Indicator (only Web-Chat) --- #}
+    {% if not readonly %}
     <div id="thinking-indicator" class="hidden mb-4" aria-live="polite">
         <div class="flex items-start gap-3">
             <img src="/static/img/niles-avatar.webp" alt="Niles" class="w-9 h-9 rounded-full shrink-0 mt-0.5">
@@ -40,7 +77,10 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
+    {# --- Chat Form (only Web-Chat) --- #}
+    {% if not readonly %}
     <form id="chat-form" class="mt-2">
         <label for="chat-input" class="sr-only">Nachricht</label>
         <div class="flex items-end rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden pl-5 pr-2 py-1">
@@ -69,5 +109,7 @@
             Verlauf loeschen
         </button>
     </div>
+    {% endif %}
+
 </div>
 {% endblock %}
