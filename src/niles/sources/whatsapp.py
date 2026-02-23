@@ -173,11 +173,11 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
                 sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
                 if sent_id:
                     _record_sent(sent_id)
+                    logger.info("Self-chat reply sent to %s", remote_jid)
                 else:
                     logger.warning(
                         "No message ID in send_message response — echo guard not armed"
                     )
-                logger.info("Self-chat reply sent to %s", remote_jid)
         except Exception:
             logger.exception("Failed to process self-chat message")
 
