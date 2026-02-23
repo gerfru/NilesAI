@@ -30,6 +30,41 @@ class TestWeekdayMap:
 # _parse_date — weekday names
 # ---------------------------------------------------------------------------
 
+class TestParseDateMalformedLLM:
+    """Small LLMs sometimes wrap dates in dicts or lists."""
+
+    @pytest.fixture
+    def action(self):
+        pool = AsyncMock()
+        return CalendarAction(pool, timezone="Europe/Vienna")
+
+    def test_dict_wrapped_date(self, action):
+        """{'date': '2026-02-24'} should extract 2026-02-24."""
+        result = action._parse_date("{'date': '2026-02-24'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.month == 2
+        assert result.day == 24
+
+    def test_dict_wrapped_datetime(self, action):
+        """{'date': '2026-02-24T14:00'} should extract the datetime."""
+        result = action._parse_date("{'date': '2026-02-24T14:00'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.hour == 14
+
+    def test_normal_date_unchanged(self, action):
+        """Normal ISO dates should still work."""
+        result = action._parse_date("2026-02-24")
+        assert result is not None
+        assert result.day == 24
+
+    def test_relative_date_unchanged(self, action):
+        """Relative terms like 'morgen' should still work."""
+        result = action._parse_date("morgen")
+        assert result is not None
+
+
 class TestParseDateWeekday:
     @pytest.fixture
     def action(self):
