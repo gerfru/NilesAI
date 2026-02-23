@@ -18,7 +18,7 @@ from ..mcp.client import MCPManager
 from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
-from ..vikunja_store import VikunjCredentialStore
+from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
@@ -295,7 +295,7 @@ class NilesAgent:
         calendar_manager: CalendarSourceManager | None = None,
         wa_store: WhatsAppSessionStore | None = None,
         tasks: TasksAction | None = None,
-        vikunja_store: VikunjCredentialStore | None = None,
+        vikunja_store: VikunjaCredentialStore | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -388,6 +388,30 @@ class NilesAgent:
             return {"name": name, "arguments": json.dumps(params, ensure_ascii=False)}
 
         return None
+
+    @staticmethod
+    def _synthetic_tool_call(parsed: dict) -> tuple[dict, dict]:
+        """Build a synthetic tool-call dict and assistant message from parsed text.
+
+        Returns (tc_dict, assistant_message) where tc_dict has keys
+        "id", "name", "arguments" and assistant_message is ready to append
+        to the messages list.
+        """
+        tc = {
+            "id": f"text_{parsed['name']}",
+            "name": parsed["name"],
+            "arguments": parsed["arguments"],
+        }
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": tc["id"],
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": tc["arguments"]},
+            }],
+        }
+        return tc, message
 
     async def _handle_phone_choice(self, chat_id: str, content: str) -> str | None:
         """If user is responding to a phone choice prompt, send directly.
@@ -536,8 +560,11 @@ class NilesAgent:
 
                 if choice.delta.content:
                     full_content += choice.delta.content
-                    # If the first content looks like JSON, buffer it
-                    if not _buffering and full_content.lstrip()[:1] in ("{", "`"):
+                    # If the first content looks like JSON or a code-fenced
+                    # tool call, buffer it.  Single backticks (inline code) are
+                    # NOT buffered — only triple-backtick fences or bare '{'.
+                    stripped = full_content.lstrip()
+                    if not _buffering and (stripped.startswith("{") or stripped.startswith("```")):
                         _buffering = True
                     if not _buffering:
                         yield {"type": "chunk", "text": choice.delta.content}
@@ -559,13 +586,9 @@ class NilesAgent:
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
                 parsed = self._try_parse_text_tool_call(full_content) if full_content else None
                 if parsed:
-                    logger.info("Detected text-based tool call: %s", parsed["name"])
-                    # Content was buffered, not streamed — nothing to clear
-                    tool_calls_by_idx = {0: {
-                        "id": f"text_{parsed['name']}",
-                        "name": parsed["name"],
-                        "arguments": parsed["arguments"],
-                    }}
+                    logger.info("Detected text-based tool call (stream): %s", parsed["name"])
+                    tc_dict, _ = self._synthetic_tool_call(parsed)
+                    tool_calls_by_idx = {0: tc_dict}
                     full_content = ""  # Don't pass JSON as assistant content
                     # Don't save or return — fall through to tool execution below
                 else:
@@ -669,23 +692,15 @@ class NilesAgent:
                 parsed = self._try_parse_text_tool_call(content) if content else None
                 if parsed:
                     logger.info("Detected text-based tool call: %s", parsed["name"])
-                    # Build a synthetic tool call and inject it
+                    tc_dict, assistant_msg = self._synthetic_tool_call(parsed)
+                    messages.append(assistant_msg)
                     tc = SimpleNamespace(
-                        id=f"text_{parsed['name']}",
+                        id=tc_dict["id"],
                         function=SimpleNamespace(
-                            name=parsed["name"],
-                            arguments=parsed["arguments"],
+                            name=tc_dict["name"],
+                            arguments=tc_dict["arguments"],
                         ),
                     )
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [{
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                        }],
-                    })
                     result = await self._execute_tool_call(tc, chat_id)
                     logger.info("Tool result [%s]: %s", tc.id, result)
                     if isinstance(result, dict) and "choose_phone" in result:

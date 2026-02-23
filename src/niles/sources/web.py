@@ -1381,6 +1381,32 @@ async def vikunja_connect(
              "vikunja_error": "Keine API-URL. Bitte URL angeben oder global konfigurieren."},
         )
 
+    # SSRF protection: only allow http/https and reject private IP ranges
+    from urllib.parse import urlparse
+    import ipaddress
+    try:
+        parsed = urlparse(effective_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("scheme")
+        host = parsed.hostname or ""
+        if not host:
+            raise ValueError("host")
+        # Reject private/loopback IPs (except Docker-internal hostnames)
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                raise ValueError("private IP")
+        except ValueError as ve:
+            # Not an IP address — allow hostnames (e.g. "vikunja", "localhost" for Docker)
+            if str(ve) == "private IP":
+                raise
+    except ValueError:
+        return templates.TemplateResponse(
+            request, "fragments/vikunja_status.html",
+            {"vikunja_connected": False, "vikunja_project_count": 0,
+             "vikunja_error": "Ungueltige URL. Nur http:// und https:// erlaubt."},
+        )
+
     # Test connection before saving
     try:
         async with httpx.AsyncClient() as client:

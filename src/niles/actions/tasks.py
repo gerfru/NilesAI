@@ -55,6 +55,8 @@ class TasksAction:
         """List tasks, optionally filtered by project."""
         async with httpx.AsyncClient() as client:
             # Vikunja API: GET /api/v1/tasks/all
+            # Note: limited to 50 tasks (no pagination). Users with more
+            # tasks should use the Vikunja Web-UI for the full list.
             params = {
                 "sort_by": "due_date",
                 "order_by": "asc",
@@ -123,13 +125,16 @@ class TasksAction:
         if description:
             payload["description"] = description
         if due_date:
-            # Normalize to full ISO datetime for Vikunja API
-            if "T" not in due_date:
-                # Date-only like "2026-02-24" → add midnight UTC
-                due_date = due_date + "T00:00:00Z"
-            elif not due_date.endswith("Z") and "+" not in due_date:
-                due_date += ":00+00:00"
-            payload["due_date"] = due_date
+            # Normalize to full ISO datetime for Vikunja API.
+            # Uses datetime.fromisoformat() to robustly handle all formats:
+            # "2026-02-24", "2026-02-24T14:00", "2026-02-24T14:00:30",
+            # "2026-02-24T14:00:00Z", "2026-02-24T14:00:00+02:00"
+            try:
+                dt = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
+                payload["due_date"] = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                logger.warning("Unparseable due_date '%s', passing as-is", due_date)
+                payload["due_date"] = due_date
         # LLMs sometimes pass priority as string
         try:
             priority = int(priority)
