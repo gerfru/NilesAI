@@ -13,6 +13,7 @@ class TestEditableWhitelist:
             "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
             "caldav_calendars",
             "carddav_url", "carddav_user", "carddav_password",
+            "feature_vikunja",
         }
         assert EDITABLE_SETTINGS == expected
 
