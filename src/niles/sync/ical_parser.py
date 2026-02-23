@@ -166,6 +166,7 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
         "all_day": False,
         "description": "",
         "location": "",
+        "transp": "OPAQUE",
         "caldav_uid": "",
         "caldav_url": url,
         "rrule": "",
@@ -201,6 +202,8 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
             dt, _ = parse_dt(line)
             if dt:
                 event["dtend"] = dt
+        elif line.startswith("TRANSP"):
+            event["transp"] = _extract_value(line)
         elif line.startswith("RRULE:"):
             event["rrule"] = line
         elif line.startswith("EXDATE"):
@@ -316,6 +319,7 @@ def expand_recurring_event(
             "all_day": event["all_day"],
             "description": event["description"],
             "location": event["location"],
+            "transp": event.get("transp", "OPAQUE"),
             "caldav_uid": f"{original_uid}@{uid_suffix}",
             "caldav_url": event["caldav_url"],
         })

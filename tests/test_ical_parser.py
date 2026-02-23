@@ -248,6 +248,44 @@ END:VCALENDAR"""
         assert event["location"] == "Konferenzraum 3"
 
 
+    def test_transp_default_opaque(self):
+        """Events without TRANSP should default to OPAQUE."""
+        event = parse_icalendar(SAMPLE_ICS_FULL, "/caldav/123/event1.ics")
+        assert event is not None
+        assert event["transp"] == "OPAQUE"
+
+    def test_transp_transparent(self):
+        """Events with TRANSP:TRANSPARENT should be parsed correctly."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:free-event
+DTSTART:20260301T100000Z
+DTEND:20260301T110000Z
+SUMMARY:Optional Meeting
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["transp"] == "TRANSPARENT"
+
+    def test_transp_opaque_explicit(self):
+        """Events with explicit TRANSP:OPAQUE should be parsed correctly."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:busy-event
+DTSTART:20260301T100000Z
+SUMMARY:Important Meeting
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["transp"] == "OPAQUE"
+
+
 class TestExtractValue:
     def test_simple_property(self):
         assert _extract_value("SUMMARY:Team Meeting") == "Team Meeting"

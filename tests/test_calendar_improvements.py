@@ -141,6 +141,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)
@@ -159,11 +160,46 @@ class TestRowToDictAllDay:
             "all_day": False,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)
         assert "T" in result["start"]  # Has time component
         assert "+01:00" in result["start"] or "+02:00" in result["start"]
+
+    def test_transparent_event_has_status(self, action):
+        """TRANSPARENT events should have status='verfuegbar'."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Optional Sync",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "TRANSPARENT",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert result["status"] == "verfuegbar"
+
+    def test_opaque_event_has_no_status(self, action):
+        """OPAQUE events should not have a status field."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Important Meeting",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "OPAQUE",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert "status" not in result
 
     def test_all_day_no_one_am(self, action):
         """Regression: midnight UTC must NOT become 01:00 Vienna for all-day events."""
@@ -175,6 +211,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)

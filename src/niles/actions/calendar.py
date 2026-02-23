@@ -77,7 +77,7 @@ class CalendarAction:
 
         rows = await self.pool.fetch(
             """
-            SELECT summary, dtstart, dtend, all_day, description, location
+            SELECT summary, dtstart, dtend, all_day, description, location, transp
             FROM events
             WHERE ($1 = '' OR summary ILIKE '%' || $1 || '%'
                    OR description ILIKE '%' || $1 || '%'
@@ -190,5 +190,7 @@ class CalendarAction:
             result["description"] = self._sanitize_field(row["description"])
         if row["location"]:
             result["location"] = self._sanitize_field(row["location"])
+        if row["transp"] and row["transp"] != "OPAQUE":
+            result["status"] = "verfuegbar"
 
         return result

@@ -86,6 +86,11 @@ class CalendarSourceManager:
         await self.pool.execute("""
             CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id)
         """)
+        # Add transparency field (OPAQUE = busy, TRANSPARENT = free)
+        await self.pool.execute("""
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS
+                transp TEXT DEFAULT 'OPAQUE'
+        """)
         await self._migrate_env_source()
         logger.info("Calendar source manager initialized")
 
