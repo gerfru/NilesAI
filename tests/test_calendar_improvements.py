@@ -30,6 +30,54 @@ class TestWeekdayMap:
 # _parse_date — weekday names
 # ---------------------------------------------------------------------------
 
+class TestParseDateMalformedLLM:
+    """Small LLMs sometimes wrap dates in dicts or lists."""
+
+    @pytest.fixture
+    def action(self):
+        pool = AsyncMock()
+        return CalendarAction(pool, timezone="Europe/Vienna")
+
+    def test_dict_wrapped_date(self, action):
+        """{'date': '2026-02-24'} should extract 2026-02-24."""
+        result = action._parse_date("{'date': '2026-02-24'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.month == 2
+        assert result.day == 24
+
+    def test_dict_wrapped_datetime(self, action):
+        """{'date': '2026-02-24T14:00'} should extract the datetime."""
+        result = action._parse_date("{'date': '2026-02-24T14:00'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.hour == 14
+
+    def test_dict_wrapped_datetime_with_tz(self, action):
+        """{'date': '2026-02-24T14:00:00+01:00'} should extract with timezone."""
+        result = action._parse_date("{'date': '2026-02-24T14:00:00+01:00'}")
+        assert result is not None
+        assert result.year == 2026
+        assert result.hour == 14
+
+    def test_dict_wrapped_datetime_utc(self, action):
+        """{'date': '2026-02-24T14:00:00Z'} should extract with Z suffix."""
+        result = action._parse_date("{'date': '2026-02-24T14:00:00Z'}")
+        assert result is not None
+        assert result.year == 2026
+
+    def test_normal_date_unchanged(self, action):
+        """Normal ISO dates should still work."""
+        result = action._parse_date("2026-02-24")
+        assert result is not None
+        assert result.day == 24
+
+    def test_relative_date_unchanged(self, action):
+        """Relative terms like 'morgen' should still work."""
+        result = action._parse_date("morgen")
+        assert result is not None
+
+
 class TestParseDateWeekday:
     @pytest.fixture
     def action(self):
@@ -141,6 +189,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)
@@ -159,11 +208,63 @@ class TestRowToDictAllDay:
             "all_day": False,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)
         assert "T" in result["start"]  # Has time component
         assert "+01:00" in result["start"] or "+02:00" in result["start"]
+
+    def test_transparent_event_has_status(self, action):
+        """TRANSPARENT events should have status='verfuegbar'."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Optional Sync",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "TRANSPARENT",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert result["status"] == "verfuegbar"
+
+    def test_opaque_event_has_no_status(self, action):
+        """OPAQUE events should not have a status field."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Important Meeting",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "OPAQUE",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert "status" not in result
+
+    def test_malformed_transp_not_treated_as_free(self, action):
+        """Non-standard TRANSP values must NOT mark the event as free (RFC 5545)."""
+        tz = ZoneInfo("UTC")
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "summary": "Corrupt Event",
+            "dtstart": datetime(2026, 3, 15, 14, 0, tzinfo=tz),
+            "dtend": datetime(2026, 3, 15, 15, 0, tzinfo=tz),
+            "all_day": False,
+            "description": None,
+            "location": None,
+            "transp": "FREE",
+        }[key]
+
+        result = action._row_to_dict(row)
+        assert "status" not in result
 
     def test_all_day_no_one_am(self, action):
         """Regression: midnight UTC must NOT become 01:00 Vienna for all-day events."""
@@ -175,6 +276,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "transp": "OPAQUE",
         }[key]
 
         result = action._row_to_dict(row)

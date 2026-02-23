@@ -7,7 +7,7 @@ that don't depend on CalDAVSync.
 from datetime import timezone
 from zoneinfo import ZoneInfo
 
-from niles.sync.ical_parser import parse_dt, parse_icalendar, unfold_ics
+from niles.sync.ical_parser import _extract_value, parse_dt, parse_icalendar, unfold_ics
 
 _TZ_VIENNA = ZoneInfo("Europe/Vienna")
 
@@ -202,3 +202,124 @@ END:VEVENT
 END:VCALENDAR"""
         event = parse_icalendar(ics, "/test.ics")
         assert event is None
+
+    def test_summary_with_language_param(self):
+        """SUMMARY;LANGUAGE=de:text must be parsed correctly."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:lang-event
+DTSTART:20260301T100000Z
+SUMMARY;LANGUAGE=de:Teammeeting
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["summary"] == "Teammeeting"
+
+    def test_description_with_params(self):
+        """DESCRIPTION with parameters must be parsed."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:desc-param
+DTSTART:20260301T100000Z
+SUMMARY:Test
+DESCRIPTION;LANGUAGE=en:Project review notes
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["description"] == "Project review notes"
+
+    def test_location_with_params(self):
+        """LOCATION with parameters must be parsed."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:loc-param
+DTSTART:20260301T100000Z
+SUMMARY:Test
+LOCATION;LANGUAGE=de:Konferenzraum 3
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["location"] == "Konferenzraum 3"
+
+
+    def test_transp_default_opaque(self):
+        """Events without TRANSP should default to OPAQUE."""
+        event = parse_icalendar(SAMPLE_ICS_FULL, "/caldav/123/event1.ics")
+        assert event is not None
+        assert event["transp"] == "OPAQUE"
+
+    def test_transp_transparent(self):
+        """Events with TRANSP:TRANSPARENT should be parsed correctly."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:free-event
+DTSTART:20260301T100000Z
+DTEND:20260301T110000Z
+SUMMARY:Optional Meeting
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["transp"] == "TRANSPARENT"
+
+    def test_transp_opaque_explicit(self):
+        """Events with explicit TRANSP:OPAQUE should be parsed correctly."""
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:busy-event
+DTSTART:20260301T100000Z
+SUMMARY:Important Meeting
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR"""
+        event = parse_icalendar(ics, "/test.ics")
+        assert event is not None
+        assert event["transp"] == "OPAQUE"
+
+
+class TestExtractValue:
+    def test_simple_property(self):
+        assert _extract_value("SUMMARY:Team Meeting") == "Team Meeting"
+
+    def test_with_params(self):
+        assert _extract_value("SUMMARY;LANGUAGE=de:Teammeeting") == "Teammeeting"
+
+    def test_with_multiple_params(self):
+        assert _extract_value("SUMMARY;LANGUAGE=de;X-CUSTOM=1:Titel") == "Titel"
+
+    def test_colon_in_value(self):
+        assert _extract_value("SUMMARY:Meeting: 10:00 Uhr") == "Meeting: 10:00 Uhr"
+
+    def test_no_colon(self):
+        assert _extract_value("BROKEN") == ""
+
+
+class TestWindowsTimezones:
+    def test_w_europe_standard_time(self):
+        dt, all_day = parse_dt("DTSTART;TZID=W. Europe Standard Time:20260301T090000")
+        assert dt is not None
+        assert dt.hour == 9
+        assert all_day is False
+
+    def test_quoted_windows_tz(self):
+        dt, all_day = parse_dt('DTSTART;TZID="W. Europe Standard Time":20260301T090000')
+        assert dt is not None
+        assert dt.hour == 9
+
+    def test_eastern_standard_time(self):
+        dt, all_day = parse_dt("DTSTART;TZID=Eastern Standard Time:20260301T090000")
+        assert dt is not None
+        assert str(dt.tzinfo) == "America/New_York"
+
+    def test_unknown_tz_still_fails(self):
+        dt, all_day = parse_dt("DTSTART;TZID=Totally Fake Timezone:20260301T090000")
+        assert dt is None

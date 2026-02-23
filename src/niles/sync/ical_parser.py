@@ -16,6 +16,35 @@ _DT_LINE_REGEX = re.compile(r"(DTSTART|DTEND)([^:]*):(.+)")
 # Safety cap: max expanded occurrences per recurring event
 _MAX_OCCURRENCES = 500
 
+# Windows → IANA timezone mapping (common Exchange/Outlook ICS exports)
+_WINDOWS_TZ_MAP: dict[str, str] = {
+    "W. Europe Standard Time": "Europe/Berlin",
+    "Central European Standard Time": "Europe/Budapest",
+    "Central Europe Standard Time": "Europe/Budapest",
+    "Romance Standard Time": "Europe/Paris",
+    "GMT Standard Time": "Europe/London",
+    "Greenwich Standard Time": "Atlantic/Reykjavik",
+    "Eastern Standard Time": "America/New_York",
+    "Central Standard Time": "America/Chicago",
+    "Mountain Standard Time": "America/Denver",
+    "Pacific Standard Time": "America/Los_Angeles",
+    "AUS Eastern Standard Time": "Australia/Sydney",
+    "Tokyo Standard Time": "Asia/Tokyo",
+    "China Standard Time": "Asia/Shanghai",
+    "India Standard Time": "Asia/Kolkata",
+    "FLE Standard Time": "Europe/Helsinki",
+    "GTB Standard Time": "Europe/Bucharest",
+    "E. Europe Standard Time": "Europe/Chisinau",
+    "Russian Standard Time": "Europe/Moscow",
+    "Turkey Standard Time": "Europe/Istanbul",
+    "Israel Standard Time": "Asia/Jerusalem",
+    "Arabic Standard Time": "Asia/Baghdad",
+    "Singapore Standard Time": "Asia/Singapore",
+    "Korea Standard Time": "Asia/Seoul",
+    "New Zealand Standard Time": "Pacific/Auckland",
+    "UTC": "UTC",
+}
+
 
 def unfold_ics(text: str) -> str:
     """Unfold iCalendar line continuations (RFC 5545 section 3.1)."""
@@ -42,9 +71,11 @@ def parse_dt(line: str) -> tuple[datetime | None, bool]:
     # With timezone: TZID=...
     tzid_match = re.search(r"TZID=([^;:]+)", params)
     if tzid_match:
-        tz_name = tzid_match.group(1).strip()
+        tz_name = tzid_match.group(1).strip().strip('"')  # Strip quotes
+        # Try Windows timezone name mapping first
+        iana_name = _WINDOWS_TZ_MAP.get(tz_name, tz_name)
         try:
-            tz = ZoneInfo(tz_name)
+            tz = ZoneInfo(iana_name)
             dt = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=tz)
             return dt, False
         except (ValueError, KeyError):
@@ -81,8 +112,10 @@ def _parse_exdate_line(line: str) -> list[datetime]:
     tzid = None
     tzid_match = re.search(r"TZID=([^;:]+)", params)
     if tzid_match:
+        tz_name = tzid_match.group(1).strip().strip('"')
+        iana_name = _WINDOWS_TZ_MAP.get(tz_name, tz_name)
         try:
-            tzid = ZoneInfo(tzid_match.group(1).strip())
+            tzid = ZoneInfo(iana_name)
         except (KeyError, ValueError):
             pass
 
@@ -106,6 +139,17 @@ def _parse_exdate_line(line: str) -> list[datetime]:
     return results
 
 
+def _extract_value(line: str) -> str:
+    """Extract the value from a property line, skipping parameters.
+
+    Handles both ``SUMMARY:text`` and ``SUMMARY;LANGUAGE=de:text``.
+    """
+    colon_idx = line.find(":")
+    if colon_idx < 0:
+        return ""
+    return line[colon_idx + 1:].strip()
+
+
 def parse_icalendar(ics_text: str, url: str) -> dict | None:
     """Parse iCalendar text into an event dict. Returns None if invalid.
 
@@ -122,6 +166,7 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
         "all_day": False,
         "description": "",
         "location": "",
+        "transp": "OPAQUE",
         "caldav_uid": "",
         "caldav_url": url,
         "rrule": "",
@@ -140,12 +185,12 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
         if not in_vevent:
             continue
 
-        if line.startswith("SUMMARY:"):
-            event["summary"] = line[8:].strip()
-        elif line.startswith("DESCRIPTION:"):
-            event["description"] = line[12:].strip()
-        elif line.startswith("LOCATION:"):
-            event["location"] = line[9:].strip()
+        if line.startswith("SUMMARY"):
+            event["summary"] = _extract_value(line)
+        elif line.startswith("DESCRIPTION"):
+            event["description"] = _extract_value(line)
+        elif line.startswith("LOCATION"):
+            event["location"] = _extract_value(line)
         elif line.startswith("UID:"):
             event["caldav_uid"] = line[4:].strip()
         elif line.startswith("DTSTART"):
@@ -157,6 +202,8 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
             dt, _ = parse_dt(line)
             if dt:
                 event["dtend"] = dt
+        elif line.startswith("TRANSP"):
+            event["transp"] = _extract_value(line)
         elif line.startswith("RRULE:"):
             event["rrule"] = line
         elif line.startswith("EXDATE"):
@@ -272,6 +319,7 @@ def expand_recurring_event(
             "all_day": event["all_day"],
             "description": event["description"],
             "location": event["location"],
+            "transp": event.get("transp", "OPAQUE"),
             "caldav_uid": f"{original_uid}@{uid_suffix}",
             "caldav_url": event["caldav_url"],
         })
