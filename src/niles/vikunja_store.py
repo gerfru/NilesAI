@@ -7,7 +7,7 @@ import asyncpg
 logger = logging.getLogger(__name__)
 
 
-class VikunjCredentialStore:
+class VikunjaCredentialStore:
     """Manage per-user Vikunja API credentials."""
 
     def __init__(self, pool: asyncpg.Pool):
