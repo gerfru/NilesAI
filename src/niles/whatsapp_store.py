@@ -26,6 +26,10 @@ class WhatsAppSessionStore:
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS whatsapp_sessions_phone_idx
+            ON whatsapp_sessions (phone_number)
+        """)
         logger.info("WhatsApp session store initialized")
 
     async def get_session(self, user_id: int) -> dict | None:
@@ -45,6 +49,17 @@ class WhatsAppSessionStore:
             "SELECT user_id, instance_name, phone_number, status "
             "FROM whatsapp_sessions WHERE instance_name = $1",
             instance_name,
+        )
+        if row:
+            return dict(row)
+        return None
+
+    async def get_by_phone(self, phone_number: str) -> dict | None:
+        """Look up session by phone number (for self-chat user resolution)."""
+        row = await self.pool.fetchrow(
+            "SELECT user_id, instance_name, phone_number, status "
+            "FROM whatsapp_sessions WHERE phone_number = $1",
+            phone_number,
         )
         if row:
             return dict(row)
