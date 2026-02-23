@@ -39,33 +39,118 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Pflichtfelder in `.env`:
+Die `.env.example` dokumentiert jede Variable inline. Hier die Uebersicht, woher die Werte kommen:
 
-```bash
-EVOLUTION_POSTGRES_PASSWORD=<passwort>
-EVOLUTION_API_KEY=<api-key>
-```
+**Pflicht:**
 
-Optionale Felder fuer Web-UI und Google OAuth:
+| Variable | Herkunft |
+| -------- | -------- |
+| `EVOLUTION_POSTGRES_PASSWORD` | Frei waehlbar. Wird beim ersten Start als DB-Passwort gesetzt. |
+| `EVOLUTION_API_KEY` | Frei waehlbar. Authentifiziert Niles gegenueber Evolution API und Webhook. |
 
-```bash
-# Fuer stabile Sessions ueber Container-Restarts:
-SESSION_SECRET=<zufaelliger-string>
+**Empfohlen (stabile Sessions ueber Restarts):**
 
-# Fuer Google OAuth Login:
-GOOGLE_CLIENT_ID=<client-id>
-GOOGLE_CLIENT_SECRET=<client-secret>
-GOOGLE_ALLOWED_EMAILS=user1@gmail.com
-BASE_URL=https://niles.example.com
-```
+| Variable | Herkunft |
+| -------- | -------- |
+| `NILES_API_KEY` | Frei waehlbar, z.B. `openssl rand -hex 32`. Auto-generiert wenn leer. |
+| `SESSION_SECRET` | Frei waehlbar, z.B. `openssl rand -hex 64`. Auto-generiert wenn leer. |
+| `BASE_URL` | Eigene URL, z.B. `https://niles.tail1d4a0f.ts.net`. Fuer OAuth Redirect URIs. |
 
-Siehe [Niles-Core-Spec.md](Niles-Core-Spec.md#61-settings) fuer alle Konfigurationsoptionen.
+**Google OAuth (fuer Web-UI Login + Google Calendar):**
+
+| Variable | Herkunft |
+| -------- | -------- |
+| `GOOGLE_CLIENT_ID` | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) > OAuth 2.0 Client erstellen. |
+| `GOOGLE_CLIENT_SECRET` | Gleiche Stelle. Redirect URIs: `<BASE_URL>/ui/callback/google` und `<BASE_URL>/ui/callback/google/calendar`. |
+| `GOOGLE_ALLOWED_EMAILS` | Komma-separierte Whitelist, z.B. `user@gmail.com`. Leer = alle Google-Accounts erlaubt. |
+
+**CardDAV / CalDAV (Kontakt- und Kalender-Sync):**
+
+| Variable | Herkunft |
+| -------- | -------- |
+| `CARDDAV_USER` / `CARDDAV_PASSWORD` | Login-Daten des CardDAV-Anbieters (z.B. mailbox.org). Alternativ ueber Web-UI konfigurierbar. |
+| `CALDAV_*` | Legacy. Wird beim ersten Start automatisch in die DB migriert. Neue Kalenderquellen ueber Web-UI (Settings > Kalenderquellen). |
+
+**Vikunja (Todo/Task Management):**
+
+| Variable | Herkunft |
+| -------- | -------- |
+| `VIKUNJA_JWT_SECRET` | Frei waehlbar, z.B. `openssl rand -hex 32`. Wird nur vom Vikunja-Container gebraucht. |
+| `VIKUNJA_API_URL` | Fix: `http://vikunja:3456/api/v1` (Docker-interner Hostname). |
+| `VIKUNJA_API_TOKEN` | In Vikunja Web-UI generieren: Settings > API Tokens > Create Token. Siehe Vikunja-Setup unten. |
+| `FEATURE_VIKUNJA` | `true` zum Aktivieren, `false` zum Deaktivieren. |
+
+Vollstaendige Settings-Tabelle mit Defaults: [Niles-Core-Spec.md §6.1](Niles-Core-Spec.md#61-settings).
 
 ### Ollama
 
 1. Ollama installieren: `brew install ollama`
 2. Modell laden: `ollama pull llama3.1:8b`
 3. Ollama laeuft automatisch auf Port 11434
+
+### Vikunja (optional -- Todo/Task Management)
+
+Vikunja laeuft als separater Docker-Container. Die Datenbank `vikunja_db` wird von `./scripts/start.sh` automatisch erstellt.
+
+**Ersteinrichtung:**
+
+1. **JWT Secret generieren** (fuer stabile Login-Sessions ueber Restarts):
+
+    ```bash
+    openssl rand -hex 32
+    ```
+
+    Ergebnis in `.env` eintragen:
+
+    ```bash
+    VIKUNJA_JWT_SECRET=<generierter-hex-string>
+    ```
+
+2. **Weitere `.env`-Variablen setzen:**
+
+    ```bash
+    VIKUNJA_API_URL=http://vikunja:3456/api/v1
+    VIKUNJA_API_TOKEN=               # kommt in Schritt 5
+    FEATURE_VIKUNJA=true
+    ```
+
+    **Wichtig:** `VIKUNJA_API_URL` muss den Docker-internen Hostnamen `vikunja` verwenden (nicht `localhost`). Niles Core erreicht Vikunja ueber das Docker-Netzwerk.
+
+3. **Container starten:**
+
+    ```bash
+    ./scripts/start.sh
+    ```
+
+    Erstellt automatisch die `vikunja_db` Datenbank. Beim allerersten Start ist die Registrierung in `docker-compose.yml` aktiviert (`ENABLEREGISTRATION: "true"`).
+
+4. **Admin-Account erstellen:** Vikunja Web-UI oeffnen unter `http://localhost:3456` (oder `http://<tailscale-ip>:3456` bei Remote-Zugriff). Auf "Konto erstellen" klicken, Username und Passwort waehlen.
+
+    Nach der Registrierung: Ein Standard-Projekt anlegen (z.B. "Inbox").
+
+    **Danach Registrierung deaktivieren** in `docker-compose.yml`:
+
+    ```yaml
+    VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+    ```
+
+5. **API-Token generieren:** In Vikunja einloggen, dann: Settings > API Tokens > Create Token. Rechte: mindestens `tasks` (Read + Write). Den generierten Token in `.env` eintragen:
+
+    ```bash
+    VIKUNJA_API_TOKEN=<token-aus-vikunja>
+    ```
+
+6. **Niles neu starten:**
+
+    ```bash
+    ./scripts/start.sh
+    ```
+
+    `start.sh` gibt einen Hinweis aus, falls `FEATURE_VIKUNJA=true` aber `VIKUNJA_API_TOKEN` noch leer ist.
+
+**Verifizierung:** Im Chat "Was steht auf meiner Todo-Liste?" fragen -- Niles ruft `list_tasks` auf.
+
+**Deaktivieren:** `FEATURE_VIKUNJA=false` in `.env` oder ueber die Web-UI (Settings). Task-Tools werden dann nicht an das LLM gesendet.
 
 ---
 
@@ -191,7 +276,9 @@ tests/
 ├── test_security.py             # API Auth, Rate Limiting
 ├── test_settings_store.py       # Runtime Settings Store
 ├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
-└── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
+├── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
+├── test_tasks.py                # Vikunja Task Management
+└── test_vikunja_store.py        # Per-User Vikunja Credentials + Agent Resolution
 ```
 
 ### Konventionen

@@ -1291,3 +1291,153 @@ async def contacts_sync(request: Request):
     return templates.TemplateResponse(
         request, "fragments/carddav_status.html", ctx,
     )
+
+
+# --- Vikunja (per-user task management) ---
+
+
+_VK_REQUIRES_GOOGLE = (
+    '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
+    "Vikunja-Token erfordert einen Google-Login.</p>"
+)
+
+
+@router.get("/api/vikunja/status", response_class=HTMLResponse)
+async def vikunja_status(request: Request):
+    """Return Vikunja connection status fragment."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_VK_REQUIRES_GOOGLE)
+
+    vikunja_store = getattr(request.app.state, "vikunja_store", None)
+    if not vikunja_store:
+        return HTMLResponse(
+            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
+            "Vikunja nicht verfuegbar.</p>"
+        )
+
+    creds = await vikunja_store.get_credentials(user["uid"])
+    ctx: dict = {
+        "vikunja_connected": False,
+        "vikunja_error": None,
+        "vikunja_project_count": 0,
+    }
+
+    if creds:
+        api_url = creds["api_url"] or request.app.state.settings.vikunja_api_url
+        if api_url:
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        f"{api_url.rstrip('/')}/projects",
+                        headers={"Authorization": f"Bearer {creds['api_token']}"},
+                        timeout=5,
+                    )
+                    resp.raise_for_status()
+                    ctx["vikunja_connected"] = True
+                    ctx["vikunja_project_count"] = len(resp.json())
+            except Exception:
+                ctx["vikunja_connected"] = True
+                ctx["vikunja_error"] = "Verbindung zum Vikunja-Server fehlgeschlagen."
+        else:
+            ctx["vikunja_connected"] = True
+            ctx["vikunja_error"] = "Keine Vikunja API-URL konfiguriert."
+
+    return templates.TemplateResponse(
+        request, "fragments/vikunja_status.html", ctx,
+    )
+
+
+@router.post("/api/vikunja/connect", response_class=HTMLResponse)
+async def vikunja_connect(
+    request: Request,
+    api_token: str = Form(...),
+    api_url: str = Form(""),
+):
+    """Save Vikunja API token for the current user."""
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_VK_REQUIRES_GOOGLE)
+
+    vikunja_store = getattr(request.app.state, "vikunja_store", None)
+    if not vikunja_store:
+        return templates.TemplateResponse(
+            request, "fragments/vikunja_status.html",
+            {"vikunja_connected": False, "vikunja_project_count": 0,
+             "vikunja_error": "Vikunja nicht verfuegbar."},
+        )
+
+    effective_url = api_url.strip() or request.app.state.settings.vikunja_api_url
+    if not effective_url:
+        return templates.TemplateResponse(
+            request, "fragments/vikunja_status.html",
+            {"vikunja_connected": False, "vikunja_project_count": 0,
+             "vikunja_error": "Keine API-URL. Bitte URL angeben oder global konfigurieren."},
+        )
+
+    # Test connection before saving
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{effective_url.rstrip('/')}/projects",
+                headers={"Authorization": f"Bearer {api_token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            project_count = len(resp.json())
+    except Exception:
+        return templates.TemplateResponse(
+            request, "fragments/vikunja_status.html",
+            {"vikunja_connected": False, "vikunja_project_count": 0,
+             "vikunja_error": "Verbindung fehlgeschlagen: Token oder URL ungueltig."},
+        )
+
+    try:
+        await vikunja_store.upsert_credentials(
+            user_id=user["uid"],
+            api_token=api_token,
+            api_url=api_url.strip(),
+        )
+    except asyncpg.ForeignKeyViolationError:
+        logger.warning("FK violation: user_id=%s not in users table", user["uid"])
+        response = HTMLResponse(
+            '<p class="text-sm text-red-500">'
+            "Sitzung ungueltig &ndash; bitte erneut einloggen.</p>",
+            status_code=401,
+            headers={"HX-Redirect": "/ui/login"},
+        )
+        response.delete_cookie(SESSION_COOKIE_NAME)
+        return response
+
+    return templates.TemplateResponse(
+        request, "fragments/vikunja_status.html",
+        {"vikunja_connected": True, "vikunja_project_count": project_count,
+         "vikunja_error": None},
+    )
+
+
+@router.post("/api/vikunja/disconnect", response_class=HTMLResponse)
+async def vikunja_disconnect(request: Request):
+    """Remove Vikunja API token for current user."""
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if user.get("uid") == 0:
+        return HTMLResponse(_VK_REQUIRES_GOOGLE)
+
+    vikunja_store = getattr(request.app.state, "vikunja_store", None)
+    if vikunja_store and user.get("uid"):
+        await vikunja_store.delete_credentials(user["uid"])
+
+    return templates.TemplateResponse(
+        request, "fragments/vikunja_status.html",
+        {"vikunja_connected": False, "vikunja_project_count": 0,
+         "vikunja_error": None},
+    )

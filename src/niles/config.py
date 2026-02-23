@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_allowed_emails: str = ""  # Comma-separated, empty = all allowed
 
+    # Vikunja (Todo/Task Management)
+    vikunja_api_url: str = ""
+    vikunja_api_token: str = ""
+    feature_vikunja: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
