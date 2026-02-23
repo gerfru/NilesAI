@@ -334,7 +334,7 @@ Erstellt automatisch die `vikunja_db` Datenbank.
 
 #### 4. Admin-Account erstellen
 
-1. `http://localhost:3456` oeffnen (oder `http://<tailscale-ip>:3456`)
+1. `https://localhost:3457` oeffnen (oder `https://<tailscale-ip>:3457`)
 2. **Konto erstellen** -- Username und Passwort waehlen
 3. Ein Standard-Projekt anlegen (z.B. "Inbox")
 
@@ -404,7 +404,7 @@ docker restart niles_caddy
 | ---- | ------- | ------- |
 | 443 | Niles Web-UI + API | HTTPS via Caddy |
 | 8443 | Evolution API Manager | HTTPS via Caddy |
-| 3456 | Vikunja Web-UI | HTTP direkt |
+| 3457 | Vikunja Web-UI | HTTPS via Caddy |
 | 11434 | Ollama API | HTTP lokal |
 
 ### Tailscale (Remote-Zugriff)
@@ -574,7 +574,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | ---- | ------- | --------- |
 | 443 | Niles Web-UI + API | HTTPS (Caddy, self-signed) |
 | 8443 | Evolution API Manager | HTTPS (Caddy, self-signed) |
-| 3456 | Vikunja Web-UI | HTTP |
+| 3457 | Vikunja Web-UI | HTTPS (Caddy, self-signed) |
 | 11434 | Ollama API | HTTP (nur lokal) |
 | 8000 | Niles Core (intern) | HTTP (nicht direkt erreichbar) |
 | 8080 | Evolution API (intern) | HTTP (nicht direkt erreichbar) |
