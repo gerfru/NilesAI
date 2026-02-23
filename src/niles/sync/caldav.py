@@ -167,6 +167,7 @@ class CalDAVSync:
                 all_day BOOLEAN DEFAULT FALSE,
                 description TEXT,
                 location TEXT,
+                transp TEXT DEFAULT 'OPAQUE',
                 caldav_uid TEXT UNIQUE,
                 caldav_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
