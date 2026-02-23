@@ -66,7 +66,7 @@ class TasksAction:
                 params["filter"] = "done = false"
 
             resp = await client.get(
-                f"{self.api_url}/tasks/all",
+                f"{self.api_url}/tasks",
                 headers=self.headers,
                 params=params,
                 timeout=10,

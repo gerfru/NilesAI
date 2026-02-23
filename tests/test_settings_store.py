@@ -10,7 +10,7 @@ class TestEditableWhitelist:
     def test_contains_expected_keys(self):
         expected = {
             "llm_base_url", "llm_model", "timezone", "log_level",
-            "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
+            "feature_whatsapp_send_others",
             "caldav_calendars",
             "carddav_url", "carddav_user", "carddav_password",
             "feature_vikunja",
@@ -80,9 +80,9 @@ class TestApplyOverrides:
             postgres_password="test",
             evolution_api_key="test",
         )
-        assert settings.feature_whatsapp_auto_reply is False
-        result = apply_overrides(settings, {"feature_whatsapp_auto_reply": True})
-        assert result.feature_whatsapp_auto_reply is True
+        assert settings.feature_whatsapp_send_others is True
+        result = apply_overrides(settings, {"feature_whatsapp_send_others": False})
+        assert result.feature_whatsapp_send_others is False
 
     def test_ignores_unknown_keys(self):
         settings = Settings(

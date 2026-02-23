@@ -134,6 +134,27 @@ class WhatsAppAction:
                 )
                 return {"error": str(e)}
 
+    async def get_owner_jid(self, instance_name: str) -> str | None:
+        """Get the ownerJid (phone@s.whatsapp.net) for a connected instance."""
+        url = f"{self.base_url}/instance/fetchInstances"
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._headers(),
+                    params={"instanceName": instance_name},
+                    timeout=10,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data and isinstance(data, list):
+                    return data[0].get("ownerJid")
+            except (httpx.HTTPError, IndexError, KeyError) as e:
+                logger.error(
+                    "Failed to get ownerJid for %s: %s", instance_name, e,
+                )
+        return None
+
     async def logout_instance(self, instance_name: str) -> dict:
         """Logout a WhatsApp instance (unlink device)."""
         url = f"{self.base_url}/instance/logout/{instance_name}"
