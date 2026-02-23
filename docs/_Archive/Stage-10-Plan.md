@@ -1,6 +1,13 @@
 # Stage 10: Google OAuth, Multi-User & GUI v2
 
 > **Status:** Abgeschlossen
+>
+> **Hinweis:** Dies ist das urspruengliche Planungsdokument. Abweichungen von der tatsaechlichen Implementierung:
+>
+> - `httpx-oauth` wurde nicht als Dependency hinzugefuegt — OAuth wird mit reinem `httpx` implementiert
+> - Session-Signing verwendet ein separates `session_secret` (nicht `niles_api_key`)
+> - Logout ist `POST /ui/logout` (nicht GET, um Logout-CSRF zu verhindern)
+> - Detaillierte Implementierung siehe [Niles-Core-Spec.md](Niles-Core-Spec.md) und [API.md](API.md)
 
 ## Kontext
 

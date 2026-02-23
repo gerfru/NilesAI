@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Stand:** 2026-02-19
+> **Stand:** 2026-02-23
 
 ---
 
@@ -59,7 +59,7 @@ GOOGLE_ALLOWED_EMAILS=user1@gmail.com
 BASE_URL=https://niles.example.com
 ```
 
-Siehe [Architecture.md](Architecture.md#7-konfiguration) fuer alle Konfigurationsoptionen.
+Siehe [Niles-Core-Spec.md](Niles-Core-Spec.md#61-settings) fuer alle Konfigurationsoptionen.
 
 ### Ollama
 
@@ -173,21 +173,25 @@ python -m pytest tests/ -v
 
 ```text
 tests/
-├── conftest.py              # Shared Fixtures (Environment-Variablen)
-├── test_config.py           # Settings-Validierung
-├── test_contacts.py         # ContactsAction, normalize_phone
-├── test_health.py           # GET /health Endpoint
-├── test_memory.py           # MemoryStore, ConversationHistory
-├── test_features.py         # Feature Flags + Webhook Auth
-├── test_carddav.py          # CardDAV Sync
-├── test_caldav.py           # CalDAV Sync
-├── test_ical_parser.py      # iCalendar Parser
-├── test_calendar_manager.py # CalendarSourceManager (CRUD, Sync, Migration)
-├── test_google_auth.py      # Google Calendar OAuth (Token Refresh)
-├── test_mcp.py              # MCP Integration
-├── test_security.py         # API Auth, Rate Limiting
-├── test_settings_store.py   # Runtime Settings Store
-└── test_web.py              # Web-UI, Google OAuth, Sessions, CSRF
+├── conftest.py                  # Shared Fixtures (Environment-Variablen)
+├── test_config.py               # Settings-Validierung
+├── test_contacts.py             # ContactsAction, normalize_phone, Multi-Phone
+├── test_core.py                 # NilesAgent, Tool-Call-Pipeline
+├── test_health.py               # GET /health Endpoint
+├── test_memory.py               # MemoryStore, ConversationHistory
+├── test_features.py             # Feature Flags + Webhook Auth
+├── test_carddav.py              # CardDAV Sync
+├── test_caldav.py               # CalDAV Sync
+├── test_ical_parser.py          # iCalendar Parser
+├── test_rrule_expansion.py      # RRULE Expansion (Wiederkehrende Termine)
+├── test_calendar_manager.py     # CalendarSourceManager (CRUD, Sync, Migration)
+├── test_calendar_improvements.py # Kalender Query-Verbesserungen
+├── test_google_auth.py          # Google Calendar OAuth (Token Refresh)
+├── test_mcp.py                  # MCP Integration
+├── test_security.py             # API Auth, Rate Limiting
+├── test_settings_store.py       # Runtime Settings Store
+├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
+└── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
 ```
 
 ### Konventionen
@@ -288,6 +292,5 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ## 9. Weitere Dokumentation
 
-- [Technische Spezifikation](Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
-- [Architektur](Architecture.md) -- Systemuebersicht, Module, Datenfluss
+- [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
 - [API Reference](API.md) -- Endpoints, Payloads, Beispiele
