@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from niles.config import Settings
-from niles.sources.whatsapp import _is_niles_trigger, _strip_trigger
+from niles.sources.whatsapp import (
+    _is_niles_trigger,
+    _record_sent,
+    _sent_ids,
+    _strip_trigger,
+)
 
 
 class TestIsNilesTrigger:
@@ -185,3 +190,56 @@ class TestSelfChatWebhook:
         assert result == {"status": "processed"}
         mock_app.state.agent.process_event.assert_called_once()
         mock_app.state.whatsapp_action.send_message.assert_not_called()
+
+    async def test_echo_of_own_reply_is_ignored(self, mock_app):
+        """A message ID recorded via _record_sent must be skipped."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        # Simulate: agent previously sent a message with this ID
+        _record_sent("ABCDEF123")
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-1",
+            "data": {
+                "key": {
+                    "remoteJid": "436601234567@s.whatsapp.net",
+                    "fromMe": True,
+                    "id": "ABCDEF123",
+                },
+                "message": {
+                    "conversation": "Niles hier: dein Termin ist morgen",
+                },
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+
+        assert result == {"status": "ignored", "reason": "echo of own reply"}
+        mock_app.state.agent.process_event.assert_not_called()
+
+        # Cleanup
+        _sent_ids.clear()
+
+    async def test_reply_records_sent_id(self, mock_app):
+        """After sending a self-chat reply, the message ID is recorded."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        _sent_ids.clear()
+        mock_app.state.agent.process_event.return_value = "Antwort"
+        mock_app.state.whatsapp_action.send_message.return_value = {
+            "key": {"id": "SENT999"},
+        }
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = self._self_chat_payload("Hey Niles, test")
+
+        await whatsapp_webhook(request, token=self.VALID_TOKEN)
+
+        assert "SENT999" in _sent_ids
+
+        # Cleanup
+        _sent_ids.clear()
