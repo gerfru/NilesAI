@@ -37,6 +37,18 @@ class TestIsNilesTrigger:
         """'Niles' in the middle of a sentence should NOT trigger."""
         assert _is_niles_trigger("Ich frage Niles mal") is False
 
+    def test_word_boundary_nilesh(self):
+        """'Nilesh' should NOT trigger (name starts with 'niles')."""
+        assert _is_niles_trigger("Nilesh, kannst du...") is False
+
+    def test_word_boundary_nilesarmy(self):
+        """'nilesarmy' should NOT trigger (word continues after 'niles')."""
+        assert _is_niles_trigger("nilesarmy is cool") is False
+
+    def test_word_boundary_hey_nilesh(self):
+        """'Hey Nilesh' should NOT trigger."""
+        assert _is_niles_trigger("Hey Nilesh was geht") is False
+
 
 class TestStripTrigger:
     def test_hey_niles_comma(self):
