@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from types import SimpleNamespace
 
@@ -10,12 +11,14 @@ from openai import AsyncOpenAI
 
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction
+from ..actions.tasks import TasksAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
 from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
+from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
@@ -161,6 +164,106 @@ TOOLS = [
             },
         },
     },
+    # --- Vikunja Task Tools ---
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tasks",
+            "description": (
+                "Listet offene Aufgaben aus Vikunja. "
+                "Ohne Parameter werden alle offenen Aufgaben zurückgegeben."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Projektname zum Filtern. Optional. "
+                            "Leer = alle Projekte."
+                        ),
+                    },
+                    "include_done": {
+                        "type": "boolean",
+                        "description": (
+                            "Auch erledigte Aufgaben anzeigen. "
+                            "Standard: false."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_task",
+            "description": (
+                "Erstellt eine neue Aufgabe in Vikunja. "
+                "Nur verwenden wenn der Benutzer explizit eine Aufgabe "
+                "oder ein Todo anlegen will."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titel der Aufgabe.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Beschreibung der Aufgabe. Optional.",
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": (
+                            "Fälligkeitsdatum (ISO-Format, "
+                            "z.B. '2026-02-25T18:00'). Optional."
+                        ),
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": (
+                            "Priorität: 0=keine, 1=niedrig, 2=mittel, "
+                            "3=hoch, 4=dringend. Standard: 0."
+                        ),
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Projektname. Optional. "
+                            "Leer = Standard-Projekt."
+                        ),
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_task",
+            "description": (
+                "Markiert eine Aufgabe als erledigt. "
+                "Sucht nach dem Titel in offenen Aufgaben."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": (
+                            "Titel oder Teil des Titels der Aufgabe "
+                            "die erledigt werden soll."
+                        ),
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 MAX_TOOL_ROUNDS = 5
@@ -191,6 +294,8 @@ class NilesAgent:
         calendar: CalendarAction | None = None,
         calendar_manager: CalendarSourceManager | None = None,
         wa_store: WhatsAppSessionStore | None = None,
+        tasks: TasksAction | None = None,
+        vikunja_store: VikunjaCredentialStore | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -206,6 +311,8 @@ class NilesAgent:
         self.calendar = calendar
         self.calendar_manager = calendar_manager
         self.wa_store = wa_store
+        self.tasks = tasks
+        self.vikunja_store = vikunja_store
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -224,6 +331,87 @@ class NilesAgent:
             except (ValueError, IndexError):
                 pass
         return None
+
+    async def _resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:
+        """Resolve per-user Vikunja credentials, falling back to global."""
+        if self.vikunja_store and chat_id.startswith("web-user-"):
+            try:
+                uid = int(chat_id.split("-", 2)[2])
+                creds = await self.vikunja_store.get_credentials(uid)
+                if creds and creds["api_token"]:
+                    api_url = creds["api_url"] or self.config.vikunja_api_url
+                    return TasksAction(api_url=api_url, api_token=creds["api_token"])
+            except (ValueError, IndexError):
+                pass
+        return self.tasks  # Global fallback (or None)
+
+    # Known tool names for text-based tool call detection
+    _TOOL_NAMES = frozenset(t["function"]["name"] for t in TOOLS)
+
+    @staticmethod
+    def _try_parse_text_tool_call(
+        text: str, known_tools: frozenset[str] | None = None,
+    ) -> dict | None:
+        """Detect a tool call embedded as JSON in the LLM text response.
+
+        Some local models (e.g. llama3.1 via Ollama) output tool calls as
+        plain text instead of using the function-calling API.  This method
+        tries to extract a valid tool call from the text.
+
+        Returns {"name": str, "arguments": str} or None.
+        """
+        if known_tools is None:
+            known_tools = NilesAgent._TOOL_NAMES
+
+        # Strip markdown code fences if present
+        cleaned = text.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+        # Must look like JSON
+        if not cleaned.startswith("{"):
+            return None
+
+        try:
+            obj = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(obj, dict):
+            return None
+
+        # Format: {"name": "tool", "parameters": {...}}
+        name = obj.get("name")
+        if name and name in known_tools:
+            params = obj.get("parameters") or obj.get("arguments") or {}
+            return {"name": name, "arguments": json.dumps(params, ensure_ascii=False)}
+
+        return None
+
+    @staticmethod
+    def _synthetic_tool_call(parsed: dict) -> tuple[dict, dict]:
+        """Build a synthetic tool-call dict and assistant message from parsed text.
+
+        Returns (tc_dict, assistant_message) where tc_dict has keys
+        "id", "name", "arguments" and assistant_message is ready to append
+        to the messages list.
+        """
+        tc = {
+            "id": f"text_{parsed['name']}",
+            "name": parsed["name"],
+            "arguments": parsed["arguments"],
+        }
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": tc["id"],
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": tc["arguments"]},
+            }],
+        }
+        return tc, message
 
     async def _handle_phone_choice(self, chat_id: str, content: str) -> str | None:
         """If user is responding to a phone choice prompt, send directly.
@@ -290,7 +478,13 @@ class NilesAgent:
         messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
         messages.append({"role": "user", "content": event["content"]})
 
-        all_tools = TOOLS + (self.mcp.get_openai_tools() if self.mcp else [])
+        all_tools = [t for t in TOOLS]
+        # Remove task tools when Vikunja feature is disabled
+        if not self.config.feature_vikunja:
+            _task_tools = {"list_tasks", "create_task", "complete_task"}
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
+        if self.mcp:
+            all_tools.extend(self.mcp.get_openai_tools())
         return chat_id, messages, all_tools
 
     _SOURCE_CACHE_TTL = 300  # 5 minutes
@@ -356,6 +550,9 @@ class NilesAgent:
             full_content = ""
             tool_calls_by_idx: dict[int, dict] = {}
             finish_reason = None
+            # Buffer responses that look like JSON tool calls instead of
+            # streaming them — avoids showing raw JSON to the user.
+            _buffering = False
 
             async for chunk in stream:
                 choice = chunk.choices[0]
@@ -363,7 +560,14 @@ class NilesAgent:
 
                 if choice.delta.content:
                     full_content += choice.delta.content
-                    yield {"type": "chunk", "text": choice.delta.content}
+                    # If the first content looks like JSON or a code-fenced
+                    # tool call, buffer it.  Single backticks (inline code) are
+                    # NOT buffered — only triple-backtick fences or bare '{'.
+                    stripped = full_content.lstrip()
+                    if not _buffering and (stripped.startswith("{") or stripped.startswith("```")):
+                        _buffering = True
+                    if not _buffering:
+                        yield {"type": "chunk", "text": choice.delta.content}
 
                 if choice.delta.tool_calls:
                     for tc_delta in choice.delta.tool_calls:
@@ -378,16 +582,27 @@ class NilesAgent:
                             if tc_delta.function.arguments:
                                 tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
 
-            # No tool calls → text was already streamed, save and finish
+            # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
-                if full_content:
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", full_content)
+                parsed = self._try_parse_text_tool_call(full_content) if full_content else None
+                if parsed:
+                    logger.info("Detected text-based tool call (stream): %s", parsed["name"])
+                    tc_dict, _ = self._synthetic_tool_call(parsed)
+                    tool_calls_by_idx = {0: tc_dict}
+                    full_content = ""  # Don't pass JSON as assistant content
+                    # Don't save or return — fall through to tool execution below
                 else:
-                    logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
-                    yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
-                yield {"type": "done"}
-                return
+                    # Flush buffered content that turned out not to be a tool call
+                    if _buffering and full_content:
+                        yield {"type": "chunk", "text": full_content}
+                    if full_content:
+                        await self.history.add_message(chat_id, "user", event["content"])
+                        await self.history.add_message(chat_id, "assistant", full_content)
+                    else:
+                        logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
+                        yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
+                    yield {"type": "done"}
+                    return
 
             # Tool calls detected → build assistant message and execute tools
             assistant_msg = {
@@ -471,9 +686,35 @@ class NilesAgent:
 
             choice = response.choices[0]
 
-            # No tool calls – return the text response
+            # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
                 content = choice.message.content or ""
+                parsed = self._try_parse_text_tool_call(content) if content else None
+                if parsed:
+                    logger.info("Detected text-based tool call: %s", parsed["name"])
+                    tc_dict, assistant_msg = self._synthetic_tool_call(parsed)
+                    messages.append(assistant_msg)
+                    tc = SimpleNamespace(
+                        id=tc_dict["id"],
+                        function=SimpleNamespace(
+                            name=tc_dict["name"],
+                            arguments=tc_dict["arguments"],
+                        ),
+                    )
+                    result = await self._execute_tool_call(tc, chat_id)
+                    logger.info("Tool result [%s]: %s", tc.id, result)
+                    if isinstance(result, dict) and "choose_phone" in result:
+                        text = result["choose_phone"]
+                        await self.history.add_message(chat_id, "user", event["content"])
+                        await self.history.add_message(chat_id, "assistant", text)
+                        return text
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result, ensure_ascii=False),
+                    })
+                    continue  # Next LLM round to generate natural language response
+
                 if not content:
                     logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
                 # Save both messages together to avoid orphaned records
@@ -605,6 +846,36 @@ class NilesAgent:
             except Exception as e:
                 logger.error("Failed to create event: %s", e)
                 return {"error": "Termin konnte nicht erstellt werden"}
+
+        if name == "list_tasks":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            tasks = await tasks_action.list_tasks(
+                project=args.get("project", ""),
+                include_done=args.get("include_done", False),
+            )
+            if tasks:
+                return {"tasks": tasks, "count": len(tasks)}
+            return {"error": "Keine Aufgaben gefunden"}
+
+        if name == "create_task":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            return await tasks_action.create_task(
+                title=args["title"],
+                description=args.get("description", ""),
+                due_date=args.get("due_date", ""),
+                priority=args.get("priority", 0),
+                project=args.get("project", ""),
+            )
+
+        if name == "complete_task":
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if not tasks_action:
+                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+            return await tasks_action.complete_task(title=args["title"])
 
         # MCP tools (prefixed with mcp__)
         if self.mcp and self.mcp.is_mcp_tool(name):

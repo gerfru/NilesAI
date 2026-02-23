@@ -54,6 +54,32 @@ services:
     depends_on:
       - evolution_postgres
 
+  # Vikunja (Todo/Task Management)
+  vikunja:
+    image: vikunja/vikunja:latest
+    container_name: vikunja
+    # Root required: upstream vikunja image writes to /app/vikunja/files as root;
+    # non-root user causes permission errors on the named volume.
+    user: "0:0"
+    environment:
+      VIKUNJA_DATABASE_TYPE: postgres
+      VIKUNJA_DATABASE_HOST: evolution_postgres
+      VIKUNJA_DATABASE_USER: evolution
+      VIKUNJA_DATABASE_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
+      VIKUNJA_DATABASE_DATABASE: vikunja_db
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://localhost:3457}
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
+      VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
+      VIKUNJA_CORS_ENABLE: "false"
+    # No port exposed -- access only via Caddy reverse proxy (HTTPS :3457)
+    volumes:
+      - vikunja_files:/app/vikunja/files
+    depends_on:
+      - evolution_postgres
+    networks:
+      - niles_network
+    restart: unless-stopped
+
   # Caddy Reverse Proxy (HTTPS termination)
   caddy:
     container_name: niles_caddy
@@ -62,6 +88,7 @@ services:
     ports:
       - "443:443"
       - "8443:8443"
+      - "3457:3457"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -71,6 +98,7 @@ services:
     depends_on:
       - niles_core
       - evolution_api
+      - vikunja
 
   # Niles AI Core
   niles_core:
@@ -101,6 +129,9 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS:-}
+      - VIKUNJA_API_URL=${VIKUNJA_API_URL:-}
+      - VIKUNJA_API_TOKEN=${VIKUNJA_API_TOKEN:-}
+      - FEATURE_VIKUNJA=${FEATURE_VIKUNJA:-false}
     volumes:
       - ../src:/app/src
       - ../config:/app/config:ro
@@ -117,6 +148,7 @@ services:
 
 volumes:
   evolution_postgres:
+  vikunja_files:
   caddy_data:
   caddy_config:
 
