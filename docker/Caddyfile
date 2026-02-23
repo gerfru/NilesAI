@@ -44,3 +44,18 @@ https://localhost:8443, https://192.168.1.x:8443, https://192.168.1.x:8443 {
 	}
 	reverse_proxy evolution_api:8080
 }
+
+# Vikunja (Todos) (:3457)
+https://localhost:3457, https://192.168.1.x:3457, https://192.168.1.x:3457 {
+	tls internal
+	import security_headers
+	log {
+		output file /data/access-vikunja.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+		format json
+		level INFO
+	}
+	reverse_proxy vikunja:3456
+}

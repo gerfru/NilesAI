@@ -56,7 +56,7 @@ echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
 echo "  - Niles Web UI:      https://localhost/ui/login"
 echo "  - Evolution Manager: https://localhost:8443/manager"
-echo "  - Vikunja (Todos):   http://localhost:3456"
+echo "  - Vikunja (Todos):   https://localhost:3457"
 echo "  - Ollama API:        http://localhost:11434/v1"
 echo ""
 
@@ -65,7 +65,7 @@ VIKUNJA_TOKEN=$(grep -s '^VIKUNJA_API_TOKEN=' .env | cut -d= -f2-)
 FEATURE_VIKUNJA=$(grep -s '^FEATURE_VIKUNJA=' .env | cut -d= -f2-)
 if [ "${FEATURE_VIKUNJA:-}" = "true" ] && [ -z "${VIKUNJA_TOKEN:-}" ]; then
     echo "Note: FEATURE_VIKUNJA=true but VIKUNJA_API_TOKEN is not set."
-    echo "  1. Open http://localhost:3456 and create an admin account"
+    echo "  1. Open https://localhost:3457 and create an admin account"
     echo "  2. Go to Settings > API Tokens > Create Token"
     echo "  3. Add token to .env as VIKUNJA_API_TOKEN"
     echo "  4. Restart: ./scripts/start.sh"

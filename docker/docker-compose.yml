@@ -69,8 +69,7 @@ services:
       VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
-    ports:
-      - "3456:3456"
+    # No port exposed -- access only via Caddy reverse proxy (HTTPS :3457)
     volumes:
       - vikunja_files:/app/vikunja/files
     depends_on:
@@ -87,6 +86,7 @@ services:
     ports:
       - "443:443"
       - "8443:8443"
+      - "3457:3457"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -96,6 +96,7 @@ services:
     depends_on:
       - niles_core
       - evolution_api
+      - vikunja
 
   # Niles AI Core
   niles_core:
