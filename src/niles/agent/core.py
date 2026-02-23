@@ -134,6 +134,32 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "daily_overview",
+            "description": (
+                "Gibt eine Tagesuebersicht zurueck: Kalendertermine gruppiert nach Kalender "
+                "plus offene Aufgaben. Verwende dieses Tool wenn der Benutzer fragt "
+                "'was steht morgen an', 'was steht an', 'Uebersicht fuer morgen', "
+                "'Termine und Aufgaben' oder aehnliches."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date_from": {
+                        "type": "string",
+                        "description": "Datum (ISO-Format, z.B. '2026-02-24'). Standard: morgen.",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "Enddatum (ISO). Nur bei Zeitraeumen wie 'diese Woche'. Weglassen fuer einzelnen Tag.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_event",
             "description": "Erstellt einen NEUEN Kalendertermin via CalDAV. Nur verwenden wenn der Benutzer explizit einen neuen Termin anlegen will.",
             "parameters": {
@@ -313,7 +339,6 @@ class NilesAgent:
         self.wa_store = wa_store
         self.tasks = tasks
         self.vikunja_store = vikunja_store
-        self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
         self._source_names_ts: float = 0.0
@@ -495,8 +520,9 @@ class NilesAgent:
         memories = await self.memory.list_all()
         source_names = await self._get_calendar_source_names()
 
+        base_prompt = load_system_prompt()
         system_prompt = build_system_prompt(
-            self.base_prompt,
+            base_prompt,
             memories,
             timezone=self.config.timezone,
             calendar_sources=source_names,
@@ -857,6 +883,36 @@ class NilesAgent:
             if value is not None:
                 return {"key": args["key"], "value": value}
             return {"error": f"Nichts gespeichert unter '{args['key']}'"}
+
+        if name == "daily_overview":
+            result = {}
+
+            # 1. Events holen und nach calendar gruppieren
+            if self.calendar:
+                events = await self.calendar.find_by_query(
+                    query="",
+                    date_from=args.get("date_from", "morgen"),
+                    date_to=args.get("date_to", ""),
+                )
+                calendars: dict[str, list] = {}
+                for ev in events:
+                    cal_name = ev.pop("calendar", "Kalender")
+                    calendars.setdefault(cal_name, []).append(ev)
+                result["calendars"] = calendars
+
+            # 2. Tasks holen
+            tasks_action = await self._resolve_vikunja_tasks(chat_id)
+            if tasks_action:
+                try:
+                    tasks = await tasks_action.list_tasks()
+                    if tasks:
+                        result["tasks"] = tasks
+                except Exception:
+                    logger.warning("Failed to fetch tasks for daily overview")
+
+            if not result:
+                return {"error": "Weder Kalender noch Aufgaben konfiguriert"}
+            return result
 
         if name == "find_event":
             if not self.calendar:
