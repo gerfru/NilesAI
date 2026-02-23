@@ -141,6 +141,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "source_name": None,
         }[key]
 
         result = action._row_to_dict(row)
@@ -159,6 +160,7 @@ class TestRowToDictAllDay:
             "all_day": False,
             "description": None,
             "location": None,
+            "source_name": None,
         }[key]
 
         result = action._row_to_dict(row)
@@ -175,6 +177,7 @@ class TestRowToDictAllDay:
             "all_day": True,
             "description": None,
             "location": None,
+            "source_name": None,
         }[key]
 
         result = action._row_to_dict(row)
