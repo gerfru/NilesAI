@@ -246,10 +246,10 @@ END:VCALENDAR"""
         assert "last_error" in error_call[0][0]
 
 
-class TestSyncICSSSRF:
-    """Regression test: ICS sync must NOT follow redirects (SSRF protection)."""
+class TestSyncICSRedirect:
+    """ICS sync follows redirects (many calendar services require it)."""
 
-    async def test_does_not_follow_redirects(self, manager, pool):
+    async def test_follows_redirects(self, manager, pool):
         source = {
             "id": 9, "name": "Redirect", "url": "https://example.com/cal.ics",
             "source_type": "ics", "auth_user": None, "auth_password": None,
@@ -261,7 +261,6 @@ class TestSyncICSSSRF:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            # Verify follow_redirects=False is passed to client.get
             mock_response = MagicMock()
             mock_response.text = "BEGIN:VCALENDAR\nEND:VCALENDAR"
             mock_response.content = b"BEGIN:VCALENDAR\nEND:VCALENDAR"
@@ -271,7 +270,7 @@ class TestSyncICSSSRF:
             await manager._sync_ics(source)
 
             call_kwargs = mock_client.get.call_args[1]
-            assert call_kwargs["follow_redirects"] is False
+            assert call_kwargs["follow_redirects"] is True
 
 
 class TestSyncCalDAV:
