@@ -228,7 +228,7 @@ class CalendarSourceManager:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url, timeout=_ICS_TIMEOUT, follow_redirects=False,
+                    url, timeout=_ICS_TIMEOUT, follow_redirects=True,
                 )
                 response.raise_for_status()
                 if len(response.content) > _MAX_ICS_SIZE:
