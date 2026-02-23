@@ -41,6 +41,10 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build
 echo "Waiting for services to start..."
 sleep 10
 
+# Ensure Vikunja database exists (idempotent, fails silently if already present)
+docker exec niles_evolution_postgres createdb -U evolution vikunja_db 2>/dev/null && \
+    echo "Created vikunja_db database." || true
+
 # Check status
 echo ""
 echo "Services started."
@@ -52,8 +56,22 @@ echo ""
 echo "Service URLs (HTTPS via Caddy, self-signed):"
 echo "  - Niles Web UI:      https://localhost/ui/login"
 echo "  - Evolution Manager: https://localhost:8443/manager"
-echo "  - LM Studio API:     http://localhost:1234/v1"
+echo "  - Vikunja (Todos):   http://localhost:3456"
+echo "  - Ollama API:        http://localhost:11434/v1"
 echo ""
-echo "Hint: LM Studio must be running for chat to work."
+
+# Vikunja setup hint (first-time only)
+VIKUNJA_TOKEN=$(grep -s '^VIKUNJA_API_TOKEN=' .env | cut -d= -f2-)
+FEATURE_VIKUNJA=$(grep -s '^FEATURE_VIKUNJA=' .env | cut -d= -f2-)
+if [ "${FEATURE_VIKUNJA:-}" = "true" ] && [ -z "${VIKUNJA_TOKEN:-}" ]; then
+    echo "Note: FEATURE_VIKUNJA=true but VIKUNJA_API_TOKEN is not set."
+    echo "  1. Open http://localhost:3456 and create an admin account"
+    echo "  2. Go to Settings > API Tokens > Create Token"
+    echo "  3. Add token to .env as VIKUNJA_API_TOKEN"
+    echo "  4. Restart: ./scripts/start.sh"
+    echo ""
+fi
+
+echo "Hint: Ollama must be running for chat to work."
 echo ""
 echo "Niles AI is ready."
