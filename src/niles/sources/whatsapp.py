@@ -15,11 +15,17 @@ TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
 
 
 def _is_niles_trigger(text: str) -> bool:
-    """Check if a message starts with a Niles trigger phrase."""
+    """Check if a message starts with a Niles trigger phrase.
+
+    Requires a word boundary after the phrase to avoid false positives
+    like "Nilesh" or "nilesarmy".
+    """
     lower = text.strip().lower()
     for phrase in TRIGGER_PHRASES:
         if lower.startswith(phrase):
-            return True
+            rest = lower[len(phrase):]
+            if not rest or not rest[0].isalpha():
+                return True
     return False
 
 
@@ -38,9 +44,9 @@ def _strip_trigger(text: str) -> str:
     lower = text.strip().lower()
     for phrase in TRIGGER_PHRASES:
         if lower.startswith(phrase):
-            rest = text.strip()[len(phrase):]
-            # Strip common separators: comma, colon, dash, whitespace
-            return rest.lstrip(" ,:-").strip()
+            rest = lower[len(phrase):]
+            if not rest or not rest[0].isalpha():
+                return text.strip()[len(phrase):].lstrip(" ,:-").strip()
     return text.strip()
 
 

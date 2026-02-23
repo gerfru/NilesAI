@@ -149,7 +149,7 @@ class WhatsAppAction:
                 data = response.json()
                 if data and isinstance(data, list):
                     return data[0].get("ownerJid")
-            except (httpx.HTTPError, IndexError, KeyError) as e:
+            except (httpx.HTTPError, IndexError, KeyError, ValueError) as e:
                 logger.error(
                     "Failed to get ownerJid for %s: %s", instance_name, e,
                 )
