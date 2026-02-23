@@ -123,10 +123,18 @@ class TasksAction:
         if description:
             payload["description"] = description
         if due_date:
-            # Ensure ISO format with timezone
-            if "T" in due_date and not due_date.endswith("Z"):
+            # Normalize to full ISO datetime for Vikunja API
+            if "T" not in due_date:
+                # Date-only like "2026-02-24" → add midnight UTC
+                due_date = due_date + "T00:00:00Z"
+            elif not due_date.endswith("Z") and "+" not in due_date:
                 due_date += ":00+00:00"
             payload["due_date"] = due_date
+        # LLMs sometimes pass priority as string
+        try:
+            priority = int(priority)
+        except (TypeError, ValueError):
+            priority = 0
         if priority > 0:
             payload["priority"] = min(priority, 4)
 
@@ -137,7 +145,9 @@ class TasksAction:
                 json=payload,
                 timeout=10,
             )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                logger.error("Vikunja create_task %s: %s", resp.status_code, resp.text[:200])
+                return {"error": f"Aufgabe konnte nicht erstellt werden (HTTP {resp.status_code})"}
             task = resp.json()
 
         return {
