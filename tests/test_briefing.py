@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -314,7 +314,6 @@ class TestOverdueTodayDeduplication:
         assert "Spätaufgabe" in result
 
         # Frühaufgabe must NOT appear in the "Heute fällig" section
-        ueberfaellig_idx = result.index("Überfällig")
         heute_faellig_idx = result.index("Heute fällig")
         heute_section = result[heute_faellig_idx:]
         assert "Frühaufgabe" not in heute_section
