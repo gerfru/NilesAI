@@ -158,6 +158,38 @@ class TestWhatsAppAction:
 
         assert result == []
 
+    async def test_fetch_messages_handles_string_timestamp(self, action):
+        """messageTimestamp may be a string — must be cast to int."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "messages": {
+                "records": [
+                    {
+                        "key": {"fromMe": False},
+                        "pushName": "Anna",
+                        "message": {"conversation": "Hey!"},
+                        "messageTimestamp": "1771900000",  # string!
+                    },
+                ],
+            },
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        assert len(result) == 1
+        assert result[0]["text"] == "Hey!"
+        assert result[0]["timestamp"] == 1771900000  # int, not string
+
     def test_headers(self, action):
         """_headers returns correct API key."""
         assert action._headers() == {"apikey": VALID_TOKEN}
@@ -203,6 +235,30 @@ class TestWebhookIncoming:
         result = await whatsapp_webhook(request, token=VALID_TOKEN)
 
         assert result == {"status": "received", "sender": "436601234567"}
+
+    async def test_group_message_ignored(self, mock_app):
+        """Group messages (JID ending in @g.us) are ignored."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-42",
+            "data": {
+                "key": {
+                    "remoteJid": "120363044917396064@g.us",
+                    "fromMe": False,
+                    "id": "MSG_GRP",
+                },
+                "message": {"conversation": "Hi everyone"},
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        assert result == {"status": "ignored", "reason": "group message"}
+        mock_app.state.agent.process_event.assert_not_called()
 
     async def test_incoming_never_auto_replies(self, mock_app, webhook_payload):
         """Incoming messages: no LLM call, no reply."""
