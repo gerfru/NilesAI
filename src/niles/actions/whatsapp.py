@@ -107,12 +107,13 @@ class WhatsAppAction:
                 resp.raise_for_status()
                 data = resp.json()
                 records = data.get("messages", {}).get("records", [])
-                logger.debug(
-                    "findMessages %s: %d records (keys: %s)",
-                    remote_jid,
-                    len(records),
-                    list(data.get("messages", {}).keys()) if isinstance(data.get("messages"), dict) else type(data.get("messages")),
-                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    msgs = data.get("messages")
+                    keys_info = list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
+                    logger.debug(
+                        "findMessages %s: %d records (keys: %s)",
+                        remote_jid, len(records), keys_info,
+                    )
             except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
