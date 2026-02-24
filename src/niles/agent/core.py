@@ -71,7 +71,8 @@ TOOLS = [
             "description": (
                 "Liest WhatsApp-Nachrichten aus einem Chat. "
                 "Suche nach Kontaktname oder Telefonnummer. "
-                "Gibt eingehende UND ausgehende Nachrichten zurueck (Konversation). "
+                "Gibt einen formatierten Chat-Verlauf zurueck "
+                "(Transcript mit Zeitstempel, Absender und Text). "
                 "Nutze dieses Tool wenn der Benutzer fragt was ihm jemand "
                 "geschrieben hat oder die letzten Nachrichten sehen will."
             ),
