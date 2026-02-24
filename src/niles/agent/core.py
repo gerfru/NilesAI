@@ -894,6 +894,13 @@ class NilesAgent:
             messages = await self.whatsapp_inbox.get_messages(
                 contact=contact_name, phone=phone, limit=limit,
             )
+            # Fallback: resolve contact name → phone via contacts, search by phone
+            if not messages and contact_name and self.contacts:
+                resolved = await self.contacts.find_by_name(contact_name)
+                if resolved and resolved.get("phone"):
+                    messages = await self.whatsapp_inbox.get_messages(
+                        phone=resolved["phone"], limit=limit,
+                    )
             if messages:
                 return {"messages": messages, "count": len(messages)}
             return {"error": "Keine WhatsApp-Nachrichten gefunden"}
