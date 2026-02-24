@@ -10,7 +10,7 @@ import httpx
 from openai import AsyncOpenAI
 
 from ..actions.calendar import CalendarAction
-from ..actions.contacts import ContactsAction
+from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
@@ -69,7 +69,7 @@ TOOLS = [
         "function": {
             "name": "get_whatsapp_messages",
             "description": (
-                "Liest WhatsApp-Nachrichten aus einem Chat. "
+                "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
                 "Suche nach Kontaktname oder Telefonnummer. "
                 "Gibt einen formatierten Chat-Verlauf zurueck "
                 "(Transcript mit Zeitstempel, Absender und Text). "
@@ -885,7 +885,7 @@ class NilesAgent:
             # Resolve contact → phone
             phone = None
             if contact and contact.replace("+", "").replace(" ", "").isdigit():
-                phone = contact
+                phone = normalize_phone(contact)
             elif contact:
                 resolved = await self.contacts.find_by_name(contact)
                 if not resolved or not resolved.get("phone"):
@@ -903,7 +903,10 @@ class NilesAgent:
                 remote_jid=jid, limit=limit, instance=instance,
             )
             if not messages:
-                return {"error": "Keine WhatsApp-Nachrichten gefunden"}
+                return {
+                    "error": "Keine WhatsApp-Nachrichten gefunden",
+                    "hint": "Es werden nur Nachrichten der letzten 30 Tage angezeigt.",
+                }
 
             # Format as readable chat transcript for the LLM
             contact_name = contact if not contact.replace("+", "").replace(" ", "").isdigit() else (

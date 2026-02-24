@@ -406,6 +406,37 @@ class TestAgentGetWhatsAppMessages:
             instance=None,
         )
 
+    async def test_get_messages_by_phone_normalizes(self):
+        """Phone with +, spaces must be normalized before JID construction."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Hi", "timestamp": 1771900000, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_norm"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "+43 660 123 4567"})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
     async def test_get_messages_strips_at_prefix(self):
         """LLM sometimes sends '@Name' — the @ prefix must be stripped."""
         from niles.agent.core import NilesAgent
