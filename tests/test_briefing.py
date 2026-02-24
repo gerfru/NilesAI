@@ -99,7 +99,6 @@ class TestGenerateDaily:
         ]
         generator._get_events_for_range = AsyncMock(return_value=events)
         generator._get_open_tasks = AsyncMock(return_value=[])
-        generator._get_overdue_tasks = AsyncMock(return_value=[])
 
         result = await generator.generate_daily()
         assert "Guten Morgen" in result
@@ -113,7 +112,6 @@ class TestGenerateDaily:
     async def test_no_events(self, generator):
         generator._get_events_for_range = AsyncMock(return_value=[])
         generator._get_open_tasks = AsyncMock(return_value=[])
-        generator._get_overdue_tasks = AsyncMock(return_value=[])
 
         result = await generator.generate_daily()
         assert "Keine Termine heute" in result
@@ -123,7 +121,6 @@ class TestGenerateDaily:
         overdue = [{"title": "Steuererklärung", "id": 1, "due_date": "2026-02-20T00:00:00Z"}]
         generator._get_events_for_range = AsyncMock(return_value=[])
         generator._get_open_tasks = AsyncMock(return_value=overdue)
-        generator._get_overdue_tasks = AsyncMock(return_value=overdue)
 
         result = await generator.generate_daily()
         assert "Überfällig" in result
@@ -135,7 +132,6 @@ class TestGenerateDaily:
         events = [_make_event("Meeting", hour=10)]
         generator._get_events_for_range = AsyncMock(return_value=events)
         generator._get_open_tasks = AsyncMock(return_value=[])
-        generator._get_overdue_tasks = AsyncMock(return_value=[])
 
         result = await generator.generate_daily()
         assert "Meeting" in result
