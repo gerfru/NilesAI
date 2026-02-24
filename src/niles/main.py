@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .actions.briefing import BriefingGenerator
 from .actions.calendar import CalendarAction
 from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
@@ -47,6 +48,22 @@ def _configure_logging(level: str = "INFO") -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
     )
+
+
+def _parse_briefing_time(time_str: str) -> tuple[int, int]:
+    """Parse 'HH:MM' string to (hour, minute) tuple."""
+    try:
+        parts = time_str.strip().split(":")
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+        return hour, minute
+    except (ValueError, IndexError):
+        logger.warning(
+            "Ungültige Briefing-Zeit '%s', verwende 07:30", time_str
+        )
+        return 7, 30
 
 
 # Default logging until settings are loaded
@@ -171,6 +188,50 @@ async def lifespan(app: FastAPI):
             len(calendar_sources),
         )
 
+    # Briefing Generator
+    from .jobs.briefing import send_daily_briefing, send_weekly_briefing
+
+    briefing_generator = BriefingGenerator(
+        pool=pool,
+        timezone=settings.timezone,
+        vikunja_api_url=settings.vikunja_api_url,
+        vikunja_api_token=settings.vikunja_api_token,
+    )
+
+    # Daily briefing: Mo-Fr (number auto-detected at runtime)
+    if settings.feature_briefing_daily:
+        hour, minute = _parse_briefing_time(settings.briefing_daily_time)
+        scheduler.add_job(
+            send_daily_briefing,
+            "cron",
+            args=[app.state],
+            day_of_week="mon-fri",
+            hour=hour,
+            minute=minute,
+            id="briefing_daily",
+            max_instances=1,
+            misfire_grace_time=600,
+            timezone=settings.timezone,
+        )
+        logger.info("Daily briefing scheduled Mo-Fr at %02d:%02d", hour, minute)
+
+    # Weekly overview: Monday (number auto-detected at runtime)
+    if settings.feature_briefing_weekly:
+        hour, minute = _parse_briefing_time(settings.briefing_weekly_time)
+        scheduler.add_job(
+            send_weekly_briefing,
+            "cron",
+            args=[app.state],
+            day_of_week="mon",
+            hour=hour,
+            minute=minute,
+            id="briefing_weekly",
+            max_instances=1,
+            misfire_grace_time=600,
+            timezone=settings.timezone,
+        )
+        logger.info("Weekly briefing scheduled Mon at %02d:%02d", hour, minute)
+
     scheduler.start()
 
     # MCP Servers
@@ -219,6 +280,7 @@ async def lifespan(app: FastAPI):
     app.state.wa_store = wa_store
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
+    app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
 
     yield
