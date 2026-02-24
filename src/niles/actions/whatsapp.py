@@ -87,6 +87,12 @@ class WhatsAppAction:
                 resp.raise_for_status()
                 data = resp.json()
                 records = data.get("messages", {}).get("records", [])
+                logger.debug(
+                    "findMessages %s: %d records (keys: %s)",
+                    remote_jid,
+                    len(records),
+                    list(data.get("messages", {}).keys()) if isinstance(data.get("messages"), dict) else type(data.get("messages")),
+                )
             except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
@@ -95,7 +101,10 @@ class WhatsAppAction:
         cutoff = time.time() - (30 * 86400)
         messages = []
         for rec in records:
-            ts = rec.get("messageTimestamp", 0)
+            try:
+                ts = int(rec.get("messageTimestamp", 0))
+            except (ValueError, TypeError):
+                continue
             if ts < cutoff:
                 continue
             msg = rec.get("message", {})
