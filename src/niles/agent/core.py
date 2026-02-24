@@ -4,13 +4,14 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
 from openai import AsyncOpenAI
 
 from ..actions.calendar import CalendarAction
-from ..actions.contacts import ContactsAction
+from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
@@ -61,6 +62,36 @@ TOOLS = [
                     },
                 },
                 "required": ["to", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_whatsapp_messages",
+            "description": (
+                "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
+                "Suche nach Kontaktname oder Telefonnummer. "
+                "Gibt einen formatierten Chat-Verlauf zurueck "
+                "(Transcript mit Zeitstempel, Absender und Text). "
+                "Nutze dieses Tool wenn der Benutzer fragt was ihm jemand "
+                "geschrieben hat oder die letzten Nachrichten sehen will."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {
+                        "type": "string",
+                        "description": (
+                            "Kontaktname oder Telefonnummer (erforderlich)."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximale Anzahl (Standard: 10, Max: 50).",
+                    },
+                },
+                "required": ["contact"],
             },
         },
     },
@@ -512,6 +543,10 @@ class NilesAgent:
         if not self.config.feature_vikunja:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
+        # Remove WhatsApp tools when no WhatsApp action is configured
+        if not self.whatsapp:
+            _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _wa_tools]
         if self.mcp:
             all_tools.extend(self.mcp.get_openai_tools())
         return chat_id, messages, all_tools
@@ -847,6 +882,52 @@ class NilesAgent:
                 to=resolved_number, text=text, instance=instance,
             )
             return {"status": "sent", "to": resolved_number} if "error" not in result else result
+
+        if name == "get_whatsapp_messages":
+            contact = args.get("contact", "").strip().lstrip("@")
+            limit = min(int(args.get("limit", 10)), 50)
+
+            # Resolve contact → phone
+            phone = None
+            if contact and contact.replace("+", "").replace(" ", "").isdigit():
+                phone = normalize_phone(contact)
+            elif contact:
+                resolved = await self.contacts.find_by_name(contact)
+                if not resolved or not resolved.get("phone"):
+                    return {"error": f"Kontakt '{contact}' nicht gefunden"}
+                phone = resolved["phone"]
+
+            if not phone:
+                return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
+
+            # Build JID and resolve per-user instance
+            jid = f"{phone}@s.whatsapp.net"
+            instance = await self._resolve_wa_instance(chat_id)
+
+            messages = await self.whatsapp.fetch_messages(
+                remote_jid=jid, limit=limit, instance=instance,
+            )
+            if not messages:
+                return {
+                    "error": "Keine WhatsApp-Nachrichten gefunden",
+                    "hint": "Es werden nur Nachrichten der letzten 30 Tage angezeigt.",
+                }
+
+            # Format as readable chat transcript for the LLM
+            contact_name = contact if not contact.replace("+", "").replace(" ", "").isdigit() else (
+                messages[0].get("push_name") or phone
+            )
+            lines = []
+            for msg in messages:
+                ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc)
+                who = "Du" if msg["from_me"] else contact_name
+                lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
+            transcript = "\n".join(lines)
+            return {
+                "chat_with": contact_name,
+                "count": len(messages),
+                "transcript": transcript,
+            }
 
         if name == "remember":
             await self.memory.set(args["key"], args["value"])

@@ -55,13 +55,201 @@ class TestWhatsAppAction:
             call_url = mock_client.post.call_args[0][0]
             assert "niles-wa-5" in call_url
 
+    async def test_fetch_messages(self, action):
+        """fetch_messages calls Evolution API findMessages endpoint."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "messages": {
+                "total": 1,
+                "records": [
+                    {
+                        "key": {
+                            "id": "MSG001",
+                            "fromMe": False,
+                            "remoteJid": "436601234567@s.whatsapp.net",
+                        },
+                        "pushName": "Max",
+                        "message": {"conversation": "Hallo!"},
+                        "messageTimestamp": 1771900000,
+                    },
+                ],
+            },
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+                limit=10,
+                instance="niles-wa-1",
+            )
+
+        assert len(result) == 1
+        assert result[0]["text"] == "Hallo!"
+        assert result[0]["from_me"] is False
+        assert result[0]["push_name"] == "Max"
+        # Verify correct URL
+        call_url = mock_client.post.call_args[0][0]
+        assert "/chat/findMessages/niles-wa-1" in call_url
+
+    async def test_fetch_messages_sends_30day_cutoff(self, action):
+        """API request includes 30-day timestamp filter."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"messages": {"records": []}}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        payload = mock_client.post.call_args[1]["json"]
+        ts_filter = payload["where"]["messageTimestamp"]
+        assert "gte" in ts_filter
+        assert "lte" in ts_filter
+        # Values should be ISO date strings
+        from datetime import datetime
+        gte_dt = datetime.fromisoformat(ts_filter["gte"])
+        lte_dt = datetime.fromisoformat(ts_filter["lte"])
+        # gte should be ~30 days ago, lte should be ~now
+        assert (lte_dt - gte_dt).days in (29, 30)
+
+    async def test_fetch_messages_media_placeholder(self, action):
+        """Media messages without caption get a placeholder."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "messages": {
+                "records": [
+                    {
+                        "key": {"fromMe": False},
+                        "pushName": "Img",
+                        "message": {"imageMessage": {"url": "..."}},
+                        "messageTimestamp": 1771900000,
+                    },
+                ],
+            },
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        assert len(result) == 1
+        assert result[0]["text"] == "[Bild]"
+
+    async def test_fetch_messages_trims_to_limit(self, action):
+        """Only the N most recent messages are returned."""
+        records = [
+            {
+                "key": {"fromMe": False},
+                "pushName": "X",
+                "message": {"conversation": f"Msg {i}"},
+                "messageTimestamp": 1771900000 + i,
+            }
+            for i in range(5)
+        ]
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"messages": {"records": records}}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+                limit=3,
+            )
+
+        assert len(result) == 3
+        # Should be the 3 most recent (Msg 2, 3, 4)
+        assert result[0]["text"] == "Msg 2"
+        assert result[2]["text"] == "Msg 4"
+
+    async def test_fetch_messages_handles_string_timestamp(self, action):
+        """messageTimestamp may be a string — must be cast to int."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "messages": {
+                "records": [
+                    {
+                        "key": {"fromMe": False},
+                        "pushName": "Anna",
+                        "message": {"conversation": "Hey!"},
+                        "messageTimestamp": "1771900000",  # string!
+                    },
+                ],
+            },
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        assert len(result) == 1
+        assert result[0]["text"] == "Hey!"
+        assert result[0]["timestamp"] == 1771900000  # int, not string
+
+    async def test_fetch_messages_lid_filter(self, action):
+        """Payload includes both remoteJid and remoteJidAlt for LID support."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"messages": {"records": []}}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        payload = mock_client.post.call_args[1]["json"]
+        key_filter = payload["where"]["key"]
+        assert key_filter["remoteJid"] == "436601234567@s.whatsapp.net"
+        assert key_filter["remoteJidAlt"] == "436601234567@s.whatsapp.net"
+
     def test_headers(self, action):
         """_headers returns correct API key."""
         assert action._headers() == {"apikey": VALID_TOKEN}
 
 
-class TestWebhookPerUserRouting:
-    """Test that webhook routes messages to the correct per-user chat ID."""
+class TestWebhookIncoming:
+    """Test that webhook handles incoming messages correctly."""
 
     @pytest.fixture
     def mock_app(self):
@@ -70,7 +258,6 @@ class TestWebhookPerUserRouting:
         app.state.whatsapp_action = AsyncMock()
         app.state.settings = _make_settings()
         app.state.wa_store = AsyncMock()
-        app.state.history = AsyncMock()
         return app
 
     @pytest.fixture
@@ -82,6 +269,7 @@ class TestWebhookPerUserRouting:
                 "key": {
                     "remoteJid": "436601234567@s.whatsapp.net",
                     "fromMe": False,
+                    "id": "MSG001",
                 },
                 "message": {
                     "conversation": "Hello Niles",
@@ -89,66 +277,112 @@ class TestWebhookPerUserRouting:
             },
         }
 
-    async def test_per_user_routing(self, mock_app, webhook_payload):
-        """Message from a per-user instance is stored with that user's chat_id."""
+    async def test_incoming_returns_received(self, mock_app, webhook_payload):
+        """Incoming message returns received status with sender phone."""
         from niles.sources.whatsapp import whatsapp_webhook
 
-        mock_app.state.wa_store.get_by_instance.return_value = {
-            "user_id": 42,
-            "instance_name": "niles-wa-42",
-            "phone_number": "436601234567",
-            "status": "connected",
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        assert result == {"status": "received", "sender": "436601234567"}
+
+    async def test_group_message_ignored(self, mock_app):
+        """Group messages (JID ending in @g.us) are ignored."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-42",
+            "data": {
+                "key": {
+                    "remoteJid": "120363044917396064@g.us",
+                    "fromMe": False,
+                    "id": "MSG_GRP",
+                },
+                "message": {"conversation": "Hi everyone"},
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        assert result == {"status": "ignored", "reason": "group message"}
+        mock_app.state.agent.process_event.assert_not_called()
+
+    async def test_webhook_lid_jid_uses_alt(self, mock_app):
+        """Webhook with @lid remoteJid falls back to remoteJidAlt."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-1",
+            "data": {
+                "key": {
+                    "remoteJid": "201846417309877@lid",
+                    "remoteJidAlt": "436601234567@s.whatsapp.net",
+                    "fromMe": False,
+                    "id": "MSG_LID",
+                    "addressingMode": "lid",
+                },
+                "message": {"conversation": "Hi from LID"},
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        # Should use phone from remoteJidAlt, not the LID
+        assert result == {"status": "received", "sender": "436601234567"}
+
+    async def test_webhook_lid_self_chat(self, mock_app):
+        """Self-chat with LID JID uses remoteJidAlt for reply."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        mock_app.state.agent.process_event.return_value = "Antwort"
+        mock_app.state.whatsapp_action.send_message.return_value = {
+            "key": {"id": "REPLY_LID"}
         }
 
         request = AsyncMock()
         request.app = mock_app
-        request.json.return_value = webhook_payload
-
-        await whatsapp_webhook(request, token=VALID_TOKEN)
-
-        # Verify history stored with per-user chat_id
-        mock_app.state.history.add_message.assert_called_once_with(
-            "web-user-42", "user", "Hello Niles",
-        )
-
-    async def test_fallback_routing(self, mock_app, webhook_payload):
-        """Unknown instance falls back to wa-{sender} chat_id."""
-        from niles.sources.whatsapp import whatsapp_webhook
-
-        mock_app.state.wa_store.get_by_instance.return_value = None
-
-        request = AsyncMock()
-        request.app = mock_app
-        request.json.return_value = webhook_payload
-
-        await whatsapp_webhook(request, token=VALID_TOKEN)
-
-        # Verify history stored with fallback chat_id
-        mock_app.state.history.add_message.assert_called_once_with(
-            "wa-436601234567", "user", "Hello Niles",
-        )
-
-    async def test_incoming_message_never_auto_replies(self, mock_app, webhook_payload):
-        """Incoming messages from others are stored in history, no LLM call, no reply."""
-        from niles.sources.whatsapp import whatsapp_webhook
-
-        mock_app.state.wa_store.get_by_instance.return_value = {
-            "user_id": 42,
-            "instance_name": "niles-wa-42",
-            "phone_number": "436601234567",
-            "status": "connected",
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-1",
+            "data": {
+                "key": {
+                    "remoteJid": "201846417309877@lid",
+                    "remoteJidAlt": "4366012345678@s.whatsapp.net",
+                    "fromMe": True,
+                    "id": "MSG_SELF_LID",
+                    "addressingMode": "lid",
+                },
+                "message": {"conversation": "Hey Niles, was gibt es neues?"},
+            },
         }
 
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        assert result == {"status": "processed", "trigger": "self-chat"}
+        # Reply should use phone-based JID, not LID
+        send_call = mock_app.state.whatsapp_action.send_message
+        send_call.assert_called_once()
+        assert send_call.call_args[1]["to"] == "4366012345678@s.whatsapp.net"
+
+    async def test_incoming_never_auto_replies(self, mock_app, webhook_payload):
+        """Incoming messages: no LLM call, no reply."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
         request = AsyncMock()
         request.app = mock_app
         request.json.return_value = webhook_payload
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Message stored in history (no LLM call, no reply)
-        mock_app.state.history.add_message.assert_called_once_with(
-            "web-user-42", "user", "Hello Niles",
-        )
         mock_app.state.agent.process_event.assert_not_called()
         mock_app.state.whatsapp_action.send_message.assert_not_called()
 
@@ -249,4 +483,325 @@ class TestAgentPerUserInstance:
         assert result == {"status": "sent", "to": "436601234567"}
         whatsapp_mock.send_message.assert_called_once_with(
             to="436601234567", text="Hi", instance=None,
+        )
+
+
+class TestAgentGetWhatsAppMessages:
+    """Test that agent get_whatsapp_messages queries Evolution API."""
+
+    async def test_get_messages_by_contact_name(self):
+        """Contact name is resolved to phone, then fetched from Evolution API."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max Mustermann",
+            "phone": "436601234567",
+            "phones": [{"type": "mobile", "number": "436601234567"}],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {
+                "from_me": False,
+                "text": "Treffen wir uns morgen?",
+                "timestamp": 1771900000,
+                "push_name": "Max",
+            },
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_1"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        assert result["chat_with"] == "Max"
+        assert "Treffen wir uns morgen?" in result["transcript"]
+        assert "Max: Treffen wir uns morgen?" in result["transcript"]
+        contacts_mock.find_by_name.assert_called_once_with("Max")
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
+    async def test_get_messages_by_phone(self):
+        """Phone number goes directly to Evolution API (no contacts lookup)."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {
+                "from_me": False,
+                "text": "Test",
+                "timestamp": 1771900000,
+                "push_name": "",
+            },
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_2"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "436601234567"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        contacts_mock.find_by_name.assert_not_called()
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
+    async def test_get_messages_by_phone_normalizes(self):
+        """Phone with +, spaces must be normalized before JID construction."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Hi", "timestamp": 1771900000, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_norm"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "+43 660 123 4567"})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
+    async def test_get_messages_strips_at_prefix(self):
+        """LLM sometimes sends '@Name' — the @ prefix must be stripped."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Chrissi",
+            "phone": "436645225348",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Hi!", "timestamp": 1771900000, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_at"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "@Chrissi"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        contacts_mock.find_by_name.assert_called_once_with("Chrissi")
+
+    async def test_get_messages_unknown_contact(self):
+        """Unknown contact name returns error."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = None
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_3"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Nobody"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert "error" in result
+        assert "Nobody" in result["error"]
+
+    async def test_get_messages_no_contact_returns_error(self):
+        """Empty contact parameter returns error."""
+        from niles.agent.core import NilesAgent
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_4"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert "error" in result
+
+    async def test_get_messages_limit_capped(self):
+        """Limit is capped at 50."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max",
+            "phone": "436601234567",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = []
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_5"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max", "limit": 999})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=50,
+            instance=None,
+        )
+
+    async def test_get_messages_limit_as_string(self):
+        """LLM may pass limit as string — must be cast to int."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max",
+            "phone": "436601234567",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = []
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_str"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max", "limit": "10"})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
+    async def test_get_messages_uses_per_user_instance(self):
+        """Per-user instance is resolved and passed to fetch_messages."""
+        from niles.agent.core import NilesAgent
+
+        wa_store_mock = AsyncMock()
+        wa_store_mock.get_session.return_value = {
+            "user_id": 5,
+            "instance_name": "niles-wa-5",
+            "phone_number": "436601234567",
+            "status": "connected",
+        }
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max",
+            "phone": "436609999999",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Hi", "timestamp": 1771900000, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            wa_store=wa_store_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_inst"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max"})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-5")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436609999999@s.whatsapp.net",
+            limit=10,
+            instance="niles-wa-5",
         )
