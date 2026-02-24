@@ -77,11 +77,19 @@ class WhatsAppAction:
         """
         inst = instance or self.instance
         url = f"{self.base_url}/chat/findMessages/{inst}"
-        cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
+        # Evolution API expects ISO date strings for gte/lte, converts to unix internally
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        cutoff_dt = datetime.fromtimestamp(
+            time.time() - (self._MAX_AGE_DAYS * 86400), tz=timezone.utc,
+        )
         payload = {
             "where": {
                 "key": {"remoteJid": remote_jid},
-                "messageTimestamp": {"gte": cutoff},
+                "messageTimestamp": {
+                    "gte": cutoff_dt.isoformat(),
+                    "lte": now.isoformat(),
+                },
             },
         }
         async with httpx.AsyncClient() as client:
@@ -102,12 +110,15 @@ class WhatsAppAction:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
 
-        # Transform to clean format (30-day filter via API where clause)
+        # Transform to clean format + 30-day client-side filter
+        cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
         messages = []
         for rec in records:
             try:
                 ts = int(rec.get("messageTimestamp", 0))
             except (ValueError, TypeError):
+                continue
+            if ts < cutoff:
                 continue
             msg = rec.get("message", {})
             text = (
