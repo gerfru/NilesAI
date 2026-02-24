@@ -21,6 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .actions.briefing import BriefingGenerator
 from .actions.calendar import CalendarAction
+from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
@@ -189,8 +190,6 @@ async def lifespan(app: FastAPI):
         )
 
     # Briefing Generator
-    from .jobs.briefing import send_daily_briefing, send_weekly_briefing
-
     briefing_generator = BriefingGenerator(
         pool=pool,
         timezone=settings.timezone,
