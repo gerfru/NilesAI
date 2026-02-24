@@ -111,6 +111,9 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     key = data.get("key", {})
     is_from_me = key.get("fromMe", False)
     remote_jid = key.get("remoteJid", "")
+    # WhatsApp LID addressing: prefer phone-based JID over opaque LID
+    if remote_jid.endswith("@lid"):
+        remote_jid = key.get("remoteJidAlt", remote_jid)
     msg_id = key.get("id", "")
     message = data.get("message", {})
 
@@ -183,37 +186,13 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
         return {"status": "processed", "trigger": "self-chat"}
 
+    # --- Group messages: ignore (not supported yet) ---
+    if remote_jid.endswith("@g.us"):
+        return {"status": "ignored", "reason": "group message"}
+
     # --- Incoming messages from other people ---
-    # Store in history for context (available when user asks later via
-    # web-chat or self-chat), but do NOT call the LLM — no auto-reply.
+    # Evolution API stores messages internally — no local DB needed.
+    # Agent queries them via get_whatsapp_messages → Evolution API findMessages.
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-    logger.info("WhatsApp message from %s: %s", sender, text[:100])
-
-    # Determine per-user chat ID from Evolution instance name
-    instance_name = payload.get("instance")
-    wa_store = getattr(request.app.state, "wa_store", None)
-    chat_id = None
-
-    if wa_store and instance_name:
-        session = await wa_store.get_by_instance(instance_name)
-        if session:
-            chat_id = f"web-user-{session['user_id']}"
-        else:
-            logger.warning(
-                "Webhook from unknown instance '%s' — falling back to global instance",
-                instance_name,
-            )
-
-    # Fallback: use sender phone as chat ID (legacy global instance)
-    if not chat_id:
-        chat_id = f"wa-{sender}"
-
-    # Store in conversation history (no LLM call, no response generated)
-    history = request.app.state.history
-    try:
-        await history.add_message(chat_id, "user", text)
-        logger.info("WhatsApp message from %s stored in history (chat_id=%s)", sender, chat_id)
-    except Exception:
-        logger.exception("Failed to store WhatsApp message from %s", sender)
-
-    return {"status": "processed"}
+    logger.info("WhatsApp message from %s (stored by Evolution API)", sender)
+    return {"status": "received", "sender": sender}

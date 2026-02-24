@@ -1,6 +1,8 @@
 """WhatsApp message sending and instance management via Evolution API."""
 
 import logging
+import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -53,6 +55,115 @@ class WhatsAppAction:
             except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to send message to %s: %s", to, e)
                 return {"error": str(e)}
+
+    _MAX_AGE_DAYS = 30
+
+    async def fetch_messages(
+        self,
+        remote_jid: str,
+        limit: int = 50,
+        instance: str | None = None,
+    ) -> list[dict]:
+        """Fetch message history from Evolution API (last 30 days).
+
+        Args:
+            remote_jid: WhatsApp JID (e.g. "436601234567@s.whatsapp.net")
+            limit: Maximum number of messages to return
+            instance: Evolution API instance (defaults to global)
+
+        Returns:
+            List of message dicts with keys: from_me, text, timestamp, push_name.
+            Sorted by timestamp ascending (oldest first), trimmed to `limit`
+            most recent messages.
+        """
+        inst = instance or self.instance
+        url = f"{self.base_url}/chat/findMessages/{inst}"
+        # Evolution API expects ISO date strings for gte/lte, converts to unix internally
+        now = datetime.now(timezone.utc)
+        cutoff_dt = datetime.fromtimestamp(
+            time.time() - (self._MAX_AGE_DAYS * 86400), tz=timezone.utc,
+        )
+        # Both remoteJid AND remoteJidAlt must be set.  Evolution API's
+        # Baileys override (PR #2249) combines them with OR so the query
+        # matches old-style phone JIDs *and* new LID-addressed messages
+        # where the phone number lives in key.remoteJidAlt.
+        payload = {
+            "where": {
+                "key": {
+                    "remoteJid": remote_jid,
+                    "remoteJidAlt": remote_jid,
+                },
+                "messageTimestamp": {
+                    "gte": cutoff_dt.isoformat(),
+                    "lte": now.isoformat(),
+                },
+            },
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    url, json=payload, headers=self._headers(), timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                records = data.get("messages", {}).get("records", [])
+                if logger.isEnabledFor(logging.DEBUG):
+                    msgs = data.get("messages")
+                    keys_info = list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
+                    logger.debug(
+                        "findMessages %s: %d records (keys: %s)",
+                        remote_jid, len(records), keys_info,
+                    )
+            except (httpx.HTTPError, ValueError) as e:
+                logger.error("Failed to fetch messages from %s: %s", inst, e)
+                return []
+
+        # Transform to clean format + 30-day client-side filter
+        cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
+        messages = []
+        for rec in records:
+            try:
+                ts = int(rec.get("messageTimestamp", 0))
+            except (ValueError, TypeError):
+                continue
+            if ts < cutoff:
+                continue
+            msg = rec.get("message", {})
+            text = (
+                msg.get("conversation")
+                or msg.get("extendedTextMessage", {}).get("text")
+                or msg.get("imageMessage", {}).get("caption")
+                or msg.get("videoMessage", {}).get("caption")
+                or msg.get("documentMessage", {}).get("caption")
+            )
+            # For media without caption, add a placeholder so the LLM
+            # sees the conversation flow (who sent what, when)
+            if not text:
+                if "imageMessage" in msg:
+                    text = "[Bild]"
+                elif "videoMessage" in msg:
+                    text = "[Video]"
+                elif "audioMessage" in msg or "pttMessage" in msg:
+                    text = "[Sprachnachricht]"
+                elif "stickerMessage" in msg:
+                    text = "[Sticker]"
+                elif "documentMessage" in msg:
+                    text = "[Dokument]"
+                elif "contactMessage" in msg:
+                    text = "[Kontakt]"
+                elif "locationMessage" in msg:
+                    text = "[Standort]"
+                else:
+                    continue
+            messages.append({
+                "from_me": rec.get("key", {}).get("fromMe", False),
+                "text": text,
+                "timestamp": ts,
+                "push_name": rec.get("pushName", ""),
+            })
+        # Sort chronologically (oldest first), return only the N most recent
+        messages.sort(key=lambda m: m["timestamp"])
+        return messages[-limit:] if len(messages) > limit else messages
 
     async def create_instance(
         self, instance_name: str, webhook_url: str,
