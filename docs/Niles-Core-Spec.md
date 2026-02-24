@@ -96,7 +96,6 @@ Niles/
 │       ├── user_store.py             # User-Verwaltung (Google OAuth)
 │       ├── settings_store.py         # Runtime Settings Overrides (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-User WhatsApp Sessions (PostgreSQL)
-│       ├── whatsapp_inbox.py       # Eingehende WA-Nachrichten (separate Tabelle)
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, Tool-Definitionen
 │       │   └── prompts.py            # System Prompt laden/bauen
@@ -190,8 +189,8 @@ Niles/
    3a. Eigene Nachrichten (fromMe=true):
        - "Hey Niles" Trigger → Agent verarbeitet, Antwort senden (Self-Chat)
        - Ohne Trigger → Ignorieren (Notizen, Links etc.)
-   3b. Fremde Nachrichten → in whatsapp_inbox speichern (inkl. Kontakt-Lookup),
-       kein LLM-Call, kein Web-Chat, kein Auto-Reply. Agent-Tool verfuegbar.
+   3b. Fremde Nachrichten → ignorieren (kein LLM-Call, kein Web-Chat, kein Auto-Reply).
+       Evolution API speichert Nachrichten intern. Agent liest via findMessages API.
 4. [Self-Chat] Extrahiert Absender (JID -> Telefonnummer) und Text
 5. Erstellt Event: {"type": "whatsapp", "from": "wa-self-{nr}", "content": "..."}
 6. Ruft agent.process_event(event) auf
@@ -203,7 +202,7 @@ Niles/
    6f. Falls Tool-Calls: ausfuehren, Ergebnisse zurueck an LLM (max 5 Runden)
    6g. Speichert Antwort in History
 7. Self-Chat: sources/whatsapp.py sendet Antwort via WhatsAppAction zurueck
-   Fremde: Nachricht in whatsapp_inbox gespeichert (abfragbar via get_whatsapp_messages Tool)
+   Fremde: Nachricht von Evolution API gespeichert (abfragbar via get_whatsapp_messages Tool)
 8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
 ```
 
@@ -361,7 +360,7 @@ class NilesAgent:
 | ---- | --------- | ------------ |
 | `find_contact` | `name: str` | Kontaktsuche in PostgreSQL. Gibt `full_name`, `phone` (bevorzugte), `phones` (alle mit Typ), `email` zurueck. |
 | `send_whatsapp` | `to: str, text: str` | Nachricht senden (Nummer oder Name). Multi-Phone: fragt User bei mehreren Nummern (TTL 5 min). Per-User Instance Resolution. |
-| `get_whatsapp_messages` | `contact?: str, limit?: int` | Eingehende WA-Nachrichten abfragen (nach Kontaktname oder Telefonnummer). Max 50. Aus `whatsapp_inbox`-Tabelle. |
+| `get_whatsapp_messages` | `contact: str, limit?: int` | WhatsApp-Chatverlauf lesen (nach Kontaktname oder Telefonnummer). Max 50, 30-Tage-Window. Via Evolution API `findMessages`. |
 | `remember` | `key: str, value: str` | Fakt im Memory speichern |
 | `recall` | `key: str` | Fakt aus Memory abrufen |
 | `find_event` | `query?, date_from?, date_to?, calendar?` | Kalender-Events suchen (max 10 Ergebnisse). Unterstuetzt Datumsfilter und Kalender-Auswahl. |
@@ -503,9 +502,9 @@ Webhook-Handler fuer Evolution API v2.3.7:
 
 **Self-Chat chat_id:** `wa-self-{nummer}` — eigene Konversations-Historie, getrennt von fremden Chats und Web-UI.
 
-**Fremde Nachrichten:** Werden in einer separaten `whatsapp_inbox`-Tabelle gespeichert (kein LLM-Call, kein Web-Chat, kein Auto-Reply). Kontaktname wird per `contacts.find_by_phone()` aus CardDAV-Kontakten aufgeloest und denormalisiert mitgespeichert. Deduplizierung via `wa_message_id` (UNIQUE). Der Agent kann die Inbox per `get_whatsapp_messages`-Tool abfragen ("Was hat mir Max geschrieben?"). Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
+**Fremde Nachrichten:** Werden von der Evolution API intern gespeichert (kein LLM-Call, kein Web-Chat, kein Auto-Reply). Der Agent liest sie per `get_whatsapp_messages`-Tool direkt via Evolution API `findMessages`-Endpoint ("Was hat mir Max geschrieben?"). Kontaktname wird per `contacts.find_by_name()` zu Telefonnummer aufgeloest, dann als JID an die API uebergeben. 30-Tage-Window, max 50 Nachrichten. Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
 
-**Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`) und loest via `WhatsAppSessionStore.get_by_instance()` den zugehoerigen User auf. user_id wird in whatsapp_inbox gespeichert. Fallback bei unbekannter Instance: user_id=None. Antworten (Self-Chat) werden ueber die jeweilige User-Instance gesendet.
+**Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`). Fuer Self-Chat wird die Instance aus dem Webhook-Payload verwendet. Fuer `get_whatsapp_messages` wird die Instance per `_resolve_wa_instance(chat_id)` aus der `whatsapp_sessions`-Tabelle ermittelt.
 
 **Hinweis:** Webhook-Token wird als Query-Parameter uebergeben, da Evolution API v2.3.x keine Custom-Header unterstuetzt (siehe [Issue #1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)).
 
@@ -514,6 +513,7 @@ Webhook-Handler fuer Evolution API v2.3.7:
 ```python
 class WhatsAppAction:
     async def send_message(self, to: str, text: str, instance: str | None = None) -> dict
+    async def fetch_messages(self, remote_jid: str, limit: int = 50, instance: str | None = None) -> list[dict]
     async def create_instance(self, instance_name: str, webhook_url: str) -> dict
     async def get_connection_state(self, instance_name: str) -> str
     async def get_qr_code(self, instance_name: str) -> dict
@@ -1062,7 +1062,7 @@ Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 - WhatsApp Self-Chat: "Hey Niles" Trigger (case-insensitive, word-boundary)
 - Trigger-Stripping, Echo-Loop-Guard (_sent_ids Cache, TTL 10s)
 - Eigene chat_id `wa-self-{nummer}` fuer separate History
-- Fremde Nachrichten: separate `whatsapp_inbox`-Tabelle (kein LLM-Call, kein Web-Chat), Agent-Tool `get_whatsapp_messages`
+- Fremde Nachrichten: kein LLM-Call, kein Web-Chat. Agent liest via Evolution API `findMessages` (30-Tage-Window, Tool `get_whatsapp_messages`)
 - Feature-Flag-Umbau: `feature_whatsapp_auto_reply` + `feature_tool_send_whatsapp` → `feature_whatsapp_send_others`
 - TRANSP (Beschaeftigt/Verfuegbar): iCalendar TRANSP Property (RFC 5545) durch gesamte Pipeline (Parser → DB → Sync → Query → API)
 - Kalender-Events mit `status: "verfuegbar"` wenn TRANSP=TRANSPARENT

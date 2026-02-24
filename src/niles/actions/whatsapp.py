@@ -1,6 +1,7 @@
 """WhatsApp message sending and instance management via Evolution API."""
 
 import logging
+import time
 
 import httpx
 
@@ -53,6 +54,62 @@ class WhatsAppAction:
             except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to send message to %s: %s", to, e)
                 return {"error": str(e)}
+
+    async def fetch_messages(
+        self,
+        remote_jid: str,
+        limit: int = 50,
+        instance: str | None = None,
+    ) -> list[dict]:
+        """Fetch message history from Evolution API.
+
+        Args:
+            remote_jid: WhatsApp JID (e.g. "436601234567@s.whatsapp.net")
+            limit: Maximum number of messages to return
+            instance: Evolution API instance (defaults to global)
+
+        Returns:
+            List of message dicts with keys: from_me, text, timestamp, push_name
+        """
+        inst = instance or self.instance
+        url = f"{self.base_url}/chat/findMessages/{inst}"
+        payload = {
+            "where": {"key": {"remoteJid": remote_jid}},
+            "limit": limit,
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    url, json=payload, headers=self._headers(), timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                records = data.get("messages", {}).get("records", [])
+            except (httpx.HTTPError, ValueError) as e:
+                logger.error("Failed to fetch messages from %s: %s", inst, e)
+                return []
+
+        # Transform to clean format + 30-day filter
+        cutoff = time.time() - (30 * 86400)
+        messages = []
+        for rec in records:
+            ts = rec.get("messageTimestamp", 0)
+            if ts < cutoff:
+                continue
+            msg = rec.get("message", {})
+            text = (
+                msg.get("conversation")
+                or msg.get("extendedTextMessage", {}).get("text")
+            )
+            if not text:
+                continue
+            messages.append({
+                "from_me": rec.get("key", {}).get("fromMe", False),
+                "text": text,
+                "timestamp": ts,
+                "push_name": rec.get("pushName", ""),
+            })
+        return messages
 
     async def create_instance(
         self, instance_name: str, webhook_url: str,
