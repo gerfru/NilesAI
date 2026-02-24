@@ -19,7 +19,6 @@ from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from ..vikunja_store import VikunjaCredentialStore
-from ..whatsapp_inbox import WhatsAppInbox
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
@@ -70,8 +69,9 @@ TOOLS = [
         "function": {
             "name": "get_whatsapp_messages",
             "description": (
-                "Liest eingehende WhatsApp-Nachrichten von anderen Personen. "
+                "Liest WhatsApp-Nachrichten aus einem Chat. "
                 "Suche nach Kontaktname oder Telefonnummer. "
+                "Gibt eingehende UND ausgehende Nachrichten zurueck (Konversation). "
                 "Nutze dieses Tool wenn der Benutzer fragt was ihm jemand "
                 "geschrieben hat oder die letzten Nachrichten sehen will."
             ),
@@ -81,8 +81,7 @@ TOOLS = [
                     "contact": {
                         "type": "string",
                         "description": (
-                            "Kontaktname oder Telefonnummer. "
-                            "Leer = alle Nachrichten."
+                            "Kontaktname oder Telefonnummer (erforderlich)."
                         ),
                     },
                     "limit": {
@@ -90,7 +89,7 @@ TOOLS = [
                         "description": "Maximale Anzahl (Standard: 10, Max: 50).",
                     },
                 },
-                "required": [],
+                "required": ["contact"],
             },
         },
     },
@@ -326,7 +325,6 @@ class NilesAgent:
         wa_store: WhatsAppSessionStore | None = None,
         tasks: TasksAction | None = None,
         vikunja_store: VikunjaCredentialStore | None = None,
-        whatsapp_inbox: WhatsAppInbox | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -344,7 +342,6 @@ class NilesAgent:
         self.wa_store = wa_store
         self.tasks = tasks
         self.vikunja_store = vikunja_store
-        self.whatsapp_inbox = whatsapp_inbox
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -881,26 +878,29 @@ class NilesAgent:
             return {"status": "sent", "to": resolved_number} if "error" not in result else result
 
         if name == "get_whatsapp_messages":
-            if not self.whatsapp_inbox:
-                return {"error": "WhatsApp Inbox nicht verfügbar"}
             contact = args.get("contact", "").strip().lstrip("@")
             limit = min(args.get("limit", 10), 50)
+
+            # Resolve contact → phone
             phone = None
-            contact_name = None
             if contact and contact.replace("+", "").replace(" ", "").isdigit():
                 phone = contact
             elif contact:
-                contact_name = contact
-            messages = await self.whatsapp_inbox.get_messages(
-                contact=contact_name, phone=phone, limit=limit,
+                resolved = await self.contacts.find_by_name(contact)
+                if not resolved or not resolved.get("phone"):
+                    return {"error": f"Kontakt '{contact}' nicht gefunden"}
+                phone = resolved["phone"]
+
+            if not phone:
+                return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
+
+            # Build JID and resolve per-user instance
+            jid = f"{phone}@s.whatsapp.net"
+            instance = await self._resolve_wa_instance(chat_id)
+
+            messages = await self.whatsapp.fetch_messages(
+                remote_jid=jid, limit=limit, instance=instance,
             )
-            # Fallback: resolve contact name → phone via contacts, search by phone
-            if not messages and contact_name and self.contacts:
-                resolved = await self.contacts.find_by_name(contact_name)
-                if resolved and resolved.get("phone"):
-                    messages = await self.whatsapp_inbox.get_messages(
-                        phone=resolved["phone"], limit=limit,
-                    )
             if messages:
                 return {"messages": messages, "count": len(messages)}
             return {"error": "Keine WhatsApp-Nachrichten gefunden"}

@@ -130,17 +130,21 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 
 ### POST /webhook/whatsapp
 
-Webhook-Endpoint fuer die Evolution API. Empfaengt WhatsApp-Events und verarbeitet eingehende Nachrichten.
+Webhook-Endpoint fuer die Evolution API. Empfaengt WhatsApp-Events.
 
 **Verarbeitungslogik:**
 
 1. Nur `event == "messages.upsert"` wird verarbeitet, alles andere ignoriert
-2. Eigene Nachrichten (`fromMe: true`) werden ignoriert
-3. Text wird aus `message.conversation` oder `message.extendedTextMessage.text` extrahiert
-4. Nachrichten ohne Textinhalt werden ignoriert
-5. Telefonnummer wird aus der JID extrahiert (`@s.whatsapp.net` abgeschnitten)
-6. Event wird an `NilesAgent.process_event()` uebergeben
-7. Antwort wird via `WhatsAppAction.send_message()` zurueckgesendet
+2. Text wird aus `message.conversation` oder `message.extendedTextMessage.text` extrahiert
+3. Nachrichten ohne Textinhalt werden ignoriert
+4. **Eigene Nachrichten (Self-Chat, `fromMe: true`):**
+   - Echo-Guard: kuerzlich gesendete Message-IDs werden uebersprungen
+   - Trigger-Erkennung ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles")
+   - Bei Trigger: Agent verarbeitet, Antwort zuruecksenden
+   - Ohne Trigger: ignorieren
+5. **Fremde Nachrichten (`fromMe: false`):**
+   - Werden ignoriert (kein LLM-Call, kein Auto-Reply)
+   - Evolution API speichert Nachrichten intern (abfragbar via `get_whatsapp_messages` Tool)
 
 **Authentifizierung:** Erfordert `?token=<EVOLUTION_API_KEY>` als Query-Parameter. HTTP 401 bei ungueltigem Token.
 
@@ -359,6 +363,39 @@ Sendet eine WhatsApp-Nachricht. Akzeptiert Telefonnummern oder Kontaktnamen (wir
 - Telefonnummern werden automatisch in JID-Format konvertiert (`@s.whatsapp.net`)
 - **Per-User Instance:** Bei Web-UI Users wird die per-User WhatsApp Instance verwendet (Fallback: globale Instance)
 - Timeout: 30 Sekunden
+
+---
+
+### get_whatsapp_messages
+
+Liest WhatsApp-Chatverlauf eines Kontakts. Nutzt die Evolution API (`POST /chat/findMessages/{instance}`).
+
+**Parameter:**
+
+| Name | Typ | Pflicht | Beschreibung |
+| ---- | --- | ------- | ------------ |
+| `contact` | string | Ja | Kontaktname oder Telefonnummer |
+| `limit` | integer | Nein | Maximale Anzahl (Standard: 10, Max: 50) |
+
+**Return (Erfolg):**
+
+```json
+{"messages": [{"from_me": false, "text": "Hallo!", "timestamp": 1771900000, "push_name": "Max"}], "count": 1}
+```
+
+**Return (Fehler):**
+
+```json
+{"error": "Kontakt 'Nobody' nicht gefunden"}
+```
+
+**Hinweise:**
+
+- Kontaktname wird via `find_contact` in Telefonnummer aufgeloest, dann als JID (`@s.whatsapp.net`) an die Evolution API uebergeben
+- Gibt sowohl eingehende als auch ausgehende Nachrichten zurueck (Konversationskontext)
+- **30-Tage-Window:** Nur Nachrichten der letzten 30 Tage
+- **Per-User Instance:** Verwendet die Instance des anfragenden Users
+- Nicht-Text-Nachrichten (Bilder, Audio etc.) werden uebersprungen
 
 ---
 
