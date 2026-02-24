@@ -59,6 +59,68 @@
 </div>
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Briefing</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Automatische Morgen-Uebersicht via WhatsApp. Aenderungen werden nach Neustart wirksam.</p>
+
+    <div class="space-y-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Taegliches Briefing (Mo-Fr)</span>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400">Heutige Termine + faellige Aufgaben</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="feature_briefing_daily"
+                       hx-post="/ui/api/settings/feature_briefing_daily"
+                       hx-target="#toast-container" hx-swap="innerHTML"
+                       hx-trigger="change"
+                       hx-vals='js:{"value": event.target.checked}'
+                       class="sr-only peer"
+                       {{ "checked" if briefing.feature_briefing_daily else "" }}>
+                <div class="w-9 h-5 bg-zinc-300 dark:bg-zinc-600 rounded-full peer peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+            </label>
+        </div>
+
+        <div class="flex items-center justify-between">
+            <div>
+                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Woechentliche Uebersicht (Montag)</span>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400">Termine der Woche (Mo-Fr) nach Tagen</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="feature_briefing_weekly"
+                       hx-post="/ui/api/settings/feature_briefing_weekly"
+                       hx-target="#toast-container" hx-swap="innerHTML"
+                       hx-trigger="change"
+                       hx-vals='js:{"value": event.target.checked}'
+                       class="sr-only peer"
+                       {{ "checked" if briefing.feature_briefing_weekly else "" }}>
+                <div class="w-9 h-5 bg-zinc-300 dark:bg-zinc-600 rounded-full peer peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+            </label>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <form hx-post="/ui/api/settings/briefing_daily_time" hx-target="#toast-container" hx-swap="innerHTML">
+                <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Tagesbriefing (Mo-Fr)</label>
+                <div class="flex gap-2">
+                    <input type="time" name="value" value="{{ briefing.briefing_daily_time }}"
+                           class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-white">
+                    <button type="submit" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Speichern</button>
+                </div>
+            </form>
+            <form hx-post="/ui/api/settings/briefing_weekly_time" hx-target="#toast-container" hx-swap="innerHTML">
+                <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Wochenuebersicht (Mo)</label>
+                <div class="flex gap-2">
+                    <input type="time" name="value" value="{{ briefing.briefing_weekly_time }}"
+                           class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-white">
+                    <button type="submit" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Speichern</button>
+                </div>
+            </form>
+        </div>
+
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">Briefing wird an die verbundene WhatsApp-Nummer gesendet. WhatsApp muss verbunden sein.</p>
+    </div>
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}
