@@ -69,7 +69,9 @@ class WhatsAppAction:
             instance: Evolution API instance (defaults to global)
 
         Returns:
-            List of message dicts with keys: from_me, text, timestamp, push_name
+            List of message dicts with keys: from_me, text, timestamp, push_name.
+            Sorted by timestamp ascending (oldest first) — Evolution API returns
+            newest first, we reverse after filtering.
         """
         inst = instance or self.instance
         url = f"{self.base_url}/chat/findMessages/{inst}"
@@ -109,6 +111,8 @@ class WhatsAppAction:
                 "timestamp": ts,
                 "push_name": rec.get("pushName", ""),
             })
+        # Sort chronologically (oldest first) for readable transcripts
+        messages.sort(key=lambda m: m["timestamp"])
         return messages
 
     async def create_instance(
