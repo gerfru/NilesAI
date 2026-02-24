@@ -237,11 +237,19 @@ def _safe_settings_dict(settings) -> dict:
         "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
     }
 
+    briefing = {
+        "feature_briefing_daily": getattr(settings, "feature_briefing_daily", False),
+        "feature_briefing_weekly": getattr(settings, "feature_briefing_weekly", False),
+        "briefing_daily_time": getattr(settings, "briefing_daily_time", "07:30"),
+        "briefing_weekly_time": getattr(settings, "briefing_weekly_time", "07:15"),
+    }
+
     return {
         "feature_flags": feature_flags,
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
+        "briefing": briefing,
     }
 
 
