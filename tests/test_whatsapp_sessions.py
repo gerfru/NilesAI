@@ -116,13 +116,15 @@ class TestWhatsAppAction:
             )
 
         payload = mock_client.post.call_args[1]["json"]
-        assert "messageTimestamp" in payload["where"]
-        assert "gte" in payload["where"]["messageTimestamp"]
-        # Cutoff should be roughly 30 days ago (within 1 hour tolerance)
-        import time
-        expected = int(time.time()) - (30 * 86400)
-        actual = payload["where"]["messageTimestamp"]["gte"]
-        assert abs(actual - expected) < 3600
+        ts_filter = payload["where"]["messageTimestamp"]
+        assert "gte" in ts_filter
+        assert "lte" in ts_filter
+        # Values should be ISO date strings
+        from datetime import datetime
+        gte_dt = datetime.fromisoformat(ts_filter["gte"])
+        lte_dt = datetime.fromisoformat(ts_filter["lte"])
+        # gte should be ~30 days ago, lte should be ~now
+        assert (lte_dt - gte_dt).days in (29, 30)
 
     async def test_fetch_messages_media_placeholder(self, action):
         """Media messages without caption get a placeholder."""
