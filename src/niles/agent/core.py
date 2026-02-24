@@ -865,6 +865,10 @@ class NilesAgent:
             # source name and pass it as filter on general date queries.
             # Only honour the calendar filter when a search term is present
             # (e.g. birthday lookups).
+            # Known limitation: explicit calendar-only queries like "was steht
+            # in meinem Arbeits-Kalender an?" (calendar set, query empty) will
+            # also have their filter dropped.  Acceptable trade-off — the
+            # small LLM misuse case is far more common.
             cal_filter = args.get("calendar", "")
             if cal_filter and not args.get("query"):
                 logger.debug(
@@ -882,7 +886,7 @@ class NilesAgent:
                 result: dict = {"events": events, "count": len(events)}
                 result["hinweis"] = (
                     "Nenne NUR diese Termine. "
-                    "Erfinde keine zusaetzlichen Termine."
+                    "Erfinde keine zusätzlichen Termine."
                 )
                 return result
             return {"error": "Keine Termine gefunden"}
