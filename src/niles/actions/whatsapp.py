@@ -55,13 +55,15 @@ class WhatsAppAction:
                 logger.error("Failed to send message to %s: %s", to, e)
                 return {"error": str(e)}
 
+    _MAX_AGE_DAYS = 30
+
     async def fetch_messages(
         self,
         remote_jid: str,
         limit: int = 50,
         instance: str | None = None,
     ) -> list[dict]:
-        """Fetch message history from Evolution API.
+        """Fetch message history from Evolution API (last 30 days).
 
         Args:
             remote_jid: WhatsApp JID (e.g. "436601234567@s.whatsapp.net")
@@ -70,14 +72,17 @@ class WhatsAppAction:
 
         Returns:
             List of message dicts with keys: from_me, text, timestamp, push_name.
-            Sorted by timestamp ascending (oldest first) — Evolution API returns
-            newest first, we reverse after filtering.
+            Sorted by timestamp ascending (oldest first), trimmed to `limit`
+            most recent messages.
         """
         inst = instance or self.instance
         url = f"{self.base_url}/chat/findMessages/{inst}"
+        cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
         payload = {
-            "where": {"key": {"remoteJid": remote_jid}},
-            "limit": limit,
+            "where": {
+                "key": {"remoteJid": remote_jid},
+                "messageTimestamp": {"gte": cutoff},
+            },
         }
         async with httpx.AsyncClient() as client:
             try:
@@ -97,32 +102,49 @@ class WhatsAppAction:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
 
-        # Transform to clean format + 30-day filter
-        cutoff = time.time() - (30 * 86400)
+        # Transform to clean format (30-day filter via API where clause)
         messages = []
         for rec in records:
             try:
                 ts = int(rec.get("messageTimestamp", 0))
             except (ValueError, TypeError):
                 continue
-            if ts < cutoff:
-                continue
             msg = rec.get("message", {})
             text = (
                 msg.get("conversation")
                 or msg.get("extendedTextMessage", {}).get("text")
+                or msg.get("imageMessage", {}).get("caption")
+                or msg.get("videoMessage", {}).get("caption")
+                or msg.get("documentMessage", {}).get("caption")
             )
+            # For media without caption, add a placeholder so the LLM
+            # sees the conversation flow (who sent what, when)
             if not text:
-                continue
+                if "imageMessage" in msg:
+                    text = "[Bild]"
+                elif "videoMessage" in msg:
+                    text = "[Video]"
+                elif "audioMessage" in msg or "pttMessage" in msg:
+                    text = "[Sprachnachricht]"
+                elif "stickerMessage" in msg:
+                    text = "[Sticker]"
+                elif "documentMessage" in msg:
+                    text = "[Dokument]"
+                elif "contactMessage" in msg:
+                    text = "[Kontakt]"
+                elif "locationMessage" in msg:
+                    text = "[Standort]"
+                else:
+                    continue
             messages.append({
                 "from_me": rec.get("key", {}).get("fromMe", False),
                 "text": text,
                 "timestamp": ts,
                 "push_name": rec.get("pushName", ""),
             })
-        # Sort chronologically (oldest first) for readable transcripts
+        # Sort chronologically (oldest first), return only the N most recent
         messages.sort(key=lambda m: m["timestamp"])
-        return messages
+        return messages[-limit:] if len(messages) > limit else messages
 
     async def create_instance(
         self, instance_name: str, webhook_url: str,
