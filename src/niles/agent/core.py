@@ -543,6 +543,10 @@ class NilesAgent:
         if not self.config.feature_vikunja:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
+        # Remove WhatsApp tools when no WhatsApp action is configured
+        if not self.whatsapp:
+            _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _wa_tools]
         if self.mcp:
             all_tools.extend(self.mcp.get_openai_tools())
         return chat_id, messages, all_tools
