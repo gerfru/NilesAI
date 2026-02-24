@@ -19,6 +19,7 @@ from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from ..vikunja_store import VikunjaCredentialStore
+from ..whatsapp_inbox import WhatsAppInbox
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 
@@ -61,6 +62,35 @@ TOOLS = [
                     },
                 },
                 "required": ["to", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_whatsapp_messages",
+            "description": (
+                "Liest eingehende WhatsApp-Nachrichten von anderen Personen. "
+                "Suche nach Kontaktname oder Telefonnummer. "
+                "Nutze dieses Tool wenn der Benutzer fragt was ihm jemand "
+                "geschrieben hat oder die letzten Nachrichten sehen will."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {
+                        "type": "string",
+                        "description": (
+                            "Kontaktname oder Telefonnummer. "
+                            "Leer = alle Nachrichten."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximale Anzahl (Standard: 10, Max: 50).",
+                    },
+                },
+                "required": [],
             },
         },
     },
@@ -296,6 +326,7 @@ class NilesAgent:
         wa_store: WhatsAppSessionStore | None = None,
         tasks: TasksAction | None = None,
         vikunja_store: VikunjaCredentialStore | None = None,
+        whatsapp_inbox: WhatsAppInbox | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -313,6 +344,7 @@ class NilesAgent:
         self.wa_store = wa_store
         self.tasks = tasks
         self.vikunja_store = vikunja_store
+        self.whatsapp_inbox = whatsapp_inbox
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -847,6 +879,24 @@ class NilesAgent:
                 to=resolved_number, text=text, instance=instance,
             )
             return {"status": "sent", "to": resolved_number} if "error" not in result else result
+
+        if name == "get_whatsapp_messages":
+            if not self.whatsapp_inbox:
+                return {"error": "WhatsApp Inbox nicht verfügbar"}
+            contact = args.get("contact", "")
+            limit = min(args.get("limit", 10), 50)
+            phone = None
+            contact_name = None
+            if contact and contact.replace("+", "").replace(" ", "").isdigit():
+                phone = contact
+            elif contact:
+                contact_name = contact
+            messages = await self.whatsapp_inbox.get_messages(
+                contact=contact_name, phone=phone, limit=limit,
+            )
+            if messages:
+                return {"messages": messages, "count": len(messages)}
+            return {"error": "Keine WhatsApp-Nachrichten gefunden"}
 
         if name == "remember":
             await self.memory.set(args["key"], args["value"])

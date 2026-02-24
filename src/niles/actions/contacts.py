@@ -148,3 +148,17 @@ class ContactsAction:
             "phones": phones,
             "email": row["email"],
         }
+
+    async def find_by_phone(self, phone: str) -> str | None:
+        """Reverse lookup: normalized phone number → contact full_name or None."""
+        normalized = normalize_phone(phone)
+        row = await self.pool.fetchrow(
+            """
+            SELECT c.full_name FROM contacts c
+            JOIN contact_phones cp ON cp.contact_id = c.id
+            WHERE cp.number = $1
+            LIMIT 1
+            """,
+            normalized,
+        )
+        return row["full_name"] if row else None

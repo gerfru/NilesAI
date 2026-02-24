@@ -61,7 +61,7 @@ class TestWhatsAppAction:
 
 
 class TestWebhookPerUserRouting:
-    """Test that webhook routes messages to the correct per-user chat ID."""
+    """Test that webhook routes messages to whatsapp_inbox with correct user_id."""
 
     @pytest.fixture
     def mock_app(self):
@@ -70,7 +70,9 @@ class TestWebhookPerUserRouting:
         app.state.whatsapp_action = AsyncMock()
         app.state.settings = _make_settings()
         app.state.wa_store = AsyncMock()
-        app.state.history = AsyncMock()
+        app.state.whatsapp_inbox = AsyncMock()
+        app.state.contacts = AsyncMock()
+        app.state.contacts.find_by_phone.return_value = "Max Mustermann"
         return app
 
     @pytest.fixture
@@ -82,6 +84,7 @@ class TestWebhookPerUserRouting:
                 "key": {
                     "remoteJid": "436601234567@s.whatsapp.net",
                     "fromMe": False,
+                    "id": "MSG001",
                 },
                 "message": {
                     "conversation": "Hello Niles",
@@ -90,7 +93,7 @@ class TestWebhookPerUserRouting:
         }
 
     async def test_per_user_routing(self, mock_app, webhook_payload):
-        """Message from a per-user instance is stored with that user's chat_id."""
+        """Message from a per-user instance is stored with that user's user_id."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = {
@@ -104,15 +107,20 @@ class TestWebhookPerUserRouting:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Verify history stored with per-user chat_id
-        mock_app.state.history.add_message.assert_called_once_with(
-            "web-user-42", "user", "Hello Niles",
+        assert result == {"status": "stored", "sender": "436601234567"}
+        mock_app.state.whatsapp_inbox.store_message.assert_called_once_with(
+            wa_message_id="MSG001",
+            sender_phone="436601234567",
+            contact_name="Max Mustermann",
+            instance_name="niles-wa-42",
+            user_id=42,
+            content="Hello Niles",
         )
 
     async def test_fallback_routing(self, mock_app, webhook_payload):
-        """Unknown instance falls back to wa-{sender} chat_id."""
+        """Unknown instance stores with user_id=None."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = None
@@ -121,15 +129,20 @@ class TestWebhookPerUserRouting:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Verify history stored with fallback chat_id
-        mock_app.state.history.add_message.assert_called_once_with(
-            "wa-436601234567", "user", "Hello Niles",
+        assert result == {"status": "stored", "sender": "436601234567"}
+        mock_app.state.whatsapp_inbox.store_message.assert_called_once_with(
+            wa_message_id="MSG001",
+            sender_phone="436601234567",
+            contact_name="Max Mustermann",
+            instance_name="niles-wa-42",
+            user_id=None,
+            content="Hello Niles",
         )
 
     async def test_incoming_message_never_auto_replies(self, mock_app, webhook_payload):
-        """Incoming messages from others are stored in history, no LLM call, no reply."""
+        """Incoming messages are stored in inbox, no LLM call, no reply."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = {
@@ -145,12 +158,42 @@ class TestWebhookPerUserRouting:
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Message stored in history (no LLM call, no reply)
-        mock_app.state.history.add_message.assert_called_once_with(
-            "web-user-42", "user", "Hello Niles",
-        )
+        mock_app.state.whatsapp_inbox.store_message.assert_called_once()
         mock_app.state.agent.process_event.assert_not_called()
         mock_app.state.whatsapp_action.send_message.assert_not_called()
+
+    async def test_contact_name_resolved(self, mock_app, webhook_payload):
+        """Contact name is resolved from CardDAV contacts and passed to store_message."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        mock_app.state.wa_store.get_by_instance.return_value = None
+        mock_app.state.contacts.find_by_phone.return_value = "Thomas Brunner"
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        mock_app.state.contacts.find_by_phone.assert_called_once_with("436601234567")
+        call_kwargs = mock_app.state.whatsapp_inbox.store_message.call_args
+        assert call_kwargs.kwargs["contact_name"] == "Thomas Brunner"
+
+    async def test_unknown_contact_stores_none(self, mock_app, webhook_payload):
+        """Unknown phone number stores contact_name=None."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        mock_app.state.wa_store.get_by_instance.return_value = None
+        mock_app.state.contacts.find_by_phone.return_value = None
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        call_kwargs = mock_app.state.whatsapp_inbox.store_message.call_args
+        assert call_kwargs.kwargs["contact_name"] is None
 
 
 class TestAgentPerUserInstance:
@@ -249,4 +292,149 @@ class TestAgentPerUserInstance:
         assert result == {"status": "sent", "to": "436601234567"}
         whatsapp_mock.send_message.assert_called_once_with(
             to="436601234567", text="Hi", instance=None,
+        )
+
+
+class TestAgentGetWhatsAppMessages:
+    """Test that agent get_whatsapp_messages tool queries the inbox."""
+
+    async def test_get_messages_by_contact_name(self):
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        inbox_mock.get_messages.return_value = [
+            {
+                "sender_phone": "436601234567",
+                "contact_name": "Max Mustermann",
+                "content": "Treffen wir uns morgen?",
+                "received_at": "2026-02-24T10:00:00+01:00",
+            },
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_1"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        assert result["messages"][0]["contact_name"] == "Max Mustermann"
+        inbox_mock.get_messages.assert_called_once_with(
+            contact="Max", phone=None, limit=10,
+        )
+
+    async def test_get_messages_by_phone(self):
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        inbox_mock.get_messages.return_value = [
+            {
+                "sender_phone": "436601234567",
+                "contact_name": None,
+                "content": "Test",
+                "received_at": "2026-02-24T10:00:00+01:00",
+            },
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_2"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "436601234567"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        inbox_mock.get_messages.assert_called_once_with(
+            contact=None, phone="436601234567", limit=10,
+        )
+
+    async def test_get_messages_empty(self):
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        inbox_mock.get_messages.return_value = []
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_3"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Nobody"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert "error" in result
+
+    async def test_get_messages_without_inbox(self):
+        """Agent without whatsapp_inbox returns error."""
+        from niles.agent.core import NilesAgent
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_4"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert "error" in result
+
+    async def test_get_messages_limit_capped(self):
+        """Limit is capped at 50."""
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        inbox_mock.get_messages.return_value = []
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_5"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"limit": 999})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        inbox_mock.get_messages.assert_called_once_with(
+            contact=None, phone=None, limit=50,
         )
