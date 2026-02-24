@@ -96,6 +96,7 @@ Niles/
 │       ├── user_store.py             # User-Verwaltung (Google OAuth)
 │       ├── settings_store.py         # Runtime Settings Overrides (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-User WhatsApp Sessions (PostgreSQL)
+│       ├── whatsapp_inbox.py       # Eingehende WA-Nachrichten (separate Tabelle)
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, Tool-Definitionen
 │       │   └── prompts.py            # System Prompt laden/bauen
@@ -189,7 +190,8 @@ Niles/
    3a. Eigene Nachrichten (fromMe=true):
        - "Hey Niles" Trigger → Agent verarbeitet, Antwort senden (Self-Chat)
        - Ohne Trigger → Ignorieren (Notizen, Links etc.)
-   3b. Fremde Nachrichten → nur in History speichern (kein LLM-Call), weiter bei Schritt 7
+   3b. Fremde Nachrichten → in whatsapp_inbox speichern (inkl. Kontakt-Lookup),
+       kein LLM-Call, kein Web-Chat, kein Auto-Reply. Agent-Tool verfuegbar.
 4. [Self-Chat] Extrahiert Absender (JID -> Telefonnummer) und Text
 5. Erstellt Event: {"type": "whatsapp", "from": "wa-self-{nr}", "content": "..."}
 6. Ruft agent.process_event(event) auf
@@ -201,7 +203,7 @@ Niles/
    6f. Falls Tool-Calls: ausfuehren, Ergebnisse zurueck an LLM (max 5 Runden)
    6g. Speichert Antwort in History
 7. Self-Chat: sources/whatsapp.py sendet Antwort via WhatsAppAction zurueck
-   Fremde: Nachricht in History gespeichert (Kontext fuer spaetere Anfragen), kein LLM-Call
+   Fremde: Nachricht in whatsapp_inbox gespeichert (abfragbar via get_whatsapp_messages Tool)
 8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
 ```
 
@@ -359,6 +361,7 @@ class NilesAgent:
 | ---- | --------- | ------------ |
 | `find_contact` | `name: str` | Kontaktsuche in PostgreSQL. Gibt `full_name`, `phone` (bevorzugte), `phones` (alle mit Typ), `email` zurueck. |
 | `send_whatsapp` | `to: str, text: str` | Nachricht senden (Nummer oder Name). Multi-Phone: fragt User bei mehreren Nummern (TTL 5 min). Per-User Instance Resolution. |
+| `get_whatsapp_messages` | `contact?: str, limit?: int` | Eingehende WA-Nachrichten abfragen (nach Kontaktname oder Telefonnummer). Max 50. Aus `whatsapp_inbox`-Tabelle. |
 | `remember` | `key: str, value: str` | Fakt im Memory speichern |
 | `recall` | `key: str` | Fakt aus Memory abrufen |
 | `find_event` | `query?, date_from?, date_to?, calendar?` | Kalender-Events suchen (max 10 Ergebnisse). Unterstuetzt Datumsfilter und Kalender-Auswahl. |
@@ -500,9 +503,9 @@ Webhook-Handler fuer Evolution API v2.3.7:
 
 **Self-Chat chat_id:** `wa-self-{nummer}` — eigene Konversations-Historie, getrennt von fremden Chats und Web-UI.
 
-**Fremde Nachrichten:** Werden nur in der Conversation History gespeichert (1 DB-INSERT, kein LLM-Call). So stehen sie als Kontext bereit, wenn der User spaeter im Web-Chat oder per Self-Chat danach fragt. Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
+**Fremde Nachrichten:** Werden in einer separaten `whatsapp_inbox`-Tabelle gespeichert (kein LLM-Call, kein Web-Chat, kein Auto-Reply). Kontaktname wird per `contacts.find_by_phone()` aus CardDAV-Kontakten aufgeloest und denormalisiert mitgespeichert. Deduplizierung via `wa_message_id` (UNIQUE). Der Agent kann die Inbox per `get_whatsapp_messages`-Tool abfragen ("Was hat mir Max geschrieben?"). Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
 
-**Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`) und loest via `WhatsAppSessionStore.get_by_instance()` den zugehoerigen User auf. Chat-ID wird auf `web-user-{user_id}` gesetzt. Fallback bei unbekannter Instance: `wa-{sender}` (Legacy global). Antworten werden ueber die jeweilige User-Instance gesendet.
+**Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`) und loest via `WhatsAppSessionStore.get_by_instance()` den zugehoerigen User auf. user_id wird in whatsapp_inbox gespeichert. Fallback bei unbekannter Instance: user_id=None. Antworten (Self-Chat) werden ueber die jeweilige User-Instance gesendet.
 
 **Hinweis:** Webhook-Token wird als Query-Parameter uebergeben, da Evolution API v2.3.x keine Custom-Header unterstuetzt (siehe [Issue #1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)).
 
@@ -1059,7 +1062,7 @@ Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 - WhatsApp Self-Chat: "Hey Niles" Trigger (case-insensitive, word-boundary)
 - Trigger-Stripping, Echo-Loop-Guard (_sent_ids Cache, TTL 10s)
 - Eigene chat_id `wa-self-{nummer}` fuer separate History
-- Fremde Nachrichten: nur History-Speicherung (kein LLM-Call), nie Auto-Reply
+- Fremde Nachrichten: separate `whatsapp_inbox`-Tabelle (kein LLM-Call, kein Web-Chat), Agent-Tool `get_whatsapp_messages`
 - Feature-Flag-Umbau: `feature_whatsapp_auto_reply` + `feature_tool_send_whatsapp` → `feature_whatsapp_send_others`
 - TRANSP (Beschaeftigt/Verfuegbar): iCalendar TRANSP Property (RFC 5545) durch gesamte Pipeline (Parser → DB → Sync → Query → API)
 - Kalender-Events mit `status: "verfuegbar"` wenn TRANSP=TRANSPARENT
