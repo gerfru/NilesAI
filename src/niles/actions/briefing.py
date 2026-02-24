@@ -169,9 +169,13 @@ class BriefingGenerator:
         overdue = self._filter_overdue(tasks)
 
         # Tasks due today (compare in local timezone, not UTC string slicing)
+        # Exclude tasks already in overdue to avoid duplication
+        overdue_ids = {t["id"] for t in overdue}
         today_date = now.date()
         tasks_today = []
         for t in tasks:
+            if t["id"] in overdue_ids:
+                continue
             if "due_date" in t:
                 try:
                     due = datetime.fromisoformat(

@@ -722,13 +722,19 @@ async def briefing_test(request: Request, briefing_type: str):
 
     try:
         if briefing_type == "daily":
-            await send_daily_briefing(request.app.state)
+            sent = await send_daily_briefing(request.app.state)
         else:
-            await send_weekly_briefing(request.app.state)
+            sent = await send_weekly_briefing(request.app.state)
     except Exception:
         logger.exception("Manual briefing test failed")
         return templates.TemplateResponse(request, "fragments/toast.html", {
             "message": "Briefing fehlgeschlagen (siehe Logs)",
+            "toast_type": "error",
+        })
+
+    if not sent:
+        return templates.TemplateResponse(request, "fragments/toast.html", {
+            "message": "Kein WhatsApp verbunden",
             "toast_type": "error",
         })
 
