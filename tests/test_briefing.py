@@ -1,8 +1,8 @@
 """Tests for the BriefingGenerator and briefing time parsing."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -224,3 +224,192 @@ class TestGetOpenTasks:
         gen.vikunja_api_token = "test-token"
         result = await gen._get_open_tasks()
         assert result == []
+
+
+class TestFilterOverdue:
+    """Test _filter_overdue edge cases."""
+
+    def setup_method(self):
+        self.gen = BriefingGenerator.__new__(BriefingGenerator)
+        self.gen.tz = TZ
+
+    def test_no_due_date(self):
+        """Tasks without due_date are never overdue."""
+        tasks = [{"title": "No due", "id": 1}]
+        result = self.gen._filter_overdue(tasks)
+        assert result == []
+
+    def test_malformed_due_date(self):
+        """Malformed date strings are silently skipped."""
+        tasks = [{"title": "Bad date", "id": 1, "due_date": "not-a-date"}]
+        result = self.gen._filter_overdue(tasks)
+        assert result == []
+
+    def test_future_task_not_overdue(self):
+        """A task due in the future is not overdue."""
+        future = (datetime.now(tz=TZ) + timedelta(days=7)).isoformat()
+        tasks = [{"title": "Future", "id": 1, "due_date": future}]
+        result = self.gen._filter_overdue(tasks)
+        assert result == []
+
+    def test_past_task_is_overdue(self):
+        """A task due yesterday is overdue."""
+        past = (datetime.now(tz=TZ) - timedelta(days=1)).isoformat()
+        tasks = [{"title": "Yesterday", "id": 1, "due_date": past}]
+        result = self.gen._filter_overdue(tasks)
+        assert len(result) == 1
+        assert result[0]["title"] == "Yesterday"
+
+    def test_mixed_tasks(self):
+        """Only past-due tasks are returned from a mixed list."""
+        past = (datetime.now(tz=TZ) - timedelta(days=2)).isoformat()
+        future = (datetime.now(tz=TZ) + timedelta(days=3)).isoformat()
+        tasks = [
+            {"title": "Overdue", "id": 1, "due_date": past},
+            {"title": "Not yet", "id": 2, "due_date": future},
+            {"title": "No date", "id": 3},
+        ]
+        result = self.gen._filter_overdue(tasks)
+        assert len(result) == 1
+        assert result[0]["id"] == 1
+
+
+class TestOverdueTodayDeduplication:
+    """Test that overdue tasks due today only appear in 'Überfällig', not 'Heute fällig'."""
+
+    @pytest.fixture
+    def generator(self):
+        gen = BriefingGenerator.__new__(BriefingGenerator)
+        gen.tz = TZ
+        gen.pool = AsyncMock()
+        gen.vikunja_api_url = "http://vikunja/api/v1"
+        gen.vikunja_api_token = "test"
+        return gen
+
+    @pytest.mark.asyncio
+    async def test_overdue_today_only_in_overdue_section(self, generator):
+        """A task due at 01:00 today (already past) should appear only in Überfällig."""
+        # Task due at 01:00 today Vienna time — already past if briefing runs at 07:30
+        now = datetime.now(tz=TZ).replace(hour=7, minute=30, second=0, microsecond=0)
+        due_early_today = now.replace(hour=1, minute=0).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        tasks = [
+            {"title": "Frühaufgabe", "id": 10, "due_date": due_early_today},
+            {"title": "Spätaufgabe", "id": 11, "due_date": now.replace(hour=18).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")},
+        ]
+        generator._get_events_for_range = AsyncMock(return_value=[])
+        generator._get_open_tasks = AsyncMock(return_value=tasks)
+
+        with patch("niles.actions.briefing.datetime") as mock_dt:
+            mock_dt.now.return_value = now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = await generator.generate_daily()
+
+        # "Frühaufgabe" is overdue (01:00 < 07:30) → only in Überfällig
+        assert "Überfällig" in result
+        assert "Frühaufgabe" in result
+        # "Spätaufgabe" is due today at 18:00 (not yet overdue) → only in Heute fällig
+        assert "Heute fällig" in result
+        assert "Spätaufgabe" in result
+
+        # Frühaufgabe must NOT appear in the "Heute fällig" section
+        ueberfaellig_idx = result.index("Überfällig")
+        heute_faellig_idx = result.index("Heute fällig")
+        heute_section = result[heute_faellig_idx:]
+        assert "Frühaufgabe" not in heute_section
+
+    @pytest.mark.asyncio
+    async def test_remaining_count_not_negative(self, generator):
+        """With overdue+today dedup, remaining count must never be negative."""
+        now = datetime.now(tz=TZ).replace(hour=7, minute=30, second=0, microsecond=0)
+        due_early = now.replace(hour=1).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        # 1 task, overdue (due today at 01:00, it's 07:30 now)
+        tasks = [{"title": "Only task", "id": 1, "due_date": due_early}]
+        generator._get_events_for_range = AsyncMock(return_value=[])
+        generator._get_open_tasks = AsyncMock(return_value=tasks)
+
+        with patch("niles.actions.briefing.datetime") as mock_dt:
+            mock_dt.now.return_value = now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = await generator.generate_daily()
+
+        # Must not contain negative remaining count
+        assert "+(-" not in result
+        assert "+-" not in result
+
+
+class TestSendBriefingReturnValue:
+    """Test that send_daily/weekly_briefing return bool correctly."""
+
+    @pytest.mark.asyncio
+    async def test_daily_returns_false_no_session(self):
+        """send_daily_briefing returns False when no WhatsApp session exists."""
+        from niles.jobs.briefing import send_daily_briefing
+
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value=None)
+        app_state = SimpleNamespace(pool=pool)
+
+        result = await send_daily_briefing(app_state)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_weekly_returns_false_no_session(self):
+        """send_weekly_briefing returns False when no WhatsApp session exists."""
+        from niles.jobs.briefing import send_weekly_briefing
+
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value=None)
+        app_state = SimpleNamespace(pool=pool)
+
+        result = await send_weekly_briefing(app_state)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_daily_returns_true_on_success(self):
+        """send_daily_briefing returns True when briefing is sent."""
+        from niles.jobs.briefing import send_daily_briefing
+
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={
+            "phone_number": "4366012345678",
+            "instance_name": "niles-wa-1",
+        })
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_daily = AsyncMock(return_value="Test briefing")
+        whatsapp = AsyncMock()
+        app_state = SimpleNamespace(
+            pool=pool,
+            briefing_generator=briefing_gen,
+            whatsapp_action=whatsapp,
+        )
+
+        result = await send_daily_briefing(app_state)
+        assert result is True
+        whatsapp.send_message.assert_called_once_with(
+            to="4366012345678", text="Test briefing", instance="niles-wa-1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_daily_returns_false_on_exception(self):
+        """send_daily_briefing returns False when sending fails."""
+        from niles.jobs.briefing import send_daily_briefing
+
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={
+            "phone_number": "4366012345678",
+            "instance_name": "niles-wa-1",
+        })
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_daily = AsyncMock(side_effect=RuntimeError("boom"))
+        app_state = SimpleNamespace(
+            pool=pool,
+            briefing_generator=briefing_gen,
+            whatsapp_action=AsyncMock(),
+        )
+
+        result = await send_daily_briefing(app_state)
+        assert result is False
