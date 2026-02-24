@@ -277,7 +277,6 @@ async def lifespan(app: FastAPI):
     app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
-    app.state.contacts = contacts
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
     app.state.briefing_generator = briefing_generator
