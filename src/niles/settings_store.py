@@ -102,6 +102,13 @@ class SettingsStore:
                     f"Invalid timezone: '{value}' is not a valid IANA timezone"
                 ) from exc
 
+        # Validate briefing time format (HH:MM, 00:00–23:59)
+        if key in ("briefing_daily_time", "briefing_weekly_time") and isinstance(value, str):
+            if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", value):
+                raise ValueError(
+                    f"Invalid time format: '{value}' (expected HH:MM, 00:00–23:59)"
+                )
+
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(

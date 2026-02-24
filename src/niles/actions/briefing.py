@@ -91,9 +91,8 @@ class BriefingGenerator:
             result.append(task)
         return result
 
-    async def _get_overdue_tasks(self) -> list[dict]:
-        """Filter open tasks that are past their due date."""
-        tasks = await self._get_open_tasks()
+    def _filter_overdue(self, tasks: list[dict]) -> list[dict]:
+        """Filter tasks that are past their due date (pure filter, no API call)."""
         now = datetime.now(tz=self.tz)
         overdue = []
         for t in tasks:
@@ -165,18 +164,23 @@ class BriefingGenerator:
         day_end = day_start.replace(hour=23, minute=59, second=59)
         events = await self._get_events_for_range(day_start, day_end)
 
-        # Open tasks (all, not just today)
+        # Open tasks (all, not just today) — single API call
         tasks = await self._get_open_tasks()
-        overdue = await self._get_overdue_tasks()
+        overdue = self._filter_overdue(tasks)
 
-        # Tasks due today
-        today_str = now.strftime("%Y-%m-%d")
+        # Tasks due today (compare in local timezone, not UTC string slicing)
+        today_date = now.date()
         tasks_today = []
         for t in tasks:
             if "due_date" in t:
-                due_date_str = t["due_date"][:10]
-                if due_date_str == today_str:
-                    tasks_today.append(t)
+                try:
+                    due = datetime.fromisoformat(
+                        t["due_date"].replace("Z", "+00:00")
+                    )
+                    if due.astimezone(self.tz).date() == today_date:
+                        tasks_today.append(t)
+                except (ValueError, TypeError):
+                    pass
 
         # --- Build message ---
         lines = [f"☀️ *Guten Morgen!* {weekday}, {date_str}", ""]
