@@ -705,6 +705,39 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
     })
 
 
+@router.post("/api/briefing/test/{briefing_type}", response_class=HTMLResponse)
+async def briefing_test(request: Request, briefing_type: str):
+    """Manually trigger a briefing (generate + send via WhatsApp)."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    if briefing_type not in ("daily", "weekly"):
+        return templates.TemplateResponse(request, "fragments/toast.html", {
+            "message": "Unbekannter Briefing-Typ",
+            "toast_type": "error",
+        })
+
+    from ..jobs.briefing import send_daily_briefing, send_weekly_briefing
+
+    try:
+        if briefing_type == "daily":
+            await send_daily_briefing(request.app.state)
+        else:
+            await send_weekly_briefing(request.app.state)
+    except Exception:
+        logger.exception("Manual briefing test failed")
+        return templates.TemplateResponse(request, "fragments/toast.html", {
+            "message": "Briefing fehlgeschlagen (siehe Logs)",
+            "toast_type": "error",
+        })
+
+    return templates.TemplateResponse(request, "fragments/toast.html", {
+        "message": f"{'Tages' if briefing_type == 'daily' else 'Wochen'}briefing gesendet",
+        "toast_type": "success",
+    })
+
+
 @router.get("/api/caldav/calendars", response_class=HTMLResponse)
 async def caldav_calendars(request: Request):
     """Discover available CalDAV calendars, return checkboxes fragment."""
