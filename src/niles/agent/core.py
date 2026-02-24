@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
@@ -913,7 +914,6 @@ class NilesAgent:
                 messages[0].get("push_name") or phone
             )
             lines = []
-            from datetime import datetime, timezone
             for msg in messages:
                 ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc)
                 who = "Du" if msg["from_me"] else contact_name

@@ -221,6 +221,28 @@ class TestWhatsAppAction:
         assert result[0]["text"] == "Hey!"
         assert result[0]["timestamp"] == 1771900000  # int, not string
 
+    async def test_fetch_messages_lid_filter(self, action):
+        """Payload includes both remoteJid and remoteJidAlt for LID support."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"messages": {"records": []}}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+            )
+
+        payload = mock_client.post.call_args[1]["json"]
+        key_filter = payload["where"]["key"]
+        assert key_filter["remoteJid"] == "436601234567@s.whatsapp.net"
+        assert key_filter["remoteJidAlt"] == "436601234567@s.whatsapp.net"
+
     def test_headers(self, action):
         """_headers returns correct API key."""
         assert action._headers() == {"apikey": VALID_TOKEN}
@@ -290,6 +312,66 @@ class TestWebhookIncoming:
 
         assert result == {"status": "ignored", "reason": "group message"}
         mock_app.state.agent.process_event.assert_not_called()
+
+    async def test_webhook_lid_jid_uses_alt(self, mock_app):
+        """Webhook with @lid remoteJid falls back to remoteJidAlt."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-1",
+            "data": {
+                "key": {
+                    "remoteJid": "201846417309877@lid",
+                    "remoteJidAlt": "436601234567@s.whatsapp.net",
+                    "fromMe": False,
+                    "id": "MSG_LID",
+                    "addressingMode": "lid",
+                },
+                "message": {"conversation": "Hi from LID"},
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        # Should use phone from remoteJidAlt, not the LID
+        assert result == {"status": "received", "sender": "436601234567"}
+
+    async def test_webhook_lid_self_chat(self, mock_app):
+        """Self-chat with LID JID uses remoteJidAlt for reply."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        mock_app.state.agent.process_event.return_value = "Antwort"
+        mock_app.state.whatsapp_action.send_message.return_value = {
+            "key": {"id": "REPLY_LID"}
+        }
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = {
+            "event": "messages.upsert",
+            "instance": "niles-wa-1",
+            "data": {
+                "key": {
+                    "remoteJid": "201846417309877@lid",
+                    "remoteJidAlt": "4366012345678@s.whatsapp.net",
+                    "fromMe": True,
+                    "id": "MSG_SELF_LID",
+                    "addressingMode": "lid",
+                },
+                "message": {"conversation": "Hey Niles, was gibt es neues?"},
+            },
+        }
+
+        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+
+        assert result == {"status": "processed", "trigger": "self-chat"}
+        # Reply should use phone-based JID, not LID
+        send_call = mock_app.state.whatsapp_action.send_message
+        send_call.assert_called_once()
+        assert send_call.call_args[1]["to"] == "4366012345678@s.whatsapp.net"
 
     async def test_incoming_never_auto_replies(self, mock_app, webhook_payload):
         """Incoming messages: no LLM call, no reply."""
