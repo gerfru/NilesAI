@@ -879,7 +879,7 @@ class NilesAgent:
 
         if name == "get_whatsapp_messages":
             contact = args.get("contact", "").strip().lstrip("@")
-            limit = min(args.get("limit", 10), 50)
+            limit = min(int(args.get("limit", 10)), 50)
 
             # Resolve contact → phone
             phone = None
