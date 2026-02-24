@@ -111,6 +111,9 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     key = data.get("key", {})
     is_from_me = key.get("fromMe", False)
     remote_jid = key.get("remoteJid", "")
+    # WhatsApp LID addressing: prefer phone-based JID over opaque LID
+    if remote_jid.endswith("@lid"):
+        remote_jid = key.get("remoteJidAlt", remote_jid)
     msg_id = key.get("id", "")
     message = data.get("message", {})
 
