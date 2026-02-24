@@ -392,3 +392,74 @@ class TestTextToolCallStreamIntegration:
         assert len(chunk_events) == 1
         assert '{"some": "random json"}' in chunk_events[0]["text"]
         assert events[-1] == {"type": "done"}
+
+
+class TestFindEventGuard:
+    """Tests for the calendar filter guard and hinweis injection in _execute_tool_call."""
+
+    @staticmethod
+    def _make_tool_call(args: dict):
+        """Build a mock tool_call object for find_event."""
+        func = SimpleNamespace(name="find_event", arguments=json.dumps(args))
+        return SimpleNamespace(id="call_test", function=func)
+
+    def _make_agent_with_calendar(self):
+        agent = _make_agent()
+        calendar_mock = AsyncMock()
+        agent.calendar = calendar_mock
+        return agent, calendar_mock
+
+    async def test_calendar_filter_dropped_when_query_empty(self):
+        """calendar='Gerald' without query should be dropped."""
+        agent, cal = self._make_agent_with_calendar()
+        cal.find_by_query = AsyncMock(return_value=[{"summary": "Meeting"}])
+
+        tc = self._make_tool_call({"calendar": "Gerald", "date_from": "2026-02-25"})
+        result = await agent._execute_tool_call(tc)
+
+        # calendar should have been passed as "" (dropped)
+        cal.find_by_query.assert_called_once_with(
+            query="",
+            date_from="2026-02-25",
+            date_to="",
+            calendar="",
+        )
+        assert "events" in result
+
+    async def test_calendar_filter_preserved_when_query_present(self):
+        """calendar='Geburtstage' with query='Mama' should be preserved."""
+        agent, cal = self._make_agent_with_calendar()
+        cal.find_by_query = AsyncMock(return_value=[{"summary": "Mama Geburtstag"}])
+
+        tc = self._make_tool_call({"query": "Mama", "calendar": "Geburtstage", "date_from": "2026-03-01"})
+        result = await agent._execute_tool_call(tc)
+
+        cal.find_by_query.assert_called_once_with(
+            query="Mama",
+            date_from="2026-03-01",
+            date_to="",
+            calendar="Geburtstage",
+        )
+        assert "events" in result
+
+    async def test_hinweis_present_in_successful_result(self):
+        """Successful find_event should include a 'hinweis' key."""
+        agent, cal = self._make_agent_with_calendar()
+        cal.find_by_query = AsyncMock(return_value=[{"summary": "Standup"}])
+
+        tc = self._make_tool_call({"date_from": "2026-02-25"})
+        result = await agent._execute_tool_call(tc)
+
+        assert "hinweis" in result
+        assert "NUR" in result["hinweis"]
+
+    async def test_no_hinweis_when_no_events(self):
+        """When no events found, error is returned without hinweis."""
+        agent, cal = self._make_agent_with_calendar()
+        cal.find_by_query = AsyncMock(return_value=[])
+
+        tc = self._make_tool_call({"date_from": "2026-02-25"})
+        result = await agent._execute_tool_call(tc)
+
+        assert "error" in result
+        assert "hinweis" not in result
