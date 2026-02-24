@@ -1,8 +1,8 @@
 # Niles AI Core -- Technische Spezifikation
 
-> **Version:** 5.0
-> **Stand:** 2026-02-23
-> **Status:** Stage 1-7, 9-10 abgeschlossen. PR #22 (WhatsApp per-user Sessions). Stage 8 geplant.
+> **Version:** 6.0
+> **Stand:** 2026-02-24
+> **Status:** Stage 1-7, 9-10 abgeschlossen. PR #22-26 abgeschlossen. Stage 8 geplant.
 
 ---
 
@@ -103,10 +103,13 @@ Niles/
 │       │   ├── store.py              # Key-Value Memory (PostgreSQL)
 │       │   └── history.py            # Konversations-Historie
 │       ├── actions/
+│       │   ├── briefing.py           # BriefingGenerator (Tages-/Wochen-Uebersicht)
 │       │   ├── whatsapp.py           # WhatsApp senden (Evolution API)
 │       │   ├── contacts.py           # Kontakt-Lookup + normalize_phone
 │       │   ├── calendar.py           # Kalender-Abfragen
 │       │   └── tasks.py              # Vikunja Task Management
+│       ├── jobs/
+│       │   └── briefing.py           # Scheduler-Jobs fuer Briefing
 │       ├── sources/
 │       │   ├── whatsapp.py           # Webhook-Handler (Token-Auth)
 │       │   └── web.py                # Web-UI Router (OAuth, htmx, Sessions)
@@ -154,7 +157,9 @@ Niles/
 │   ├── test_settings_store.py       # Runtime Settings Store
 │   ├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
 │   ├── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
-│   └── test_tasks.py                # Vikunja Task Management
+│   ├── test_tasks.py                # Vikunja Task Management
+│   ├── test_self_chat.py            # WhatsApp Self-Chat Trigger
+│   └── test_briefing.py             # BriefingGenerator + Zeitparsing
 ├── config/
 │   └── soul.md                       # Agent-Persoenlichkeit
 ├── docker/
@@ -180,9 +185,13 @@ Niles/
 ```text
 1. Evolution API empfaengt WhatsApp-Nachricht
 2. Evolution API sendet Webhook POST an /webhook/whatsapp
-3. sources/whatsapp.py filtert auf messages.upsert, ignoriert fromMe
+3. sources/whatsapp.py filtert auf messages.upsert
+   3a. Eigene Nachrichten (fromMe=true):
+       - "Hey Niles" Trigger → Agent verarbeitet, Antwort senden (Self-Chat)
+       - Ohne Trigger → Ignorieren (Notizen, Links etc.)
+   3b. Fremde Nachrichten → weiter bei Schritt 4
 4. Extrahiert Absender (JID -> Telefonnummer) und Text
-5. Erstellt Event: {"type": "whatsapp", "from": "4366...", "content": "..."}
+5. Erstellt Event: {"type": "whatsapp", "from": "wa-self-{nr}|wa-{nr}", "content": "..."}
 6. Ruft agent.process_event(event) auf
    6a. Laedt alle Memory-Eintraege -> injiziert in System Prompt
    6b. Laedt letzte 20 Nachrichten der Konversation
@@ -191,7 +200,8 @@ Niles/
    6e. Ruft LLM auf (OpenAI-kompatible API)
    6f. Falls Tool-Calls: ausfuehren, Ergebnisse zurueck an LLM (max 5 Runden)
    6g. Speichert Antwort in History
-7. sources/whatsapp.py sendet Antwort via WhatsAppAction zurueck
+7. Self-Chat: sources/whatsapp.py sendet Antwort via WhatsAppAction zurueck
+   Fremde: Agent verarbeitet (History/Memory), aber keine Antwort gesendet
 8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
 ```
 
@@ -288,8 +298,7 @@ class Settings(BaseSettings):
     # Timezone
     timezone: str = "Europe/Vienna"
     # Features
-    feature_whatsapp_auto_reply: bool = False
-    feature_tool_send_whatsapp: bool = True
+    feature_whatsapp_send_others: bool = True  # Darf Niles anderen WhatsApp senden?
     # CardDAV (configured via Settings UI)
     carddav_url: str = ""
     carddav_user: str = ""
@@ -307,6 +316,11 @@ class Settings(BaseSettings):
     vikunja_api_url: str = ""
     vikunja_api_token: str = ""
     feature_vikunja: bool = False
+    # Briefing / Digest
+    feature_briefing_daily: bool = False
+    feature_briefing_weekly: bool = False
+    briefing_daily_time: str = "07:30"        # HH:MM, Mo-Fr
+    briefing_weekly_time: str = "07:15"       # HH:MM, Montag
 ```
 
 Laedt aus `.env` und Environment-Variablen. `extra = "ignore"`.
@@ -415,7 +429,7 @@ Runtime Setting Overrides in PostgreSQL (Tabelle `settings_overrides`).
 ```python
 EDITABLE_SETTINGS = {
     "llm_base_url", "llm_model", "timezone", "log_level",
-    "feature_whatsapp_auto_reply", "feature_tool_send_whatsapp",
+    "feature_whatsapp_send_others",
     "caldav_calendars",
     "carddav_url", "carddav_user", "carddav_password",
     "feature_vikunja",
@@ -479,9 +493,14 @@ Webhook-Handler fuer Evolution API v2.3.7:
 
 - Token-Authentifizierung via Query-Parameter (`?token=...`, hmac.compare_digest)
 - Filtert auf `event == "messages.upsert"`
-- Ignoriert eigene Nachrichten (`fromMe: true`)
 - Extrahiert Text aus `message.conversation` oder `extendedTextMessage.text`
 - Gibt 401 fuer Auth-Fehler zurueck, 200 fuer alle anderen Faelle (verhindert Retry-Spam)
+
+**Self-Chat Trigger:** Eigene Nachrichten (`fromMe: true`) werden auf Trigger-Phrasen geprueft ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles" — case-insensitive, word-boundary). Bei Trigger: Phrase entfernen, Agent verarbeitet den Rest, Antwort an eigene Nummer senden. Ohne Trigger: Ignorieren. Echo-Loop-Guard: Gesendete Message-IDs werden 10s gecacht, echote Webhooks werden uebersprungen.
+
+**Self-Chat chat_id:** `wa-self-{nummer}` — eigene Konversations-Historie, getrennt von fremden Chats und Web-UI.
+
+**Fremde Nachrichten:** Agent verarbeitet die Nachricht (History, Memory), aber sendet **nie** eine automatische Antwort. Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
 
 **Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`) und loest via `WhatsAppSessionStore.get_by_instance()` den zugehoerigen User auf. Chat-ID wird auf `web-user-{user_id}` gesetzt. Fallback bei unbekannter Instance: `wa-{sender}` (Legacy global). Antworten werden ueber die jeweilige User-Instance gesendet.
 
@@ -561,6 +580,25 @@ class TasksAction:
 - `create_task`: PUT /projects/{id}/tasks, unterstuetzt Projekt-Zuweisung, Faelligkeit und Prioritaet (0-4)
 - `complete_task`: Sucht offene Aufgaben nach Titel, markiert als erledigt (POST /tasks/{id}). Fehler bei keinem oder mehreren Treffern.
 - Default-Projekt-ID wird gecacht (erster Aufruf loest HTTP-Request aus)
+
+### 3.18 Briefing (`src/niles/actions/briefing.py`, `src/niles/jobs/briefing.py`)
+
+Automatische Tages- und Wochen-Uebersicht per WhatsApp. Kein LLM — reine DB-Abfragen + Template-Formatierung.
+
+```python
+class BriefingGenerator:
+    def __init__(self, pool, timezone, vikunja_api_url, vikunja_api_token): ...
+    async def generate_daily(self) -> str    # Mo-Fr: Termine + Tasks
+    async def generate_weekly(self) -> str   # Mo: Woche nach Tagen (Mo-Fr)
+```
+
+- **Taeglich (Mo-Fr):** Heutige Termine, ueberfaellige Tasks, heute faellige Tasks, Zusammenfassung offener Aufgaben
+- **Woechentlich (Mo):** Mo-Fr Termine nach Tagen gruppiert, offene Aufgaben kompakt
+- **Events:** SQL SELECT aus `events`-Tabelle (mit `calendar_sources` JOIN)
+- **Tasks:** Vikunja REST API (`GET /tasks/all?filter=done=false`), optional (leer wenn nicht konfiguriert)
+- **Scheduler:** APScheduler Cron-Jobs (`briefing_daily`, `briefing_weekly`), registriert wenn Feature-Flag aktiv
+- **Versand:** Via `WhatsAppAction.send_message()` an automatisch erkannte verbundene Nummer (Evolution API `get_connection_state` + `get_owner_jid`)
+- **Settings-UI:** Toggle und Uhrzeiten konfigurierbar. WhatsApp muss verbunden sein
 
 ---
 
@@ -778,8 +816,7 @@ Pydantic Settings (`src/niles/config.py`) laedt Werte aus `.env` und Environment
 | `session_secret` | auto-generiert | `SESSION_SECRET` | Nein |
 | `base_url` | `""` | `BASE_URL` | Nein\* |
 | `timezone` | `"Europe/Vienna"` | `TIMEZONE` | Nein |
-| `feature_whatsapp_auto_reply` | `false` | `FEATURE_WHATSAPP_AUTO_REPLY` | Nein |
-| `feature_tool_send_whatsapp` | `true` | `FEATURE_TOOL_SEND_WHATSAPP` | Nein |
+| `feature_whatsapp_send_others` | `true` | `FEATURE_WHATSAPP_SEND_OTHERS` | Nein |
 | `carddav_url` | `""` | `CARDDAV_URL` | Nein |
 | `carddav_user` | `""` | `CARDDAV_USER` | Nein |
 | `carddav_password` | `""` | `CARDDAV_PASSWORD` | Nein |
@@ -793,12 +830,18 @@ Pydantic Settings (`src/niles/config.py`) laedt Werte aus `.env` und Environment
 | `vikunja_api_url` | `""` | `VIKUNJA_API_URL` | Nein\*\*\* |
 | `vikunja_api_token` | `""` | `VIKUNJA_API_TOKEN` | Nein\*\*\* |
 | `feature_vikunja` | `false` | `FEATURE_VIKUNJA` | Nein |
+| `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | Nein |
+| `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | Nein |
+| `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | Nein |
+| `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | Nein |
 
 \* `base_url` wird empfohlen wenn Google OAuth hinter einem Reverse Proxy laeuft (verhindert Redirect-URI aus untrusted Headers).
 
 \*\* Pflicht wenn Google OAuth gewuenscht. Ohne Google OAuth wird API-Key Login verwendet.
 
 \*\*\* Pflicht wenn Vikunja-Integration gewuenscht. Erfordert zusaetzlich `FEATURE_VIKUNJA=true`.
+
+Briefing: WhatsApp-Nummer wird automatisch erkannt (verbundene Instanz). Keine manuelle Konfiguration noetig.
 
 \* `caldav_url/user/password` sind Legacy-Felder. Beim ersten Start werden sie automatisch in die `calendar_sources`-Tabelle migriert. Neue Kalenderquellen werden ueber die Web-UI verwaltet (Settings > Kalenderquellen).
 
@@ -840,7 +883,7 @@ LOG_LEVEL=INFO
 
 **Pflicht:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (Legacy, auto-migriert in DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_AUTO_REPLY`, `FEATURE_TOOL_SEND_WHATSAPP`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker-Debugging).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (Legacy, auto-migriert in DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker-Debugging).
 
 Siehe `.env.example` fuer vollstaendige Dokumentation.
 
@@ -978,6 +1021,8 @@ Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 | 9 | `stage/9-web-gui` | #13 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
 | 10 | `stage/10-oauth-gui-v2` | #14 | Abgeschlossen | Google OAuth, Multi-User, Tailwind CSS, SSE Streaming |
 | -- | `feat/whatsapp-per-user-sessions` | #22 | Abgeschlossen | Per-User WhatsApp Sessions, Multi-Phone, RRULE, CardDAV UI |
+| -- | `feat/whatsapp-self-chat` | #25 | Abgeschlossen | WhatsApp Self-Chat ("Hey Niles" Trigger), TRANSP (busy/free), Feature-Flag-Umbau |
+| -- | `fix/calendar-filter-guard` | #26 | Abgeschlossen | Calendar-Filter-Guard, Hallucination-Guard (hinweis-Feld) |
 
 ### Roadmap
 
@@ -1008,6 +1053,21 @@ Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 - RRULE Expansion fuer wiederkehrende Kalendertermine
 - CardDAV UI (Verbinden/Trennen/Sync ueber Web-UI)
 - Editierbare CardDAV Credentials via Settings
+
+**PR #25 -- Abgeschlossen (WhatsApp Self-Chat + TRANSP):**
+
+- WhatsApp Self-Chat: "Hey Niles" Trigger (case-insensitive, word-boundary)
+- Trigger-Stripping, Echo-Loop-Guard (_sent_ids Cache, TTL 10s)
+- Eigene chat_id `wa-self-{nummer}` fuer separate History
+- Fremde Nachrichten: Agent verarbeitet, nie Auto-Reply
+- Feature-Flag-Umbau: `feature_whatsapp_auto_reply` + `feature_tool_send_whatsapp` → `feature_whatsapp_send_others`
+- TRANSP (Beschaeftigt/Verfuegbar): iCalendar TRANSP Property (RFC 5545) durch gesamte Pipeline (Parser → DB → Sync → Query → API)
+- Kalender-Events mit `status: "verfuegbar"` wenn TRANSP=TRANSPARENT
+
+**PR #26 -- Abgeschlossen (Calendar Filter Guard):**
+
+- Calendar-Filter-Guard: Droppt `calendar`-Filter wenn `query` leer ist (verhindert LLM-Fehler)
+- Hallucination-Guard: `hinweis`-Feld in find_event-Ergebnissen ("Nenne NUR diese Termine")
 
 ---
 
