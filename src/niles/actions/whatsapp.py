@@ -2,6 +2,7 @@
 
 import logging
 import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -78,14 +79,20 @@ class WhatsAppAction:
         inst = instance or self.instance
         url = f"{self.base_url}/chat/findMessages/{inst}"
         # Evolution API expects ISO date strings for gte/lte, converts to unix internally
-        from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         cutoff_dt = datetime.fromtimestamp(
             time.time() - (self._MAX_AGE_DAYS * 86400), tz=timezone.utc,
         )
+        # Both remoteJid AND remoteJidAlt must be set.  Evolution API's
+        # Baileys override (PR #2249) combines them with OR so the query
+        # matches old-style phone JIDs *and* new LID-addressed messages
+        # where the phone number lives in key.remoteJidAlt.
         payload = {
             "where": {
-                "key": {"remoteJid": remote_jid},
+                "key": {
+                    "remoteJid": remote_jid,
+                    "remoteJidAlt": remote_jid,
+                },
                 "messageTimestamp": {
                     "gte": cutoff_dt.isoformat(),
                     "lte": now.isoformat(),
