@@ -367,15 +367,68 @@ class TestAgentGetWhatsAppMessages:
             contact=None, phone="436601234567", limit=10,
         )
 
+    async def test_get_messages_fallback_via_contacts(self):
+        """When inbox search by name fails, resolve name→phone via contacts and retry."""
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        # First call (by contact_name) returns nothing, second call (by phone) finds it
+        inbox_mock.get_messages.side_effect = [
+            [],  # search by contact_name="Gerald"
+            [    # search by phone="4366488846514"
+                {
+                    "sender_phone": "4366488846514",
+                    "contact_name": None,
+                    "content": "Hallo!",
+                    "received_at": "2026-02-24T10:00:00+01:00",
+                },
+            ],
+        ]
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Fruhmann, Gerald",
+            "phone": "4366488846514",
+            "phones": [{"type": "mobile", "number": "4366488846514"}],
+            "email": None,
+        }
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_fallback"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Gerald"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        assert result["messages"][0]["sender_phone"] == "4366488846514"
+        # Verify: first searched by name, then resolved via contacts, then by phone
+        contacts_mock.find_by_name.assert_called_once_with("Gerald")
+        assert inbox_mock.get_messages.call_count == 2
+        inbox_mock.get_messages.assert_any_call(contact="Gerald", phone=None, limit=10)
+        inbox_mock.get_messages.assert_any_call(phone="4366488846514", limit=10)
+
     async def test_get_messages_empty(self):
         from niles.agent.core import NilesAgent
 
         inbox_mock = AsyncMock()
         inbox_mock.get_messages.return_value = []
 
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = None
+
         agent = NilesAgent(
             config=_make_settings(),
-            contacts=AsyncMock(),
+            contacts=contacts_mock,
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
             history=AsyncMock(),
