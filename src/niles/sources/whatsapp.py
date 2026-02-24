@@ -183,6 +183,10 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
         return {"status": "processed", "trigger": "self-chat"}
 
+    # --- Group messages: ignore (not supported yet) ---
+    if remote_jid.endswith("@g.us"):
+        return {"status": "ignored", "reason": "group message"}
+
     # --- Incoming messages from other people ---
     # Evolution API stores messages internally — no local DB needed.
     # Agent queries them via get_whatsapp_messages → Evolution API findMessages.
