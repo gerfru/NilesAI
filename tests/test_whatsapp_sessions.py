@@ -521,6 +521,42 @@ class TestAgentGetWhatsAppMessages:
             instance=None,
         )
 
+    async def test_get_messages_limit_as_string(self):
+        """LLM may pass limit as string — must be cast to int."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max",
+            "phone": "436601234567",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = []
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_msg_str"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max", "limit": "10"})
+
+        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        whatsapp_mock.fetch_messages.assert_called_once_with(
+            remote_jid="436601234567@s.whatsapp.net",
+            limit=10,
+            instance=None,
+        )
+
     async def test_get_messages_uses_per_user_instance(self):
         """Per-user instance is resolved and passed to fetch_messages."""
         from niles.agent.core import NilesAgent
