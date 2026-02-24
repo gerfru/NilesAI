@@ -124,7 +124,7 @@ TOOLS = [
                     },
                     "calendar": {
                         "type": "string",
-                        "description": "Name des Kalenders in dem gesucht werden soll (optional). Bei Geburtstags-Fragen den Geburtstags-Kalender verwenden.",
+                        "description": "Kalenderquelle zum Filtern (z.B. 'Geburtstage', 'Arbeit'). NUR bei Geburtstags-Fragen oder wenn der Benutzer explizit einen bestimmten Kalender nennt. Bei allgemeinen Fragen wie 'was steht an' NICHT setzen — leer lassen damit alle Kalender durchsucht werden.",
                     },
                 },
                 "required": [],
@@ -861,14 +861,34 @@ class NilesAgent:
         if name == "find_event":
             if not self.calendar:
                 return {"error": "Kalender ist nicht konfiguriert"}
+            # Guard: small LLMs often confuse the user's name with a calendar
+            # source name and pass it as filter on general date queries.
+            # Only honour the calendar filter when a search term is present
+            # (e.g. birthday lookups).
+            # Known limitation: explicit calendar-only queries like "was steht
+            # in meinem Arbeits-Kalender an?" (calendar set, query empty) will
+            # also have their filter dropped.  Acceptable trade-off — the
+            # small LLM misuse case is far more common.
+            cal_filter = args.get("calendar", "")
+            if cal_filter and not args.get("query"):
+                logger.debug(
+                    "Dropping calendar filter '%s' on general date query",
+                    cal_filter,
+                )
+                cal_filter = ""
             events = await self.calendar.find_by_query(
                 query=args.get("query", ""),
                 date_from=args.get("date_from", ""),
                 date_to=args.get("date_to", ""),
-                calendar=args.get("calendar", ""),
+                calendar=cal_filter,
             )
             if events:
-                return {"events": events, "count": len(events)}
+                result: dict = {"events": events, "count": len(events)}
+                result["hinweis"] = (
+                    "Nenne NUR diese Termine. "
+                    "Erfinde keine zusätzlichen Termine."
+                )
+                return result
             return {"error": "Keine Termine gefunden"}
 
         if name == "create_event":
