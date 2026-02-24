@@ -184,33 +184,8 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         return {"status": "processed", "trigger": "self-chat"}
 
     # --- Incoming messages from other people ---
-    # Store in whatsapp_inbox (no LLM call, no auto-reply, no Web-Chat).
+    # Evolution API stores messages internally — no local DB needed.
+    # Agent queries them via get_whatsapp_messages → Evolution API findMessages.
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-
-    # Resolve per-user instance
-    instance_name = payload.get("instance")
-    wa_store = request.app.state.wa_store
-    session = await wa_store.get_by_instance(instance_name) if instance_name else None
-    user_id = session["user_id"] if session else None
-
-    # Resolve contact name from CardDAV contacts
-    contacts = request.app.state.contacts
-    contact_name = await contacts.find_by_phone(sender)
-
-    # Store in whatsapp_inbox
-    inbox = request.app.state.whatsapp_inbox
-    await inbox.store_message(
-        wa_message_id=msg_id,
-        sender_phone=sender,
-        contact_name=contact_name,
-        instance_name=instance_name,
-        user_id=user_id,
-        content=text,
-    )
-
-    logger.info(
-        "WhatsApp message from %s (%s) stored in inbox (user_id=%s)",
-        sender, contact_name or "unknown", user_id,
-    )
-
-    return {"status": "stored", "sender": sender}
+    logger.info("WhatsApp message from %s (stored by Evolution API)", sender)
+    return {"status": "received", "sender": sender}

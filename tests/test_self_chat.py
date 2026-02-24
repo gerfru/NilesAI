@@ -92,9 +92,6 @@ class TestSelfChatWebhook:
         app.state.whatsapp_action = AsyncMock()
         app.state.history = AsyncMock()
         app.state.wa_store = AsyncMock()
-        app.state.whatsapp_inbox = AsyncMock()
-        app.state.contacts = AsyncMock()
-        app.state.contacts.find_by_phone.return_value = None
         app.state.settings = Settings(
             _env_file=None,
             postgres_password="test",
@@ -170,10 +167,8 @@ class TestSelfChatWebhook:
         assert event["content"] == "Hallo!"
 
     async def test_incoming_message_never_auto_replies(self, mock_app):
-        """Messages from others are stored in inbox, no LLM call, no reply."""
+        """Messages from others are acknowledged, no LLM call, no reply."""
         from niles.sources.whatsapp import whatsapp_webhook
-
-        mock_app.state.wa_store.get_by_instance.return_value = None
 
         request = AsyncMock()
         request.app = mock_app
@@ -193,8 +188,7 @@ class TestSelfChatWebhook:
 
         result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
-        assert result == {"status": "stored", "sender": "436609999999"}
-        mock_app.state.whatsapp_inbox.store_message.assert_called_once()
+        assert result == {"status": "received", "sender": "436609999999"}
         mock_app.state.agent.process_event.assert_not_called()
         mock_app.state.whatsapp_action.send_message.assert_not_called()
 
