@@ -184,36 +184,33 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         return {"status": "processed", "trigger": "self-chat"}
 
     # --- Incoming messages from other people ---
-    # Store in history for context (available when user asks later via
-    # web-chat or self-chat), but do NOT call the LLM — no auto-reply.
+    # Store in whatsapp_inbox (no LLM call, no auto-reply, no Web-Chat).
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-    logger.info("WhatsApp message from %s: %s", sender, text[:100])
 
-    # Determine per-user chat ID from Evolution instance name
+    # Resolve per-user instance
     instance_name = payload.get("instance")
-    wa_store = getattr(request.app.state, "wa_store", None)
-    chat_id = None
+    wa_store = request.app.state.wa_store
+    session = await wa_store.get_by_instance(instance_name) if instance_name else None
+    user_id = session["user_id"] if session else None
 
-    if wa_store and instance_name:
-        session = await wa_store.get_by_instance(instance_name)
-        if session:
-            chat_id = f"web-user-{session['user_id']}"
-        else:
-            logger.warning(
-                "Webhook from unknown instance '%s' — falling back to global instance",
-                instance_name,
-            )
+    # Resolve contact name from CardDAV contacts
+    contacts = request.app.state.contacts
+    contact_name = await contacts.find_by_phone(sender)
 
-    # Fallback: use sender phone as chat ID (legacy global instance)
-    if not chat_id:
-        chat_id = f"wa-{sender}"
+    # Store in whatsapp_inbox
+    inbox = request.app.state.whatsapp_inbox
+    await inbox.store_message(
+        wa_message_id=msg_id,
+        sender_phone=sender,
+        contact_name=contact_name,
+        instance_name=instance_name,
+        user_id=user_id,
+        content=text,
+    )
 
-    # Store in conversation history (no LLM call, no response generated)
-    history = request.app.state.history
-    try:
-        await history.add_message(chat_id, "user", text)
-        logger.info("WhatsApp message from %s stored in history (chat_id=%s)", sender, chat_id)
-    except Exception:
-        logger.exception("Failed to store WhatsApp message from %s", sender)
+    logger.info(
+        "WhatsApp message from %s (%s) stored in inbox (user_id=%s)",
+        sender, contact_name or "unknown", user_id,
+    )
 
-    return {"status": "processed"}
+    return {"status": "stored", "sender": sender}

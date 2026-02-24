@@ -33,6 +33,7 @@ from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
 from .vikunja_store import VikunjaCredentialStore
+from .whatsapp_inbox import WhatsAppInbox
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
@@ -124,6 +125,10 @@ async def lifespan(app: FastAPI):
     # WhatsApp session store (per-user Evolution API instances)
     wa_store = WhatsAppSessionStore(pool)
     await wa_store.initialize()
+
+    # WhatsApp inbox (incoming messages from other contacts)
+    whatsapp_inbox = WhatsAppInbox(pool)
+    await whatsapp_inbox.initialize()
 
     # Vikunja credential store (per-user API tokens)
     vikunja_store = VikunjaCredentialStore(pool)
@@ -264,6 +269,7 @@ async def lifespan(app: FastAPI):
         wa_store=wa_store,
         tasks=tasks_action,
         vikunja_store=vikunja_store,
+        whatsapp_inbox=whatsapp_inbox,
     )
 
     # Store on app state for access in route handlers
@@ -277,6 +283,8 @@ async def lifespan(app: FastAPI):
     app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
+    app.state.whatsapp_inbox = whatsapp_inbox
+    app.state.contacts = contacts
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
     app.state.briefing_generator = briefing_generator
