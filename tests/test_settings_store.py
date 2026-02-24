@@ -14,6 +14,8 @@ class TestEditableWhitelist:
             "caldav_calendars",
             "carddav_url", "carddav_user", "carddav_password",
             "feature_vikunja",
+            "feature_briefing_daily", "feature_briefing_weekly",
+            "briefing_daily_time", "briefing_weekly_time",
         }
         assert EDITABLE_SETTINGS == expected
 
