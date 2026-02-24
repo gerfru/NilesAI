@@ -883,7 +883,7 @@ class NilesAgent:
         if name == "get_whatsapp_messages":
             if not self.whatsapp_inbox:
                 return {"error": "WhatsApp Inbox nicht verfügbar"}
-            contact = args.get("contact", "")
+            contact = args.get("contact", "").strip().lstrip("@")
             limit = min(args.get("limit", 10), 50)
             phone = None
             contact_name = None
