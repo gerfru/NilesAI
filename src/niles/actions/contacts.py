@@ -150,13 +150,17 @@ class ContactsAction:
         }
 
     async def find_by_phone(self, phone: str) -> str | None:
-        """Reverse lookup: normalized phone number → contact full_name or None."""
+        """Reverse lookup: normalized phone number → contact full_name or None.
+
+        contact_phones stores raw numbers (e.g. '+43 664 88846514'),
+        so we strip non-digits via regexp_replace before comparing.
+        """
         normalized = normalize_phone(phone)
         row = await self.pool.fetchrow(
             """
             SELECT c.full_name FROM contacts c
             JOIN contact_phones cp ON cp.contact_id = c.id
-            WHERE cp.number = $1
+            WHERE regexp_replace(cp.number, '[^0-9]', '', 'g') = $1
             LIMIT 1
             """,
             normalized,
