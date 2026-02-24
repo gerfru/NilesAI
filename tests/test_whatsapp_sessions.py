@@ -98,21 +98,10 @@ class TestWhatsAppAction:
         call_url = mock_client.post.call_args[0][0]
         assert "/chat/findMessages/niles-wa-1" in call_url
 
-    async def test_fetch_messages_filters_old(self, action):
-        """Messages older than 30 days are filtered out."""
+    async def test_fetch_messages_sends_30day_cutoff(self, action):
+        """API request includes 30-day timestamp filter."""
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "messages": {
-                "records": [
-                    {
-                        "key": {"fromMe": False},
-                        "pushName": "Old",
-                        "message": {"conversation": "Ancient"},
-                        "messageTimestamp": 1000000,  # 1970
-                    },
-                ],
-            },
-        }
+        mock_response.json.return_value = {"messages": {"records": []}}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
@@ -122,14 +111,21 @@ class TestWhatsAppAction:
 
         with pytest.MonkeyPatch.context() as m:
             m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.fetch_messages(
+            await action.fetch_messages(
                 remote_jid="436601234567@s.whatsapp.net",
             )
 
-        assert result == []
+        payload = mock_client.post.call_args[1]["json"]
+        assert "messageTimestamp" in payload["where"]
+        assert "gte" in payload["where"]["messageTimestamp"]
+        # Cutoff should be roughly 30 days ago (within 1 hour tolerance)
+        import time
+        expected = int(time.time()) - (30 * 86400)
+        actual = payload["where"]["messageTimestamp"]["gte"]
+        assert abs(actual - expected) < 3600
 
-    async def test_fetch_messages_skips_non_text(self, action):
-        """Messages without text content are skipped."""
+    async def test_fetch_messages_media_placeholder(self, action):
+        """Media messages without caption get a placeholder."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "messages": {
@@ -156,7 +152,40 @@ class TestWhatsAppAction:
                 remote_jid="436601234567@s.whatsapp.net",
             )
 
-        assert result == []
+        assert len(result) == 1
+        assert result[0]["text"] == "[Bild]"
+
+    async def test_fetch_messages_trims_to_limit(self, action):
+        """Only the N most recent messages are returned."""
+        records = [
+            {
+                "key": {"fromMe": False},
+                "pushName": "X",
+                "message": {"conversation": f"Msg {i}"},
+                "messageTimestamp": 1771900000 + i,
+            }
+            for i in range(5)
+        ]
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"messages": {"records": records}}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("httpx.AsyncClient", lambda: mock_client)
+            result = await action.fetch_messages(
+                remote_jid="436601234567@s.whatsapp.net",
+                limit=3,
+            )
+
+        assert len(result) == 3
+        # Should be the 3 most recent (Msg 2, 3, 4)
+        assert result[0]["text"] == "Msg 2"
+        assert result[2]["text"] == "Msg 4"
 
     async def test_fetch_messages_handles_string_timestamp(self, action):
         """messageTimestamp may be a string — must be cast to int."""
