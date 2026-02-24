@@ -367,6 +367,41 @@ class TestAgentGetWhatsAppMessages:
             contact=None, phone="436601234567", limit=10,
         )
 
+    async def test_get_messages_strips_at_prefix(self):
+        """LLM sometimes sends '@Name' — the @ prefix must be stripped."""
+        from niles.agent.core import NilesAgent
+
+        inbox_mock = AsyncMock()
+        inbox_mock.get_messages.return_value = [
+            {
+                "sender_phone": "436601234567",
+                "contact_name": "Chrissi",
+                "content": "Hi!",
+                "received_at": "2026-02-24T10:00:00+01:00",
+            },
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=AsyncMock(),
+            whatsapp=AsyncMock(),
+            memory=AsyncMock(),
+            history=AsyncMock(),
+            whatsapp_inbox=inbox_mock,
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_inbox_at"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "@Chrissi"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert result["count"] == 1
+        inbox_mock.get_messages.assert_called_once_with(
+            contact="Chrissi", phone=None, limit=10,
+        )
+
     async def test_get_messages_fallback_via_contacts(self):
         """When inbox search by name fails, resolve name→phone via contacts and retry."""
         from niles.agent.core import NilesAgent
