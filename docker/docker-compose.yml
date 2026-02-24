@@ -35,9 +35,9 @@ services:
       DATABASE_CONNECTION_URI: "postgresql://evolution:${EVOLUTION_POSTGRES_PASSWORD}@evolution_postgres:5432/evolution_db?schema=evolution_api"
       DATABASE_CONNECTION_CLIENT_NAME: "niles_evolution"
 
-      # Data Persistence
+      # Data Persistence — NEW_MESSAGE required for findMessages API
       DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "false"
       DATABASE_SAVE_DATA_CONTACTS: "false"
       DATABASE_SAVE_DATA_CHATS: "false"
