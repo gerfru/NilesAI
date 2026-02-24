@@ -358,7 +358,9 @@ class TestAgentGetWhatsAppMessages:
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
         assert result["count"] == 1
-        assert result["messages"][0]["text"] == "Treffen wir uns morgen?"
+        assert result["chat_with"] == "Max"
+        assert "Treffen wir uns morgen?" in result["transcript"]
+        assert "Max: Treffen wir uns morgen?" in result["transcript"]
         contacts_mock.find_by_name.assert_called_once_with("Max")
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436601234567@s.whatsapp.net",
