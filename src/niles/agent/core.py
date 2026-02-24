@@ -901,9 +901,25 @@ class NilesAgent:
             messages = await self.whatsapp.fetch_messages(
                 remote_jid=jid, limit=limit, instance=instance,
             )
-            if messages:
-                return {"messages": messages, "count": len(messages)}
-            return {"error": "Keine WhatsApp-Nachrichten gefunden"}
+            if not messages:
+                return {"error": "Keine WhatsApp-Nachrichten gefunden"}
+
+            # Format as readable chat transcript for the LLM
+            contact_name = contact if not contact.replace("+", "").replace(" ", "").isdigit() else (
+                messages[0].get("push_name") or phone
+            )
+            lines = []
+            from datetime import datetime, timezone
+            for msg in messages:
+                ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc)
+                who = "Du" if msg["from_me"] else contact_name
+                lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
+            transcript = "\n".join(lines)
+            return {
+                "chat_with": contact_name,
+                "count": len(messages),
+                "transcript": transcript,
+            }
 
         if name == "remember":
             await self.memory.set(args["key"], args["value"])
