@@ -184,8 +184,8 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         return {"status": "processed", "trigger": "self-chat"}
 
     # --- Incoming messages from other people ---
-    # Agent processes the message (History, Memory) but NEVER sends
-    # an auto-reply. Niles never responds to other people automatically.
+    # Store in history for context (available when user asks later via
+    # web-chat or self-chat), but do NOT call the LLM — no auto-reply.
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
     logger.info("WhatsApp message from %s: %s", sender, text[:100])
 
@@ -208,24 +208,12 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     if not chat_id:
         chat_id = f"wa-{sender}"
 
-    # Process via agent (learn/remember), but NEVER send reply
-    agent = request.app.state.agent
-    event = {
-        "type": "whatsapp",
-        "from": chat_id,
-        "content": text,
-        "metadata": {"jid": remote_jid, "sender": sender},
-    }
-
+    # Store in conversation history (no LLM call, no response generated)
+    history = request.app.state.history
     try:
-        response_text = await agent.process_event(event)
-        if response_text:
-            logger.info(
-                "Agent generated reply for %s but auto-reply is disabled "
-                "(only self-chat replies are sent)",
-                sender,
-            )
+        await history.add_message(chat_id, "user", text)
+        logger.info("WhatsApp message from %s stored in history (chat_id=%s)", sender, chat_id)
     except Exception:
-        logger.exception("Failed to process WhatsApp message from %s", sender)
+        logger.exception("Failed to store WhatsApp message from %s", sender)
 
     return {"status": "processed"}

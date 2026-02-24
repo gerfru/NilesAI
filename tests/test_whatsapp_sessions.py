@@ -70,6 +70,7 @@ class TestWebhookPerUserRouting:
         app.state.whatsapp_action = AsyncMock()
         app.state.settings = _make_settings()
         app.state.wa_store = AsyncMock()
+        app.state.history = AsyncMock()
         return app
 
     @pytest.fixture
@@ -89,7 +90,7 @@ class TestWebhookPerUserRouting:
         }
 
     async def test_per_user_routing(self, mock_app, webhook_payload):
-        """Message from a per-user instance routes to that user's chat_id."""
+        """Message from a per-user instance is stored with that user's chat_id."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = {
@@ -98,7 +99,6 @@ class TestWebhookPerUserRouting:
             "phone_number": "436601234567",
             "status": "connected",
         }
-        mock_app.state.agent.process_event.return_value = ""
 
         request = AsyncMock()
         request.app = mock_app
@@ -106,16 +106,16 @@ class TestWebhookPerUserRouting:
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Verify the event was routed with per-user chat_id
-        call_args = mock_app.state.agent.process_event.call_args[0][0]
-        assert call_args["from"] == "web-user-42"
+        # Verify history stored with per-user chat_id
+        mock_app.state.history.add_message.assert_called_once_with(
+            "web-user-42", "user", "Hello Niles",
+        )
 
     async def test_fallback_routing(self, mock_app, webhook_payload):
         """Unknown instance falls back to wa-{sender} chat_id."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = None
-        mock_app.state.agent.process_event.return_value = ""
 
         request = AsyncMock()
         request.app = mock_app
@@ -123,11 +123,13 @@ class TestWebhookPerUserRouting:
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        call_args = mock_app.state.agent.process_event.call_args[0][0]
-        assert call_args["from"] == "wa-436601234567"
+        # Verify history stored with fallback chat_id
+        mock_app.state.history.add_message.assert_called_once_with(
+            "wa-436601234567", "user", "Hello Niles",
+        )
 
     async def test_incoming_message_never_auto_replies(self, mock_app, webhook_payload):
-        """Incoming messages from others are processed but never auto-replied."""
+        """Incoming messages from others are stored in history, no LLM call, no reply."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.wa_store.get_by_instance.return_value = {
@@ -136,7 +138,6 @@ class TestWebhookPerUserRouting:
             "phone_number": "436601234567",
             "status": "connected",
         }
-        mock_app.state.agent.process_event.return_value = "Reply text"
 
         request = AsyncMock()
         request.app = mock_app
@@ -144,8 +145,11 @@ class TestWebhookPerUserRouting:
 
         await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        # Agent processes the message but no reply is sent
-        mock_app.state.agent.process_event.assert_called_once()
+        # Message stored in history (no LLM call, no reply)
+        mock_app.state.history.add_message.assert_called_once_with(
+            "web-user-42", "user", "Hello Niles",
+        )
+        mock_app.state.agent.process_event.assert_not_called()
         mock_app.state.whatsapp_action.send_message.assert_not_called()
 
 
