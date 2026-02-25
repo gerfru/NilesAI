@@ -151,8 +151,12 @@ class TasksAction:
                 timeout=10,
             )
             if resp.status_code >= 400:
-                logger.error("Vikunja create_task %s: %s", resp.status_code, resp.text[:200])
-                return {"error": f"Aufgabe konnte nicht erstellt werden (HTTP {resp.status_code})"}
+                logger.error(
+                    "Vikunja create_task %s: %s", resp.status_code, resp.text[:200]
+                )
+                return {
+                    "error": f"Aufgabe konnte nicht erstellt werden (HTTP {resp.status_code})"
+                }
             task = resp.json()
 
         return {
@@ -168,10 +172,7 @@ class TasksAction:
         tasks = await self.list_tasks(include_done=False)
         title_lower = title.lower()
 
-        matches = [
-            t for t in tasks
-            if title_lower in t["title"].lower()
-        ]
+        matches = [t for t in tasks if title_lower in t["title"].lower()]
 
         if not matches:
             return {"error": f"Keine offene Aufgabe gefunden: '{title}'"}

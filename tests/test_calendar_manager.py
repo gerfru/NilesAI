@@ -80,37 +80,53 @@ class TestAddSource:
     async def test_validates_https(self, manager):
         with pytest.raises(ValueError, match="HTTPS"):
             await manager.add_source(
-                name="Bad", url="http://example.com/cal.ics", source_type="ics",
+                name="Bad",
+                url="http://example.com/cal.ics",
+                source_type="ics",
             )
 
     async def test_validates_url_length(self, manager):
         with pytest.raises(ValueError, match="zu lang"):
             await manager.add_source(
-                name="Bad", url="https://example.com/" + "a" * 2100, source_type="ics",
+                name="Bad",
+                url="https://example.com/" + "a" * 2100,
+                source_type="ics",
             )
 
     async def test_validates_name_length(self, manager):
         with pytest.raises(ValueError, match="zu lang"):
             await manager.add_source(
-                name="N" * 300, url="https://example.com/cal.ics", source_type="ics",
+                name="N" * 300,
+                url="https://example.com/cal.ics",
+                source_type="ics",
             )
 
     async def test_validates_source_type(self, manager):
         with pytest.raises(ValueError, match="Unbekannter Typ"):
             await manager.add_source(
-                name="Bad", url="https://example.com/cal.ics", source_type="ftp",
+                name="Bad",
+                url="https://example.com/cal.ics",
+                source_type="ftp",
             )
 
     async def test_inserts_and_returns_row(self, manager, pool):
         mock_row = {
-            "id": 1, "name": "Feiertage", "url": "https://example.com/cal.ics",
-            "source_type": "ics", "writable": False, "enabled": True,
-            "last_synced": None, "last_error": None, "created_at": "2026-01-01",
+            "id": 1,
+            "name": "Feiertage",
+            "url": "https://example.com/cal.ics",
+            "source_type": "ics",
+            "writable": False,
+            "enabled": True,
+            "last_synced": None,
+            "last_error": None,
+            "created_at": "2026-01-01",
         }
         pool.fetchrow.return_value = mock_row
 
         result = await manager.add_source(
-            name="Feiertage", url="https://example.com/cal.ics", source_type="ics",
+            name="Feiertage",
+            url="https://example.com/cal.ics",
+            source_type="ics",
         )
         pool.fetchrow.assert_called_once()
         assert result["name"] == "Feiertage"
@@ -131,9 +147,17 @@ class TestRemoveSource:
 class TestGetSources:
     async def test_returns_list_of_dicts(self, manager, pool):
         pool.fetch.return_value = [
-            {"id": 1, "name": "A", "url": "https://a.com", "source_type": "ics",
-             "writable": False, "enabled": True, "last_synced": None,
-             "last_error": None, "created_at": "2026-01-01"},
+            {
+                "id": 1,
+                "name": "A",
+                "url": "https://a.com",
+                "source_type": "ics",
+                "writable": False,
+                "enabled": True,
+                "last_synced": None,
+                "last_error": None,
+                "created_at": "2026-01-01",
+            },
         ]
         sources = await manager.get_sources()
         assert len(sources) == 1
@@ -151,9 +175,14 @@ DTSTART;VALUE=DATE:20260101
 END:VEVENT
 END:VCALENDAR"""
         source = {
-            "id": 5, "name": "Feiertage", "url": "https://example.com/cal.ics",
-            "source_type": "ics", "auth_user": None, "auth_password": None,
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 5,
+            "name": "Feiertage",
+            "url": "https://example.com/cal.ics",
+            "source_type": "ics",
+            "auth_user": None,
+            "auth_password": None,
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -179,9 +208,14 @@ END:VCALENDAR"""
 
     async def test_handles_empty_ics(self, manager, pool):
         source = {
-            "id": 6, "name": "Empty", "url": "https://example.com/empty.ics",
-            "source_type": "ics", "auth_user": None, "auth_password": None,
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 6,
+            "name": "Empty",
+            "url": "https://example.com/empty.ics",
+            "source_type": "ics",
+            "auth_user": None,
+            "auth_password": None,
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -201,9 +235,14 @@ END:VCALENDAR"""
 
     async def test_rejects_oversized_ics(self, manager, pool):
         source = {
-            "id": 8, "name": "Huge", "url": "https://example.com/huge.ics",
-            "source_type": "ics", "auth_user": None, "auth_password": None,
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 8,
+            "name": "Huge",
+            "url": "https://example.com/huge.ics",
+            "source_type": "ics",
+            "auth_user": None,
+            "auth_password": None,
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -227,9 +266,14 @@ END:VCALENDAR"""
 
     async def test_records_error_on_http_failure(self, manager, pool):
         source = {
-            "id": 7, "name": "Broken", "url": "https://example.com/broken.ics",
-            "source_type": "ics", "auth_user": None, "auth_password": None,
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 7,
+            "name": "Broken",
+            "url": "https://example.com/broken.ics",
+            "source_type": "ics",
+            "auth_user": None,
+            "auth_password": None,
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
@@ -252,9 +296,14 @@ class TestSyncICSRedirect:
 
     async def test_follows_redirects(self, manager, pool):
         source = {
-            "id": 9, "name": "Redirect", "url": "https://example.com/cal.ics",
-            "source_type": "ics", "auth_user": None, "auth_password": None,
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 9,
+            "name": "Redirect",
+            "url": "https://example.com/cal.ics",
+            "source_type": "ics",
+            "auth_user": None,
+            "auth_password": None,
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
@@ -277,9 +326,14 @@ class TestSyncICSRedirect:
 class TestSyncCalDAV:
     async def test_creates_caldav_sync_with_source_id(self, manager, pool):
         source = {
-            "id": 10, "name": "CalDAV", "url": "https://dav.example.com/caldav/",
-            "source_type": "caldav", "auth_user": "user", "auth_password": "pass",
-            "google_refresh_token": None, "google_token_expiry": None,
+            "id": 10,
+            "name": "CalDAV",
+            "url": "https://dav.example.com/caldav/",
+            "source_type": "caldav",
+            "auth_user": "user",
+            "auth_password": "pass",
+            "google_refresh_token": None,
+            "google_token_expiry": None,
         }
 
         with patch("niles.sync.manager.CalDAVSync") as mock_cls:
@@ -299,16 +353,32 @@ class TestSyncCalDAV:
 class TestSyncAll:
     async def test_syncs_multiple_sources(self, manager, pool):
         pool.fetch.return_value = [
-            {"id": 1, "name": "ICS", "url": "https://a.com/cal.ics",
-             "source_type": "ics", "auth_user": None, "auth_password": None,
-             "google_refresh_token": None, "google_token_expiry": None},
-            {"id": 2, "name": "CalDAV", "url": "https://dav.example.com/",
-             "source_type": "caldav", "auth_user": "u", "auth_password": "p",
-             "google_refresh_token": None, "google_token_expiry": None},
+            {
+                "id": 1,
+                "name": "ICS",
+                "url": "https://a.com/cal.ics",
+                "source_type": "ics",
+                "auth_user": None,
+                "auth_password": None,
+                "google_refresh_token": None,
+                "google_token_expiry": None,
+            },
+            {
+                "id": 2,
+                "name": "CalDAV",
+                "url": "https://dav.example.com/",
+                "source_type": "caldav",
+                "auth_user": "u",
+                "auth_password": "p",
+                "google_refresh_token": None,
+                "google_token_expiry": None,
+            },
         ]
 
-        with patch.object(manager, "_sync_ics", return_value=5) as mock_ics, \
-             patch.object(manager, "_sync_caldav", return_value=10) as mock_caldav:
+        with (
+            patch.object(manager, "_sync_ics", return_value=5) as mock_ics,
+            patch.object(manager, "_sync_caldav", return_value=10) as mock_caldav,
+        ):
             total = await manager.sync_all()
 
         assert total == 15
@@ -317,12 +387,26 @@ class TestSyncAll:
 
     async def test_error_in_one_source_continues(self, manager, pool):
         pool.fetch.return_value = [
-            {"id": 1, "name": "Broken", "url": "https://broken.com/cal.ics",
-             "source_type": "ics", "auth_user": None, "auth_password": None,
-             "google_refresh_token": None, "google_token_expiry": None},
-            {"id": 2, "name": "Good", "url": "https://good.com/cal.ics",
-             "source_type": "ics", "auth_user": None, "auth_password": None,
-             "google_refresh_token": None, "google_token_expiry": None},
+            {
+                "id": 1,
+                "name": "Broken",
+                "url": "https://broken.com/cal.ics",
+                "source_type": "ics",
+                "auth_user": None,
+                "auth_password": None,
+                "google_refresh_token": None,
+                "google_token_expiry": None,
+            },
+            {
+                "id": 2,
+                "name": "Good",
+                "url": "https://good.com/cal.ics",
+                "source_type": "ics",
+                "auth_user": None,
+                "auth_password": None,
+                "google_refresh_token": None,
+                "google_token_expiry": None,
+            },
         ]
 
         call_count = 0
@@ -345,10 +429,15 @@ class TestMigrateEnvSource:
     async def test_migrates_when_table_empty(self, manager, pool):
         pool.fetchval.return_value = 0
         pool.fetchrow.return_value = {
-            "id": 1, "name": "mailbox.org (migriert)",
+            "id": 1,
+            "name": "mailbox.org (migriert)",
             "url": "https://dav.example.com/caldav/",
-            "source_type": "caldav", "writable": True, "enabled": True,
-            "last_synced": None, "last_error": None, "created_at": "2026-01-01",
+            "source_type": "caldav",
+            "writable": True,
+            "enabled": True,
+            "last_synced": None,
+            "last_error": None,
+            "created_at": "2026-01-01",
         }
 
         await manager._migrate_env_source()

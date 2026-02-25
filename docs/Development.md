@@ -1,32 +1,32 @@
 # Niles AI Core -- Development Guide
 
-> **Stand:** 2026-02-23
+> **Updated:** 2026-02-25
 
 ---
 
-## 1. Voraussetzungen
+## 1. Prerequisites
 
-Laufzeitvoraussetzungen (Docker, Ollama, etc.) siehe [Deployment Guide §1](DEPLOYMENT.md#1-voraussetzungen).
+Runtime prerequisites (Docker, Ollama, etc.) see [Deployment Guide #1](Deployment.md#1-prerequisites).
 
-Zusaetzlich fuer die Entwicklung:
+Additionally for development:
 
-| Software | Version | Zweck |
-| -------- | ------- | ----- |
+| Software | Version | Purpose |
+| -------- | ------- | ------- |
 | Python | >= 3.11 | Runtime + Tests |
-| Tailwind CSS CLI | v3.4.17 | CSS Build (Standalone Binary, kein Node.js) |
+| Tailwind CSS CLI | v3.4.17 | CSS Build (standalone binary, no Node.js) |
 
 ---
 
-## 2. Lokaler Setup
+## 2. Local Setup
 
-### Repository klonen
+### Clone Repository
 
 ```bash
 git clone <repo-url> Niles
 cd Niles
 ```
 
-### Python-Umgebung
+### Python Environment
 
 ```bash
 python3 -m venv .venv
@@ -34,28 +34,28 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### Environment konfigurieren
+### Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Alle Environment-Variablen, Ollama-Setup und Service-Konfiguration (Google OAuth, WhatsApp, Vikunja, etc.) sind im [Deployment Guide](DEPLOYMENT.md) dokumentiert:
+All environment variables, Ollama setup, and service configuration (Google OAuth, WhatsApp, Vikunja, etc.) are documented in the [Deployment Guide](Deployment.md):
 
-- [Schnellstart](DEPLOYMENT.md#2-schnellstart) -- Pflicht-Variablen
-- [Environment-Referenz](DEPLOYMENT.md#environment-variablen) -- Vollstaendige Variablen-Tabelle
-- [Ollama](DEPLOYMENT.md#3-ollama-llm-backend) -- LLM-Setup
-- [Vikunja](DEPLOYMENT.md#8-aufgaben-vikunja) -- Aufgaben-Setup
+- [Quick Start](Deployment.md#2-quick-start) -- Required variables
+- [Environment Reference](Deployment.md#environment-variables) -- Complete variable table
+- [Ollama](Deployment.md#3-ollama-llm-backend) -- LLM setup
+- [Vikunja](Deployment.md#8-tasks-vikunja) -- Task setup
 
-Vollstaendige Settings-Tabelle mit Defaults: [Niles-Core-Spec.md §6.1](Niles-Core-Spec.md#61-settings).
+Complete settings table with defaults: [Niles-Core-Spec.md #6.1](Niles-Core-Spec.md#61-settings).
 
 ---
 
-## 3. Tailwind CSS (Frontend-Styling)
+## 3. Tailwind CSS (Frontend Styling)
 
-Templates verwenden Tailwind CSS Utility Classes. Die generierte `style.css` wird von FastAPI als statische Datei serviert.
+Templates use Tailwind CSS utility classes. The generated `style.css` is served by FastAPI as a static file.
 
-### Tailwind CLI (Standalone, kein Node.js)
+### Tailwind CLI (Standalone, no Node.js)
 
 ```bash
 # macOS ARM64:
@@ -64,43 +64,43 @@ chmod +x tailwindcss-macos-arm64
 mv tailwindcss-macos-arm64 tailwindcss
 ```
 
-### CSS bauen
+### Build CSS
 
 ```bash
-# Einmaliger Build:
+# One-time build:
 ./tailwindcss --minify -i src/niles/static/css/input.css -o src/niles/static/css/style.css
 
-# Watch-Modus (bei Template-Aenderungen):
+# Watch mode (on template changes):
 ./tailwindcss --watch -i src/niles/static/css/input.css -o src/niles/static/css/style.css
 ```
 
 ### Docker Build
 
-Im Dockerfile wird Tailwind CLI automatisch heruntergeladen und CSS gebaut (`python urllib.request.urlretrieve`). Bei Aenderungen an Templates oder `input.css` muss das Docker-Image neu gebaut werden -- oder `style.css` lokal gebaut und via Volume-Mount bereitgestellt werden.
+The Dockerfile automatically downloads Tailwind CLI and builds CSS (`python urllib.request.urlretrieve`). When changing templates or `input.css`, the Docker image must be rebuilt -- or `style.css` built locally and provided via volume mount.
 
-**Konfiguration:** `tailwind.config.js` im Projekt-Root definiert Content-Pfade und Dark Mode (`class`).
+**Configuration:** `tailwind.config.js` in the project root defines content paths and dark mode (`class`).
 
 ---
 
-## 4. Entwicklung starten
+## 4. Starting Development
 
-### Variante A: Lokal (ohne Docker)
+### Option A: Local (without Docker)
 
 ```bash
 ./scripts/dev.sh
 ```
 
-Startet uvicorn mit Auto-Reload auf `http://127.0.0.1:8000`. Setzt voraus, dass PostgreSQL und Evolution API extern laufen (z.B. via Docker).
+Starts uvicorn with auto-reload on `http://127.0.0.1:8000`. Requires PostgreSQL and Evolution API to be running externally (e.g., via Docker).
 
-### Variante B: Docker (komplett)
+### Option B: Docker (complete)
 
 ```bash
 ./scripts/start.sh
 ```
 
-Startet alle Container (PostgreSQL, Evolution API, Niles Core, Caddy). Niles Core laeuft mit Volume-Mount und `--reload` fuer Live-Reload bei Code-Aenderungen.
+Starts all containers (PostgreSQL, Evolution API, Niles Core, Caddy). Niles Core runs with volume mount and `--reload` for live reload on code changes.
 
-**HTTPS:** Caddy terminiert TLS mit self-signed Zertifikaten. Fuer lokales Testen `--insecure` bei curl verwenden:
+**HTTPS:** Caddy terminates TLS with self-signed certificates. For local testing, use `--insecure` with curl:
 
 ```bash
 curl -k https://localhost/health
@@ -110,25 +110,25 @@ curl -k -X POST https://localhost/chat \
   -d '{"message": "Test"}'
 ```
 
-**Web-UI:** `https://localhost/ui/login` im Browser oeffnen.
+**Web UI:** Open `https://localhost/ui/login` in the browser.
 
-Alternativ direkt ueber den Docker-internen Port (ohne TLS): `docker exec niles_core curl http://localhost:8000/health`
+Alternatively via the Docker-internal port (without TLS): `docker exec niles_core curl http://localhost:8000/health`
 
-**Postgres Debugging:** Der Postgres-Port ist standardmaessig nicht erreichbar. Um direkt auf die Datenbank zuzugreifen (z.B. via `psql`), in `.env` setzen:
+**Postgres Debugging:** The Postgres port is not exposed by default. To access the database directly (e.g., via `psql`), set in `.env`:
 
 ```bash
 POSTGRES_HOST_PORT=5432
 ```
 
-Dann: `psql -h 127.0.0.1 -U evolution -d evolution_db`
+Then: `psql -h 127.0.0.1 -U evolution -d evolution_db`
 
-### Status pruefen
+### Check Status
 
 ```bash
 ./scripts/status.sh
 ```
 
-### Stoppen
+### Stop
 
 ```bash
 ./scripts/stop.sh
@@ -138,60 +138,60 @@ Dann: `psql -h 127.0.0.1 -U evolution -d evolution_db`
 
 ## 5. Tests
 
-### Ausfuehren
+### Run
 
 ```bash
 ./scripts/test.sh
 ```
 
-Oder direkt:
+Or directly:
 
 ```bash
 source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-### Teststruktur
+### Test Structure
 
 ```text
 tests/
-├── conftest.py                  # Shared Fixtures (Environment-Variablen)
-├── test_config.py               # Settings-Validierung
-├── test_contacts.py             # ContactsAction, normalize_phone, Multi-Phone
-├── test_core.py                 # NilesAgent, Tool-Call-Pipeline, Text-Tool-Call-Fallback
-├── test_health.py               # GET /health Endpoint
+├── conftest.py                  # Shared Fixtures (environment variables)
+├── test_config.py               # Settings validation
+├── test_contacts.py             # ContactsAction, normalize_phone, multi-phone
+├── test_core.py                 # NilesAgent, tool-call pipeline, text-tool-call fallback
+├── test_health.py               # GET /health endpoint
 ├── test_memory.py               # MemoryStore, ConversationHistory
-├── test_features.py             # Feature Flags (send_others, Self-Check) + Webhook Auth
-├── test_self_chat.py            # WhatsApp Self-Chat (Trigger, Strip, Webhook-Integration)
-├── test_carddav.py              # CardDAV Sync
-├── test_caldav.py               # CalDAV Sync
-├── test_ical_parser.py          # iCalendar Parser
-├── test_rrule_expansion.py      # RRULE Expansion (Wiederkehrende Termine)
-├── test_calendar_manager.py     # CalendarSourceManager (CRUD, Sync, Migration)
-├── test_calendar_improvements.py # Kalender Query-Verbesserungen
-├── test_google_auth.py          # Google Calendar OAuth (Token Refresh)
-├── test_mcp.py                  # MCP Integration
-├── test_security.py             # API Auth, Rate Limiting
-├── test_settings_store.py       # Runtime Settings Store
-├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
-├── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
-├── test_tasks.py                # Vikunja Task Management
-└── test_vikunja_store.py        # Per-User Vikunja Credentials + Agent Resolution
+├── test_features.py             # Feature flags (send_others, self-check) + webhook auth
+├── test_self_chat.py            # WhatsApp self-chat (trigger, strip, webhook integration)
+├── test_carddav.py              # CardDAV sync
+├── test_caldav.py               # CalDAV sync
+├── test_ical_parser.py          # iCalendar parser
+├── test_rrule_expansion.py      # RRULE expansion (recurring events)
+├── test_calendar_manager.py     # CalendarSourceManager (CRUD, sync, migration)
+├── test_calendar_improvements.py # Calendar query improvements
+├── test_google_auth.py          # Google Calendar OAuth (token refresh)
+├── test_mcp.py                  # MCP integration
+├── test_security.py             # API auth, rate limiting
+├── test_settings_store.py       # Runtime settings store
+├── test_web.py                  # Web UI, Google OAuth, sessions, CSRF
+├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
+├── test_tasks.py                # Vikunja task management
+└── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
 ```
 
-### Konventionen
+### Conventions
 
-- Framework: pytest mit `pytest-asyncio`
-- `asyncio_mode = "auto"` in `pyproject.toml` (kein `@pytest.mark.asyncio` noetig)
-- Externe Dependencies (PostgreSQL, LLM) werden mit `unittest.mock.AsyncMock` gemockt
-- `conftest.py` setzt Pflicht-Environment-Variablen via `monkeypatch`
-- Testdateien: `tests/test_<modul>.py`
-- Testklassen: `class Test<Klasse>:`
-- Web-UI Tests verwenden signierte Session-Tokens via `itsdangerous.URLSafeTimedSerializer` mit separatem `_TEST_SESSION_SECRET`
+- Framework: pytest with `pytest-asyncio`
+- `asyncio_mode = "auto"` in `pyproject.toml` (no `@pytest.mark.asyncio` needed)
+- External dependencies (PostgreSQL, LLM) are mocked with `unittest.mock.AsyncMock`
+- `conftest.py` sets required environment variables via `monkeypatch`
+- Test files: `tests/test_<module>.py`
+- Test classes: `class Test<Class>:`
+- Web UI tests use signed session tokens via `itsdangerous.URLSafeTimedSerializer` with a separate `_TEST_SESSION_SECRET`
 
 ---
 
-## 6. Docker-Workflow
+## 6. Docker Workflow
 
 ### Build
 
@@ -202,16 +202,16 @@ docker compose -f docker/docker-compose.yml --env-file .env build niles_core
 ### Logs
 
 ```bash
-# Alle Container
+# All containers
 docker compose -f docker/docker-compose.yml logs -f
 
-# Nur Niles Core
+# Niles Core only
 docker compose -f docker/docker-compose.yml logs -f niles_core
 ```
 
-### Neustart nach Aenderungen
+### Restart After Changes
 
-Bei Aenderungen an `src/` ist kein Neustart noetig (Volume-Mount + `--reload`). Bei Aenderungen an `pyproject.toml` (neue Dependencies) muss der Container neu gebaut werden:
+Changes to `src/` do not require a restart (volume mount + `--reload`). Changes to `pyproject.toml` (new dependencies) require rebuilding the container:
 
 ```bash
 docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_core
@@ -219,86 +219,99 @@ docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_
 
 ---
 
-## 7. Neue Komponente hinzufuegen
+## 7. Adding New Components
 
-### Neues Tool (Agent-Faehigkeit)
+### New Tool (Agent Capability)
 
-1. Tool-Definition in `src/niles/agent/core.py` zur `TOOLS`-Liste hinzufuegen (OpenAI Function-Calling Format)
-2. Handler in `NilesAgent._execute_tool_call()` ergaenzen
-3. Tests in `tests/test_agent.py` (oder neue Testdatei)
+1. Add tool definition to the `TOOLS` list in `src/niles/agent/core.py` (OpenAI function calling format)
+2. Add handler in `NilesAgent._execute_tool_call()`
+3. Add tests in `tests/test_agent.py` (or new test file)
 
-### Neue Action (externe Integration)
+### New Action (External Integration)
 
-1. Datei `src/niles/actions/<name>.py` erstellen
-2. Klasse mit async Methoden implementieren
-3. In `main.py` Lifespan instanziieren und an Agent uebergeben
-4. Tests mit gemockten externen Aufrufen
+1. Create file `src/niles/actions/<name>.py`
+2. Implement class with async methods
+3. Instantiate in `main.py` lifespan and pass to agent
+4. Write tests with mocked external calls
 
-### Neue Event-Source
+### New Event Source
 
-1. Datei `src/niles/sources/<name>.py` erstellen
-2. FastAPI-Router mit Webhook-Endpoint
-3. Event-Dict erstellen und an `agent.process_event()` uebergeben
-4. Router in `main.py` einbinden: `app.include_router(router)`
+1. Create file `src/niles/sources/<name>.py`
+2. FastAPI router with webhook endpoint
+3. Create event dict and pass to `agent.process_event()`
+4. Include router in `main.py`: `app.include_router(router)`
 
 ---
 
-## 8. Konventionen
+## 8. Conventions
 
-### Sprache
+### Language
 
-- **Code:** Englisch (Variablen, Funktionen, Kommentare, Docstrings)
-- **Agent-Prompts:** Deutsch (soul.md, Tool-Beschreibungen)
-- **Dokumentation:** Deutsch
-- **Web-UI Labels:** Deutsch (Zielsprache des End-Users)
+- **Code:** English (variables, functions, comments, docstrings)
+- **Agent prompts:** German (soul.md, tool descriptions)
+- **Documentation:** English
+- **Web UI labels:** German (target language of the end user)
 
 ### Async
 
-- Alle I/O-Operationen sind `async`
-- PostgreSQL via `asyncpg` (Connection Pool)
+- All I/O operations are `async`
+- PostgreSQL via `asyncpg` (connection pool)
 - HTTP via `httpx.AsyncClient`
 - LLM via `openai.AsyncOpenAI`
 
-### Fehlerbehandlung
+### Error Handling
 
-- Webhook-Handler: Exceptions fangen und loggen, immer HTTP 200 zurueckgeben
-- Web-UI: Agent-Fehler abfangen, Fehlermeldung im Chat anzeigen
-- LLM-Fehler: Fehlermeldung an User, kein Exception-Propagation
-- Tool-Call-Fehler: `{"error": "..."}` als Tool-Result zurueck an LLM
-- Startup: `ValidationError` bei fehlenden Pflicht-Variablen -> `sys.exit(1)`
+- Webhook handlers: Catch and log exceptions, always return HTTP 200
+- Web UI: Catch agent errors, display error message in chat
+- LLM errors: Error message to user, no exception propagation
+- Tool call errors: `{"error": "..."}` as tool result back to LLM
+- Startup: `ValidationError` on missing required variables -> `sys.exit(1)`
 
-### Text-basierter Tool-Call Fallback
+### Text-Based Tool Call Fallback
 
-Kleinere lokale LLMs (z.B. `llama3.1:8b` via Ollama) nutzen manchmal nicht die Function-Calling-API, sondern geben den Tool-Call als JSON-Text aus:
+Smaller local LLMs (e.g., `llama3.1:8b` via Ollama) sometimes don't use the function calling API but output the tool call as JSON text:
 
 ```json
-{"name": "create_task", "parameters": {"title": "Einkaufen", "due_date": "2026-02-24"}}
+{"name": "create_task", "parameters": {"title": "Shopping", "due_date": "2026-02-24"}}
 ```
 
-`NilesAgent._try_parse_text_tool_call()` erkennt solche Antworten und fuehrt den Tool-Call trotzdem aus. Im Streaming-Modus werden JSON-artige Antworten gepuffert (nicht sofort an den User gestreamt), damit kein rohes JSON in der Chat-Bubble erscheint.
+`NilesAgent._try_parse_text_tool_call()` detects such responses and executes the tool call anyway. In streaming mode, JSON-like responses are buffered (not immediately streamed to the user) so that no raw JSON appears in the chat bubble.
 
-Hinweis: LLM-Parameter werden dabei manchmal als String statt als korrektem Typ geliefert (z.B. `"priority": "0"` statt `"priority": 0`). Actions muessen solche Typen robust handhaben (`int()` mit Fallback).
+Note: LLM parameters are sometimes delivered as strings instead of the correct type (e.g., `"priority": "0"` instead of `"priority": 0`). Actions must handle such types robustly (`int()` with fallback).
 
 ### Logging
 
-- `logging.getLogger(__name__)` in jedem Modul
-- Level konfigurierbar via `LOG_LEVEL` Environment-Variable
+- `logging.getLogger(__name__)` in every module
+- Level configurable via `LOG_LEVEL` environment variable
 - Format: `%(asctime)s %(levelname)s %(name)s: %(message)s`
 
-### Security: Keine Loeschungen
+### Security: No Deletions
 
-Niles darf keine Benutzerdaten loeschen. Dieses Prinzip wird auf drei Ebenen durchgesetzt:
+Niles must never delete user data. This principle is enforced on three levels:
 
-1. **Keine Delete-Tools:** Die TOOLS-Liste enthaelt keine Loesch-Operationen. `complete_task` markiert nur als erledigt.
-2. **MCP Destructive-Tool-Blocking:** MCP-Tools mit destruktiven Namenspraefixen (`delete_`, `remove_`, `drop_`, etc.) werden bei der Tool-Entdeckung automatisch geblockt (`src/niles/mcp/client.py`, `_DESTRUCTIVE_PREFIXES`). **Limitation:** Nur Prefix-basiert — Tools wie `bulk_remove` oder `data_wipe_all` werden nicht erkannt. Fuer striktere Kontrolle: per-Server Allowlist in `mcp_servers.yaml` verwenden.
-3. **soul.md Regel 7:** Das LLM wird angewiesen, bei Loesch-Anfragen auf die jeweilige App zu verweisen.
+1. **No delete tools:** The TOOLS list contains no delete operations. `complete_task` only marks as done.
+2. **MCP destructive tool blocking:** MCP tools with destructive name prefixes (`delete_`, `remove_`, `drop_`, etc.) are automatically blocked during tool discovery (`src/niles/mcp/client.py`, `_DESTRUCTIVE_PREFIXES`). **Limitation:** Prefix-based only -- tools like `bulk_remove` or `data_wipe_all` are not detected. For stricter control: use per-server allowlists in `mcp_servers.yaml`.
+3. **soul.md Rule 7:** The LLM is instructed to refer users to the respective app for deletion requests.
 
-Wenn neue Tools oder Integrationen hinzugefuegt werden: keine `delete_*`-Methoden an das LLM exponieren. Loeschungen nur ueber Web-UI mit expliziter User-Interaktion.
+When adding new tools or integrations: do not expose `delete_*` methods to the LLM. Deletions only via web UI with explicit user interaction.
+
+### Scheduled Jobs (APScheduler)
+
+Niles uses APScheduler for automatic background jobs. All jobs are registered in `main.py` during `lifespan()`:
+
+| Job ID | Schedule | Condition | Module |
+| ------ | -------- | --------- | ------ |
+| `carddav_daily_sync` | Daily 03:00 | `carddav_url` configured | `sync/carddav.py` |
+| `calendar_sources_sync` | Daily 03:20 | Calendar sources exist | `sync/manager.py` |
+| `briefing_daily` | Mon-Fri, configurable | `feature_briefing_daily=true` | `jobs/briefing.py` |
+| `briefing_weekly` | Mon, configurable | `feature_briefing_weekly=true` | `jobs/briefing.py` |
+
+**Briefing pattern:** The briefing jobs (`jobs/briefing.py`) receive `app.state` as argument. At runtime (not at registration), the connected WhatsApp number is determined from the `whatsapp_sessions` table. If no session is connected, the briefing is skipped (no error).
 
 ---
 
-## 9. Weitere Dokumentation
+## 9. Further Documentation
 
-- [Deployment Guide](DEPLOYMENT.md) -- Setup, Konfiguration, Backup, Troubleshooting
-- [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
-- [API Reference](API.md) -- Endpoints, Payloads, Beispiele
+- [Deployment Guide](Deployment.md) -- Setup, configuration, backup, troubleshooting
+- [Technical Specification](Niles-Core-Spec.md) -- Architecture, components, configuration
+- [API Reference](API.md) -- Endpoints, payloads, examples

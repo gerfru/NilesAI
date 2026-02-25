@@ -104,7 +104,9 @@ class TestPropfind:
         with patch("niles.sync.carddav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             urls = await sync._propfind()
@@ -121,7 +123,9 @@ class TestPropfind:
         with patch("niles.sync.carddav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             urls = await sync._propfind()
@@ -218,18 +222,25 @@ class TestUpsertContact:
         # DELETE old phones + INSERT for each phone
         execute_calls = pool.execute.call_args_list
         assert any("DELETE FROM contact_phones" in c[0][0] for c in execute_calls)
-        insert_calls = [c for c in execute_calls if "INSERT INTO contact_phones" in c[0][0]]
+        insert_calls = [
+            c for c in execute_calls if "INSERT INTO contact_phones" in c[0][0]
+        ]
         assert len(insert_calls) == 2
 
 
 class TestSyncContacts:
     async def test_full_sync_flow(self, sync, pool):
-        with patch.object(sync, "_propfind", return_value=[
-            "/carddav/32/contact1.vcf",
-        ]) as mock_propfind, \
-            patch.object(sync, "_fetch_vcard", return_value=SAMPLE_VCARD_FULL), \
-            patch.object(sync, "_upsert_contact") as mock_upsert:
-
+        with (
+            patch.object(
+                sync,
+                "_propfind",
+                return_value=[
+                    "/carddav/32/contact1.vcf",
+                ],
+            ) as mock_propfind,
+            patch.object(sync, "_fetch_vcard", return_value=SAMPLE_VCARD_FULL),
+            patch.object(sync, "_upsert_contact") as mock_upsert,
+        ):
             count = await sync.sync_contacts()
 
         assert count == 1
@@ -237,16 +248,25 @@ class TestSyncContacts:
         mock_upsert.assert_called_once()
 
     async def test_sync_skips_invalid_vcards(self, sync, pool):
-        with patch.object(sync, "_propfind", return_value=[
-            "/carddav/32/good.vcf",
-            "/carddav/32/empty.vcf",
-        ]), \
-            patch.object(sync, "_fetch_vcard", side_effect=[
-                SAMPLE_VCARD_FULL,
-                SAMPLE_VCARD_EMPTY,
-            ]), \
-            patch.object(sync, "_upsert_contact") as mock_upsert:
-
+        with (
+            patch.object(
+                sync,
+                "_propfind",
+                return_value=[
+                    "/carddav/32/good.vcf",
+                    "/carddav/32/empty.vcf",
+                ],
+            ),
+            patch.object(
+                sync,
+                "_fetch_vcard",
+                side_effect=[
+                    SAMPLE_VCARD_FULL,
+                    SAMPLE_VCARD_EMPTY,
+                ],
+            ),
+            patch.object(sync, "_upsert_contact") as mock_upsert,
+        ):
             count = await sync.sync_contacts()
 
         assert count == 1

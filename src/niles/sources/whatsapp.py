@@ -54,7 +54,7 @@ def _is_niles_trigger(text: str) -> bool:
     lower = text.strip().lower()
     for phrase in TRIGGER_PHRASES:
         if lower.startswith(phrase):
-            rest = lower[len(phrase):]
+            rest = lower[len(phrase) :]
             if not rest or not rest[0].isalpha():
                 return True
     return False
@@ -75,9 +75,9 @@ def _strip_trigger(text: str) -> str:
     lower = text.strip().lower()
     for phrase in TRIGGER_PHRASES:
         if lower.startswith(phrase):
-            rest = lower[len(phrase):]
+            rest = lower[len(phrase) :]
             if not rest or not rest[0].isalpha():
-                return text.strip()[len(phrase):].lstrip(" ,:-").strip()
+                return text.strip()[len(phrase) :].lstrip(" ,:-").strip()
     return text.strip()
 
 
@@ -122,9 +122,8 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         return {"status": "ignored", "reason": "echo of own reply"}
 
     # Extract text from different message types
-    text = (
-        message.get("conversation")
-        or message.get("extendedTextMessage", {}).get("text")
+    text = message.get("conversation") or message.get("extendedTextMessage", {}).get(
+        "text"
     )
 
     if not text:
@@ -173,7 +172,11 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
                     instance=instance_for_reply,
                 )
                 # Record sent message ID so the echoed webhook is skipped
-                sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
+                sent_id = (
+                    result.get("key", {}).get("id")
+                    if isinstance(result, dict)
+                    else None
+                )
                 if sent_id:
                     _record_sent(sent_id)
                     logger.info("Self-chat reply sent to %s", remote_jid)
