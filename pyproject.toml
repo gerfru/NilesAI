@@ -35,6 +35,9 @@ dependencies = [
     # Signed session cookies (Google OAuth)
     "itsdangerous>=2.0",
 
+    # Password hashing (Argon2id)
+    "argon2-cffi>=25.1.0",
+
     # RRULE expansion for recurring calendar events
     "python-dateutil>=2.8.0",
 ]
