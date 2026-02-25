@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from itsdangerous import URLSafeTimedSerializer
 
 from niles.config import Settings
+from argon2.exceptions import VerifyMismatchError
+
 from niles.sources.web import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
@@ -13,8 +15,12 @@ from niles.sources.web import (
     _GCAL_OAUTH_COOKIE,
     _get_session_user,
     _login_attempts,
+    _require_admin,
     _require_auth_and_csrf,
     _verify_csrf,
+    admin_create_user,
+    admin_delete_user,
+    admin_reset_password,
     callback_google_calendar,
     chat_clear,
     chat_page,
@@ -34,6 +40,14 @@ _TEST_USER = {
     "email": "test@example.com",
     "display_name": "Test User",
     "avatar_url": "",
+    "is_admin": True,
+}
+_TEST_USER_NON_ADMIN = {
+    "uid": 2,
+    "email": "user@example.com",
+    "display_name": "Regular User",
+    "avatar_url": "",
+    "is_admin": False,
 }
 
 
@@ -144,26 +158,105 @@ class TestWebAuth:
         )
         assert _verify_csrf(request) is False
 
-    async def test_login_submit_valid_key(self):
-        request = _make_request()
-        response = await login_submit(request, api_key=_TEST_NILES_KEY)
+    async def test_login_submit_valid_password(self):
+        """Correct email + password → redirect to /ui/chat."""
+        user_store = AsyncMock()
+        user_store.has_password_users.return_value = True
+        user_store.get_with_hash.return_value = {
+            "id": 1,
+            "email": "test@example.com",
+            "display_name": "Test User",
+            "avatar_url": None,
+            "password_hash": "hashed",
+            "auth_method": "password",
+            "is_admin": True,
+        }
+        user_store.pool = AsyncMock()
+        request = _make_request(user_store=user_store, client_ip="10.1.0.1")
+        _login_attempts.clear()
+        with patch("niles.sources.web._ph") as mock_ph:
+            mock_ph.verify.return_value = True
+            response = await login_submit(
+                request, email="test@example.com", password="correct"
+            )
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/chat"
+        _login_attempts.clear()
 
-    async def test_login_submit_invalid_key(self):
-        request = _make_request()
-        response = await login_submit(request, api_key="wrong-key")
+    async def test_login_submit_wrong_password(self):
+        """Wrong password → 401."""
+        user_store = AsyncMock()
+        user_store.has_password_users.return_value = True
+        user_store.get_with_hash.return_value = {
+            "id": 1,
+            "email": "test@example.com",
+            "display_name": "Test User",
+            "avatar_url": None,
+            "password_hash": "hashed",
+            "auth_method": "password",
+            "is_admin": False,
+        }
+        request = _make_request(user_store=user_store, client_ip="10.1.0.2")
+        _login_attempts.clear()
+        with patch("niles.sources.web._ph") as mock_ph:
+            mock_ph.verify.side_effect = VerifyMismatchError()
+            response = await login_submit(
+                request, email="test@example.com", password="wrong"
+            )
         assert response.status_code == 401
+        _login_attempts.clear()
+
+    async def test_login_submit_unknown_email(self):
+        """Non-existent email → 401 (same error as wrong password)."""
+        user_store = AsyncMock()
+        user_store.has_password_users.return_value = True
+        user_store.get_with_hash.return_value = None
+        request = _make_request(user_store=user_store, client_ip="10.1.0.3")
+        _login_attempts.clear()
+        with patch("niles.sources.web._ph") as mock_ph:
+            response = await login_submit(
+                request, email="nobody@test.com", password="test"
+            )
+        assert response.status_code == 401
+        # Dummy hash called for timing defense
+        mock_ph.hash.assert_called_once()
+        _login_attempts.clear()
+
+    async def test_login_submit_google_user_rejected(self):
+        """Google OAuth user cannot login with password form → 401."""
+        user_store = AsyncMock()
+        user_store.has_password_users.return_value = True
+        user_store.get_with_hash.return_value = {
+            "id": 1,
+            "email": "google@example.com",
+            "display_name": "Google User",
+            "avatar_url": None,
+            "password_hash": None,
+            "auth_method": "google",
+            "is_admin": False,
+        }
+        request = _make_request(user_store=user_store, client_ip="10.1.0.4")
+        _login_attempts.clear()
+        with patch("niles.sources.web._ph"):
+            response = await login_submit(
+                request, email="google@example.com", password="test"
+            )
+        assert response.status_code == 401
+        _login_attempts.clear()
 
     async def test_login_rate_limiting(self):
         """Login blocks after too many attempts from same IP."""
         _login_attempts.clear()
-        request = _make_request(client_ip="10.0.0.99")
-        # 5 failed attempts should exhaust the limit
-        for _ in range(5):
-            await login_submit(request, api_key="wrong")
-        # 6th attempt should be rate-limited
-        response = await login_submit(request, api_key="wrong")
+        user_store = AsyncMock()
+        user_store.has_password_users.return_value = True
+        user_store.get_with_hash.return_value = None
+        request = _make_request(user_store=user_store, client_ip="10.0.0.99")
+        with patch("niles.sources.web._ph"):
+            # 5 failed attempts should exhaust the limit
+            for _ in range(5):
+                await login_submit(request, email="x@x.com", password="wrong")
+            # 6th attempt should be rate-limited
+            response = await login_submit(request, email="x@x.com", password="wrong")
         assert response.status_code == 429
         _login_attempts.clear()
 
@@ -210,7 +303,11 @@ class TestWebAuth:
     async def test_valid_session_with_existing_user_passes(self):
         """Session cookie valid and user exists in DB → returns user dict."""
         user_store = AsyncMock()
-        user_store.get_by_id.return_value = {"id": 1, "email": "test@example.com"}
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "test@example.com",
+            "is_admin": True,
+        }
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
@@ -220,6 +317,28 @@ class TestWebAuth:
         assert error is None
         assert user is not None
         assert user["uid"] == 1
+        assert user["is_admin"] is True
+
+    async def test_is_admin_synced_from_db(self):
+        """is_admin in session cookie is overridden by DB value."""
+        user_store = AsyncMock()
+        # DB says admin=True, but session cookie has admin=False
+        user_store.get_by_id.return_value = {
+            "id": 2,
+            "email": "user@example.com",
+            "is_admin": True,
+        }
+        request = _make_request(
+            cookies={
+                SESSION_COOKIE_NAME: _make_session_token(_TEST_USER_NON_ADMIN),
+                CSRF_COOKIE_NAME: CSRF_TOKEN,
+            },
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        user, error = await _require_auth_and_csrf(request)
+        assert error is None
+        assert user["is_admin"] is True
 
 
 class TestChatEndpoints:
@@ -685,3 +804,208 @@ class TestGoogleCalendarCallback:
         second_call = manager.add_source.call_args_list[1]
         assert second_call[1]["name"] == "Feiertage"
         assert second_call[1]["writable"] is False
+
+
+def _admin_cookies():
+    """Session cookies for an admin user."""
+    return {
+        SESSION_COOKIE_NAME: _make_session_token(_TEST_USER),
+        CSRF_COOKIE_NAME: CSRF_TOKEN,
+    }
+
+
+def _non_admin_cookies():
+    """Session cookies for a non-admin user."""
+    return {
+        SESSION_COOKIE_NAME: _make_session_token(_TEST_USER_NON_ADMIN),
+        CSRF_COOKIE_NAME: CSRF_TOKEN,
+    }
+
+
+class TestAdminEndpoints:
+    """Tests for admin user-management endpoints."""
+
+    async def test_require_admin_passes_for_admin(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "test@example.com",
+            "is_admin": True,
+        }
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        user, error = await _require_admin(request)
+        assert error is None
+        assert user is not None
+        assert user["is_admin"] is True
+
+    async def test_require_admin_rejects_non_admin(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 2,
+            "email": "user@example.com",
+            "is_admin": False,
+        }
+        request = _make_request(
+            cookies=_non_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        user, error = await _require_admin(request)
+        assert user is None
+        assert error is not None
+        assert error.status_code == 403
+
+    async def test_admin_create_user_success(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        user_store.get_by_email.return_value = None
+        user_store.create_password_user.return_value = {
+            "id": 3,
+            "email": "new@test.com",
+        }
+        user_store.list_all.return_value = []
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        with patch("niles.sources.web._ph") as mock_ph:
+            mock_ph.hash.return_value = "hashed-pw"
+            response = await admin_create_user(
+                request,
+                email="new@test.com",
+                display_name="New User",
+                password="secure1234",
+            )
+        assert response.status_code == 200
+        user_store.create_password_user.assert_awaited_once()
+
+    async def test_admin_create_user_short_password(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        user_store.list_all.return_value = []
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_create_user(
+            request, email="x@test.com", display_name="X", password="short"
+        )
+        assert response.status_code == 400
+
+    async def test_admin_create_user_duplicate_email(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        user_store.get_by_email.return_value = {"id": 2, "email": "dup@test.com"}
+        user_store.list_all.return_value = []
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_create_user(
+            request, email="dup@test.com", display_name="Dup", password="secure1234"
+        )
+        assert response.status_code == 409
+
+    async def test_admin_create_user_rejects_non_admin(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 2,
+            "email": "user@test.com",
+            "is_admin": False,
+        }
+        request = _make_request(
+            cookies=_non_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_create_user(
+            request, email="x@test.com", display_name="X", password="secure1234"
+        )
+        assert response.status_code == 403
+
+    async def test_admin_delete_user_success(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.side_effect = lambda uid: (
+            {"id": 1, "email": "admin@test.com", "is_admin": True}
+            if uid == 1
+            else {"id": 5, "email": "target@test.com", "is_admin": False}
+        )
+        user_store.delete_user.return_value = True
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_delete_user(request, user_id=5)
+        assert response.status_code == 200
+        user_store.delete_user.assert_awaited_once_with(5)
+
+    async def test_admin_delete_self_rejected(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_delete_user(request, user_id=1)
+        assert response.status_code == 400
+
+    async def test_admin_reset_password_success(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.side_effect = lambda uid: (
+            {"id": 1, "email": "admin@test.com", "is_admin": True}
+            if uid == 1
+            else {"id": 5, "email": "target@test.com"}
+        )
+        user_store.update_password.return_value = True
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        with patch("niles.sources.web._ph") as mock_ph:
+            mock_ph.hash.return_value = "new-hash"
+            response = await admin_reset_password(
+                request, user_id=5, password="newpassword123"
+            )
+        assert response.status_code == 200
+        user_store.update_password.assert_awaited_once_with(5, "new-hash")
+
+    async def test_admin_reset_password_short(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers=_csrf_headers(),
+            user_store=user_store,
+        )
+        response = await admin_reset_password(request, user_id=5, password="short")
+        assert response.status_code == 400
