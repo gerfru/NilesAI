@@ -43,7 +43,10 @@ class ConversationHistory:
         )
 
     async def get_recent(
-        self, chat_id: str, limit: int = 20, offset: int = 0,
+        self,
+        chat_id: str,
+        limit: int = 20,
+        offset: int = 0,
     ) -> list[dict]:
         """Get the most recent messages for a chat (with optional offset for pagination)."""
         rows = await self.pool.fetch(
@@ -62,8 +65,7 @@ class ConversationHistory:
             {
                 "role": row["role"],
                 "content": row["content"],
-                "timestamp": row["created_at"].isoformat()
-                if row["created_at"] else "",
+                "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
             }
             for row in reversed(rows)
         ]

@@ -78,8 +78,8 @@ class Settings(BaseSettings):
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
-    briefing_daily_time: str = "07:30"        # HH:MM, Mo-Fr
-    briefing_weekly_time: str = "07:15"       # HH:MM, Montag
+    briefing_daily_time: str = "07:30"  # HH:MM, Mo-Fr
+    briefing_weekly_time: str = "07:15"  # HH:MM, Montag
 
     model_config = {
         "env_file": ".env",

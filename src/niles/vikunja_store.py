@@ -38,7 +38,10 @@ class VikunjaCredentialStore:
         return None
 
     async def upsert_credentials(
-        self, user_id: int, api_token: str, api_url: str = "",
+        self,
+        user_id: int,
+        api_token: str,
+        api_url: str = "",
     ) -> None:
         """Create or update Vikunja credentials for a user."""
         await self.pool.execute(
@@ -56,5 +59,6 @@ class VikunjaCredentialStore:
     async def delete_credentials(self, user_id: int) -> None:
         """Remove Vikunja credentials for a user."""
         await self.pool.execute(
-            "DELETE FROM vikunja_credentials WHERE user_id = $1", user_id,
+            "DELETE FROM vikunja_credentials WHERE user_id = $1",
+            user_id,
         )
