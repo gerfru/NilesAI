@@ -22,8 +22,13 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from openai import AsyncOpenAI
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+
 from ..config import apply_overrides
 from ..sync.google_auth import GOOGLE_TOKEN_URL
+
+_ph = PasswordHasher()
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +108,7 @@ def _create_session_cookie(request: Request, response: Response, user: dict) -> 
             "email": user["email"],
             "display_name": user.get("display_name", user["email"]),
             "avatar_url": user.get("avatar_url") or "",
+            "is_admin": user.get("is_admin", False),
         }
     )
     is_secure = _is_secure_context(request)
@@ -167,17 +173,72 @@ async def _require_auth_and_csrf(
     if not _verify_csrf(request):
         return None, Response(status_code=403, headers={"HX-Redirect": "/ui/login"})
 
-    # Verify user still exists in DB (skip for API-key admin uid=0)
+    # Verify user still exists in DB and refresh is_admin from DB
     uid = user.get("uid")
-    if uid:  # uid=0 is the synthetic API-key admin; real users have uid > 0
-        user_store = getattr(request.app.state, "user_store", None)
-        if user_store and await user_store.get_by_id(uid) is None:
+    user_store = getattr(request.app.state, "user_store", None)
+    if uid and user_store:
+        db_row = await user_store.get_by_id(uid)
+        if db_row is None:
             logger.warning("Stale session: user_id=%s not in users table", uid)
             response = Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
             response.delete_cookie(SESSION_COOKIE_NAME)
             response.delete_cookie(CSRF_COOKIE_NAME)
             return None, response
+        # Keep is_admin in sync with DB (session cookie may be stale)
+        user["is_admin"] = db_row.get("is_admin", False)
 
+    return user, None
+
+
+async def _require_admin(
+    request: Request,
+) -> tuple[dict | None, Response | None]:
+    """Check session + CSRF + admin status. Returns (user, None) or (None, error).
+
+    Use for mutating endpoints (POST/DELETE) that need CSRF protection.
+    """
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return None, error
+    if not user.get("is_admin"):
+        return None, Response(status_code=403, headers={"HX-Redirect": "/ui/settings"})
+    return user, None
+
+
+async def _require_auth_page(
+    request: Request,
+) -> tuple[dict | None, Response | None]:
+    """Check session + verify user exists in DB (no CSRF). For GET pages.
+
+    Invalidates session when the user row no longer exists in the DB.
+    """
+    user = _get_session_user(request)
+    if user is None:
+        return None, RedirectResponse(url="/ui/login", status_code=303)
+
+    uid = user.get("uid")
+    user_store = getattr(request.app.state, "user_store", None)
+    if uid and user_store:
+        db_row = await user_store.get_by_id(uid)
+        if db_row is None:
+            response = RedirectResponse(url="/ui/login", status_code=303)
+            response.delete_cookie(SESSION_COOKIE_NAME)
+            response.delete_cookie(CSRF_COOKIE_NAME)
+            return None, response
+        user["is_admin"] = db_row.get("is_admin", False)
+
+    return user, None
+
+
+async def _require_admin_page(
+    request: Request,
+) -> tuple[dict | None, Response | None]:
+    """Check session + admin status (no CSRF). For GET admin pages."""
+    user, error = await _require_auth_page(request)
+    if error:
+        return None, error
+    if not user.get("is_admin"):
+        return None, RedirectResponse(url="/ui/settings", status_code=303)
     return user, None
 
 
@@ -277,49 +338,75 @@ def _safe_settings_dict(settings) -> dict:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """Login page: Google OAuth button or API-key form (fallback)."""
+    """Login page: Google OAuth button and/or email+password form."""
+    user_store = getattr(request.app.state, "user_store", None)
+    pw_users_exist = await user_store.has_password_users() if user_store else False
     return templates.TemplateResponse(
         request,
         "login.html",
         {
             "error": None,
             "google_configured": _google_configured(request),
+            "password_users_exist": pw_users_exist,
         },
     )
 
 
 @router.post("/login")
-async def login_submit(request: Request, api_key: str = Form(...)):
-    """Validate API key and set session cookie (fallback when no Google OAuth)."""
+async def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+):
+    """Validate email + password and set session cookie."""
     client_ip = request.client.host if request.client else "unknown"
+    user_store = request.app.state.user_store
+    pw_users_exist = await user_store.has_password_users()
+
+    ctx = {
+        "google_configured": _google_configured(request),
+        "password_users_exist": pw_users_exist,
+    }
 
     if not _check_login_rate(client_ip):
         return templates.TemplateResponse(
             request,
             "login.html",
-            {
-                "error": "Zu viele Anmeldeversuche. Bitte warte 5 Minuten.",
-                "google_configured": _google_configured(request),
-            },
+            {"error": "Zu viele Anmeldeversuche. Bitte warte 5 Minuten.", **ctx},
             status_code=429,
         )
 
     _record_login_attempt(client_ip)
 
-    expected = request.app.state.settings.niles_api_key
-    if not api_key or len(api_key) > 256 or not hmac.compare_digest(api_key, expected):
+    # Look up user and verify password
+    user = await user_store.get_with_hash(email)
+    if (
+        user is None
+        or user.get("auth_method") != "password"
+        or not user.get("password_hash")
+    ):
+        # Hash dummy to prevent timing-based user enumeration
+        _ph.hash("dummy-password-timing-defense")
         return templates.TemplateResponse(
             request,
             "login.html",
-            {
-                "error": "Ungueltiger API-Key",
-                "google_configured": _google_configured(request),
-            },
+            {"error": "Ungültige E-Mail oder Passwort", **ctx},
             status_code=401,
         )
 
-    # Create local admin session (no DB user for API-key login)
-    user = {"id": 0, "email": "admin@local", "display_name": "Admin", "avatar_url": ""}
+    try:
+        _ph.verify(user["password_hash"], password)
+    except VerifyMismatchError:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": "Ungültige E-Mail oder Passwort", **ctx},
+            status_code=401,
+        )
+
+    # Update last_login
+    await user_store.update_last_login(user["id"])
+
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
     _set_csrf_cookie(request, response)
@@ -532,9 +619,9 @@ async def chat_page(
     channel: str = Query(default="web"),
 ):
     """Chat page with channel selection and per-user conversation history."""
-    user = _get_session_user(request)
-    if user is None:
-        return RedirectResponse(url="/ui/login", status_code=303)
+    user, error = await _require_auth_page(request)
+    if error:
+        return error
 
     wa_store = getattr(request.app.state, "wa_store", None)
 
@@ -578,9 +665,9 @@ async def chat_page(
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, error: str = Query(default="")):
     """Settings dashboard (safe dict, no __dict__ access)."""
-    user = _get_session_user(request)
-    if user is None:
-        return RedirectResponse(url="/ui/login", status_code=303)
+    user, error = await _require_auth_page(request)
+    if error:
+        return error
 
     # Map error codes to user-visible messages
     error_msg = ""
@@ -738,10 +825,21 @@ async def chat_clear(request: Request):
     return HTMLResponse("")
 
 
+_USER_EDITABLE_SETTINGS = {
+    "feature_briefing_daily",
+    "feature_briefing_weekly",
+    "briefing_daily_time",
+    "briefing_weekly_time",
+}
+
+
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
 async def update_setting(request: Request, key: str, value: str = Form(...)):
     """Update a single runtime setting."""
-    _user, error = await _require_auth_and_csrf(request)
+    if key in _USER_EDITABLE_SETTINGS:
+        _user, error = await _require_auth_and_csrf(request)
+    else:
+        _user, error = await _require_admin(request)
     if error:
         return error
 
@@ -1211,22 +1309,12 @@ async def callback_google_calendar(
 # --- WhatsApp session management ---
 
 
-_WA_REQUIRES_GOOGLE = (
-    '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
-    "WhatsApp-Verknuepfung erfordert einen Google-Login.</p>"
-)
-
-
 @router.get("/api/whatsapp/status", response_class=HTMLResponse)
 async def whatsapp_status(request: Request):
     """Return WhatsApp connection status fragment."""
     user = _get_session_user(request)
     if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
-
-    # API-key admin (uid=0) has no row in users table → FK would violate
-    if user.get("uid") == 0:
-        return HTMLResponse(_WA_REQUIRES_GOOGLE)
 
     wa_store = getattr(request.app.state, "wa_store", None)
     if not wa_store:
@@ -1277,9 +1365,6 @@ async def whatsapp_connect(request: Request):
     user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-
-    if user.get("uid") == 0:
-        return HTMLResponse(_WA_REQUIRES_GOOGLE)
 
     wa_store = getattr(request.app.state, "wa_store", None)
     whatsapp_action = request.app.state.whatsapp_action
@@ -1337,9 +1422,6 @@ async def whatsapp_disconnect(request: Request):
     user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-
-    if user.get("uid") == 0:
-        return HTMLResponse(_WA_REQUIRES_GOOGLE)
 
     wa_store = getattr(request.app.state, "wa_store", None)
     whatsapp_action = request.app.state.whatsapp_action
@@ -1574,21 +1656,12 @@ async def contacts_sync(request: Request):
 # --- Vikunja (per-user task management) ---
 
 
-_VK_REQUIRES_GOOGLE = (
-    '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
-    "Vikunja-Token erfordert einen Google-Login.</p>"
-)
-
-
 @router.get("/api/vikunja/status", response_class=HTMLResponse)
 async def vikunja_status(request: Request):
     """Return Vikunja connection status fragment."""
     user = _get_session_user(request)
     if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
-
-    if user.get("uid") == 0:
-        return HTMLResponse(_VK_REQUIRES_GOOGLE)
 
     vikunja_store = getattr(request.app.state, "vikunja_store", None)
     if not vikunja_store:
@@ -1641,9 +1714,6 @@ async def vikunja_connect(
     user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-
-    if user.get("uid") == 0:
-        return HTMLResponse(_VK_REQUIRES_GOOGLE)
 
     vikunja_store = getattr(request.app.state, "vikunja_store", None)
     if not vikunja_store:
@@ -1756,9 +1826,6 @@ async def vikunja_disconnect(request: Request):
     if error:
         return error
 
-    if user.get("uid") == 0:
-        return HTMLResponse(_VK_REQUIRES_GOOGLE)
-
     vikunja_store = getattr(request.app.state, "vikunja_store", None)
     if vikunja_store and user.get("uid"):
         await vikunja_store.delete_credentials(user["uid"])
@@ -1767,4 +1834,163 @@ async def vikunja_disconnect(request: Request):
         request,
         "fragments/vikunja_status.html",
         {"vikunja_connected": False, "vikunja_project_count": 0, "vikunja_error": None},
+    )
+
+
+# --- Admin: User Management ---
+
+
+@router.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request):
+    """Admin page: list and manage users."""
+    user, error = await _require_admin_page(request)
+    if error:
+        return error
+    user_store = request.app.state.user_store
+    users = await user_store.list_all()
+    response = templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        {"current_user": user, "users": users, "error": None, "success": None},
+    )
+    _ensure_csrf_cookie(request, response)
+    return response
+
+
+@router.post("/api/admin/users")
+async def admin_create_user(
+    request: Request,
+    email: str = Form(...),
+    display_name: str = Form(...),
+    password: str = Form(...),
+):
+    """Create a new user with password authentication."""
+    user, error = await _require_admin(request)
+    if error:
+        return error
+
+    user_store = request.app.state.user_store
+
+    # Validate input
+    email = email.strip().lower()
+    display_name = display_name.strip()
+    if not email or not display_name or not password:
+        users = await user_store.list_all()
+        return templates.TemplateResponse(
+            request,
+            "admin_users.html",
+            {
+                "current_user": user,
+                "users": users,
+                "error": "Alle Felder müssen ausgefüllt sein.",
+                "success": None,
+            },
+            status_code=400,
+        )
+
+    if len(password) < 8:
+        users = await user_store.list_all()
+        return templates.TemplateResponse(
+            request,
+            "admin_users.html",
+            {
+                "current_user": user,
+                "users": users,
+                "error": "Passwort muss mindestens 8 Zeichen lang sein.",
+                "success": None,
+            },
+            status_code=400,
+        )
+
+    # Check if email already taken
+    existing = await user_store.get_by_email(email)
+    if existing:
+        users = await user_store.list_all()
+        return templates.TemplateResponse(
+            request,
+            "admin_users.html",
+            {
+                "current_user": user,
+                "users": users,
+                "error": f"E-Mail '{email}' ist bereits vergeben.",
+                "success": None,
+            },
+            status_code=409,
+        )
+
+    hashed = _ph.hash(password)
+    new_user = await user_store.create_password_user(email, display_name, hashed)
+    logger.info(
+        "Admin %s created user: %s (id=%s)", user["email"], email, new_user["id"]
+    )
+
+    users = await user_store.list_all()
+    return templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        {
+            "current_user": user,
+            "users": users,
+            "error": None,
+            "success": f"User '{display_name}' ({email}) angelegt.",
+        },
+    )
+
+
+@router.post("/api/admin/users/{user_id}/password")
+async def admin_reset_password(
+    request: Request,
+    user_id: int,
+    password: str = Form(...),
+):
+    """Reset password for a user (admin only)."""
+    admin, error = await _require_admin(request)
+    if error:
+        return error
+
+    if len(password) < 8:
+        return Response(
+            content="Passwort muss mindestens 8 Zeichen lang sein.",
+            status_code=400,
+        )
+
+    user_store = request.app.state.user_store
+    target = await user_store.get_by_id(user_id)
+    if not target:
+        return Response(content="User nicht gefunden.", status_code=404)
+
+    hashed = _ph.hash(password)
+    await user_store.update_password(user_id, hashed)
+    logger.info("Admin %s reset password for user_id=%s", admin["email"], user_id)
+    return Response(
+        content="Passwort geändert.",
+        headers={"HX-Trigger": "userUpdated"},
+    )
+
+
+@router.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(request: Request, user_id: int):
+    """Delete a user (admin only, cannot delete own account)."""
+    admin, error = await _require_admin(request)
+    if error:
+        return error
+
+    if admin["uid"] == user_id:
+        return Response(
+            content="Eigenen Account kann man nicht löschen.",
+            status_code=400,
+        )
+
+    user_store = request.app.state.user_store
+    target = await user_store.get_by_id(user_id)
+    if not target:
+        return Response(content="User nicht gefunden.", status_code=404)
+
+    await user_store.delete_user(user_id)
+    logger.info(
+        "Admin %s deleted user_id=%s (%s)", admin["email"], user_id, target["email"]
+    )
+    return Response(
+        content="User gelöscht.",
+        headers={"HX-Trigger": "userUpdated"},
     )
