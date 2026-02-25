@@ -104,7 +104,9 @@ class TestGoogleCalendarAuth:
         with patch("niles.sync.google_auth.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.HTTPStatusError(
-                "401", request=MagicMock(), response=MagicMock(status_code=401),
+                "401",
+                request=MagicMock(),
+                response=MagicMock(status_code=401),
             )
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)

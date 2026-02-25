@@ -210,15 +210,13 @@ TOOLS = [
                     "project": {
                         "type": "string",
                         "description": (
-                            "Projektname zum Filtern. Optional. "
-                            "Leer = alle Projekte."
+                            "Projektname zum Filtern. Optional. Leer = alle Projekte."
                         ),
                     },
                     "include_done": {
                         "type": "boolean",
                         "description": (
-                            "Auch erledigte Aufgaben anzeigen. "
-                            "Standard: false."
+                            "Auch erledigte Aufgaben anzeigen. Standard: false."
                         ),
                     },
                 },
@@ -263,8 +261,7 @@ TOOLS = [
                     "project": {
                         "type": "string",
                         "description": (
-                            "Projektname. Optional. "
-                            "Leer = Standard-Projekt."
+                            "Projektname. Optional. Leer = Standard-Projekt."
                         ),
                     },
                 },
@@ -410,7 +407,8 @@ class NilesAgent:
 
     @staticmethod
     def _try_parse_text_tool_call(
-        text: str, known_tools: frozenset[str] | None = None,
+        text: str,
+        known_tools: frozenset[str] | None = None,
     ) -> dict | None:
         """Detect a tool call embedded as JSON in the LLM text response.
 
@@ -465,11 +463,13 @@ class NilesAgent:
         message = {
             "role": "assistant",
             "content": None,
-            "tool_calls": [{
-                "id": tc["id"],
-                "type": "function",
-                "function": {"name": tc["name"], "arguments": tc["arguments"]},
-            }],
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                }
+            ],
         }
         return tc, message
 
@@ -506,7 +506,9 @@ class NilesAgent:
         instance = await self._resolve_wa_instance(chat_id)
 
         result = await self.whatsapp.send_message(
-            to=phone, text=pending["text"], instance=instance,
+            to=phone,
+            text=pending["text"],
+            instance=instance,
         )
         if "error" not in result:
             return f"Nachricht an {pending['contact_name']} (00{phone}) gesendet."
@@ -535,14 +537,18 @@ class NilesAgent:
 
         history_messages = await self.history.get_recent(chat_id)
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
+        messages.extend(
+            {"role": m["role"], "content": m["content"]} for m in history_messages
+        )
         messages.append({"role": "user", "content": event["content"]})
 
         all_tools = [t for t in TOOLS]
         # Remove task tools when Vikunja feature is disabled
         if not self.config.feature_vikunja:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
-            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
+            all_tools = [
+                t for t in all_tools if t["function"]["name"] not in _task_tools
+            ]
         # Remove WhatsApp tools when no WhatsApp action is configured
         if not self.whatsapp:
             _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
@@ -612,7 +618,10 @@ class NilesAgent:
                 )
             except Exception as e:
                 logger.error("LLM call failed: %s", e)
-                yield {"type": "chunk", "text": "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."}
+                yield {
+                    "type": "chunk",
+                    "text": "Entschuldigung, ich konnte die Anfrage nicht verarbeiten.",
+                }
                 yield {"type": "done"}
                 return
 
@@ -634,7 +643,9 @@ class NilesAgent:
                     # tool call, buffer it.  Single backticks (inline code) are
                     # NOT buffered — only triple-backtick fences or bare '{'.
                     stripped = full_content.lstrip()
-                    if not _buffering and (stripped.startswith("{") or stripped.startswith("```")):
+                    if not _buffering and (
+                        stripped.startswith("{") or stripped.startswith("```")
+                    ):
                         _buffering = True
                     if not _buffering:
                         yield {"type": "chunk", "text": choice.delta.content}
@@ -643,20 +654,32 @@ class NilesAgent:
                     for tc_delta in choice.delta.tool_calls:
                         idx = tc_delta.index
                         if idx not in tool_calls_by_idx:
-                            tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": ""}
+                            tool_calls_by_idx[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
                         if tc_delta.id:
                             tool_calls_by_idx[idx]["id"] = tc_delta.id
                         if tc_delta.function:
                             if tc_delta.function.name:
                                 tool_calls_by_idx[idx]["name"] += tc_delta.function.name
                             if tc_delta.function.arguments:
-                                tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
+                                tool_calls_by_idx[idx]["arguments"] += (
+                                    tc_delta.function.arguments
+                                )
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
-                parsed = self._try_parse_text_tool_call(full_content) if full_content else None
+                parsed = (
+                    self._try_parse_text_tool_call(full_content)
+                    if full_content
+                    else None
+                )
                 if parsed:
-                    logger.info("Detected text-based tool call (stream): %s", parsed["name"])
+                    logger.info(
+                        "Detected text-based tool call (stream): %s", parsed["name"]
+                    )
                     tc_dict, _ = self._synthetic_tool_call(parsed)
                     tool_calls_by_idx = {0: tc_dict}
                     full_content = ""  # Don't pass JSON as assistant content
@@ -666,11 +689,21 @@ class NilesAgent:
                     if _buffering and full_content:
                         yield {"type": "chunk", "text": full_content}
                     if full_content:
-                        await self.history.add_message(chat_id, "user", event["content"])
-                        await self.history.add_message(chat_id, "assistant", full_content)
+                        await self.history.add_message(
+                            chat_id, "user", event["content"]
+                        )
+                        await self.history.add_message(
+                            chat_id, "assistant", full_content
+                        )
                     else:
-                        logger.warning("LLM returned empty streaming response for event: %s", event.get("content", "")[:100])
-                        yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
+                        logger.warning(
+                            "LLM returned empty streaming response for event: %s",
+                            event.get("content", "")[:100],
+                        )
+                        yield {
+                            "type": "chunk",
+                            "text": "Entschuldigung, ich habe keine Antwort erhalten.",
+                        }
                     yield {"type": "done"}
                     return
 
@@ -710,13 +743,18 @@ class NilesAgent:
                     yield {"type": "done"}
                     return
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result, ensure_ascii=False),
+                    }
+                )
         else:
-            yield {"type": "chunk", "text": "Ich konnte die Anfrage nicht abschliessen."}
+            yield {
+                "type": "chunk",
+                "text": "Ich konnte die Anfrage nicht abschliessen.",
+            }
 
         yield {"type": "done"}
 
@@ -775,18 +813,25 @@ class NilesAgent:
                     logger.info("Tool result [%s]: %s", tc.id, result)
                     if isinstance(result, dict) and "choose_phone" in result:
                         text = result["choose_phone"]
-                        await self.history.add_message(chat_id, "user", event["content"])
+                        await self.history.add_message(
+                            chat_id, "user", event["content"]
+                        )
                         await self.history.add_message(chat_id, "assistant", text)
                         return text
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, ensure_ascii=False),
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, ensure_ascii=False),
+                        }
+                    )
                     continue  # Next LLM round to generate natural language response
 
                 if not content:
-                    logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
+                    logger.warning(
+                        "LLM returned empty response for event: %s",
+                        event.get("content", "")[:100],
+                    )
                 # Save both messages together to avoid orphaned records
                 if content:
                     await self.history.add_message(chat_id, "user", event["content"])
@@ -885,9 +930,15 @@ class NilesAgent:
             instance = await self._resolve_wa_instance(chat_id)
 
             result = await self.whatsapp.send_message(
-                to=resolved_number, text=text, instance=instance,
+                to=resolved_number,
+                text=text,
+                instance=instance,
             )
-            return {"status": "sent", "to": resolved_number} if "error" not in result else result
+            return (
+                {"status": "sent", "to": resolved_number}
+                if "error" not in result
+                else result
+            )
 
         if name == "get_whatsapp_messages":
             contact = args.get("contact", "").strip().lstrip("@")
@@ -910,7 +961,8 @@ class NilesAgent:
             instance = await self._resolve_wa_instance(chat_id)
 
             messages = await self.whatsapp.fetch_messages(
-                remote_jid=jid, instance=instance,
+                remote_jid=jid,
+                instance=instance,
             )
             if not messages:
                 return {
@@ -919,13 +971,17 @@ class NilesAgent:
                 }
 
             # Format as readable chat transcript for the LLM
-            contact_name = contact if not contact.replace("+", "").replace(" ", "").isdigit() else (
-                messages[0].get("push_name") or phone
+            contact_name = (
+                contact
+                if not contact.replace("+", "").replace(" ", "").isdigit()
+                else (messages[0].get("push_name") or phone)
             )
             local_tz = ZoneInfo(self.config.timezone)
             lines = []
             for msg in messages:
-                ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc).astimezone(local_tz)
+                ts = datetime.fromtimestamp(
+                    msg["timestamp"], tz=timezone.utc
+                ).astimezone(local_tz)
                 who = "Du" if msg["from_me"] else contact_name
                 lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
             transcript = "\n".join(lines)
@@ -933,10 +989,12 @@ class NilesAgent:
             # Compute date range for LLM context (in user's local timezone)
             # See also: config/soul.md "Nachrichten lesen" + hinweis below
             first_dt = datetime.fromtimestamp(
-                messages[0]["timestamp"], tz=timezone.utc,
+                messages[0]["timestamp"],
+                tz=timezone.utc,
             ).astimezone(local_tz)
             last_dt = datetime.fromtimestamp(
-                messages[-1]["timestamp"], tz=timezone.utc,
+                messages[-1]["timestamp"],
+                tz=timezone.utc,
             ).astimezone(local_tz)
             if first_dt.date() == last_dt.date():
                 date_range = first_dt.strftime("%d.%m.%Y")
@@ -1000,8 +1058,7 @@ class NilesAgent:
             if events:
                 result: dict = {"events": events, "count": len(events)}
                 result["hinweis"] = (
-                    "Nenne NUR diese Termine. "
-                    "Erfinde keine zusätzlichen Termine."
+                    "Nenne NUR diese Termine. Erfinde keine zusätzlichen Termine."
                 )
                 return result
             return {"error": "Keine Termine gefunden"}
@@ -1031,7 +1088,9 @@ class NilesAgent:
         if name == "list_tasks":
             tasks_action = await self._resolve_vikunja_tasks(chat_id)
             if not tasks_action:
-                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+                return {
+                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
+                }
             tasks = await tasks_action.list_tasks(
                 project=args.get("project", ""),
                 include_done=args.get("include_done", False),
@@ -1043,7 +1102,9 @@ class NilesAgent:
         if name == "create_task":
             tasks_action = await self._resolve_vikunja_tasks(chat_id)
             if not tasks_action:
-                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+                return {
+                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
+                }
             return await tasks_action.create_task(
                 title=args["title"],
                 description=args.get("description", ""),
@@ -1055,7 +1116,9 @@ class NilesAgent:
         if name == "complete_task":
             tasks_action = await self._resolve_vikunja_tasks(chat_id)
             if not tasks_action:
-                return {"error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."}
+                return {
+                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
+                }
             return await tasks_action.complete_task(title=args["title"])
 
         # MCP tools (prefixed with mcp__)

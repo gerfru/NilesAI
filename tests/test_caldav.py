@@ -149,7 +149,9 @@ class TestGetSyncCollections:
         """When URL is root, discover sub-collections."""
         root_sync = _make_root_sync(pool)
 
-        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
+        with patch.object(
+            root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML
+        ):
             urls = await root_sync._get_sync_collections()
 
         assert len(urls) == 2
@@ -161,7 +163,9 @@ class TestGetSyncCollections:
         """When caldav_calendars is set, only matching collections are returned."""
         root_sync = _make_root_sync(pool, caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/")
 
-        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
+        with patch.object(
+            root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML
+        ):
             urls = await root_sync._get_sync_collections()
 
         assert len(urls) == 1
@@ -245,36 +249,56 @@ class TestUpsertEvent:
 
 class TestSyncEvents:
     async def test_full_sync_flow(self, sync, pool):
-        with patch.object(sync, "_get_sync_collections", return_value=[
-            "https://dav.example.com/caldav/123/",
-        ]), \
-            patch.object(sync, "_report_time_range", return_value=[
-                (SAMPLE_ICS_FULL, "/caldav/123/event1.ics"),
-            ]), \
-            patch.object(sync, "_upsert_event") as mock_upsert:
-
+        with (
+            patch.object(
+                sync,
+                "_get_sync_collections",
+                return_value=[
+                    "https://dav.example.com/caldav/123/",
+                ],
+            ),
+            patch.object(
+                sync,
+                "_report_time_range",
+                return_value=[
+                    (SAMPLE_ICS_FULL, "/caldav/123/event1.ics"),
+                ],
+            ),
+            patch.object(sync, "_upsert_event") as mock_upsert,
+        ):
             count = await sync.sync_events()
 
         assert count == 1
         mock_upsert.assert_called_once()
 
     async def test_sync_skips_invalid_events(self, sync, pool):
-        with patch.object(sync, "_get_sync_collections", return_value=[
-            "https://dav.example.com/caldav/123/",
-        ]), \
-            patch.object(sync, "_report_time_range", return_value=[
-                (SAMPLE_ICS_FULL, "/caldav/123/good.ics"),
-                (SAMPLE_ICS_NO_SUMMARY, "/caldav/123/bad.ics"),
-            ]), \
-            patch.object(sync, "_upsert_event") as mock_upsert:
-
+        with (
+            patch.object(
+                sync,
+                "_get_sync_collections",
+                return_value=[
+                    "https://dav.example.com/caldav/123/",
+                ],
+            ),
+            patch.object(
+                sync,
+                "_report_time_range",
+                return_value=[
+                    (SAMPLE_ICS_FULL, "/caldav/123/good.ics"),
+                    (SAMPLE_ICS_NO_SUMMARY, "/caldav/123/bad.ics"),
+                ],
+            ),
+            patch.object(sync, "_upsert_event") as mock_upsert,
+        ):
             count = await sync.sync_events()
 
         assert count == 1
         mock_upsert.assert_called_once()
 
     async def test_sync_returns_zero_on_discovery_failure(self, sync):
-        with patch.object(sync, "_get_sync_collections", side_effect=Exception("Network")):
+        with patch.object(
+            sync, "_get_sync_collections", side_effect=Exception("Network")
+        ):
             count = await sync.sync_events()
 
         assert count == 0
@@ -293,7 +317,8 @@ class TestCreateEvent:
     def _mock_resolve(self, sync):
         """Mock _resolve_write_collection to return the fixture caldav_url."""
         with patch.object(
-            sync, "_resolve_write_collection",
+            sync,
+            "_resolve_write_collection",
             return_value=sync.caldav_url,
         ):
             yield
@@ -306,7 +331,9 @@ class TestCreateEvent:
         with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await sync.create_event(
@@ -339,7 +366,9 @@ class TestCreateEvent:
         with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await sync.create_event(
@@ -357,7 +386,9 @@ class TestCreateEvent:
         with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             with pytest.raises(Exception, match="HTTP 403"):
@@ -378,7 +409,9 @@ class TestCreateEvent:
         with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await sync.create_event(
@@ -410,19 +443,27 @@ class TestResolveWriteCollection:
         """Root CalDAV URL discovers sub-collections; first one is used."""
         root_sync = _make_root_sync(pool)
 
-        with patch.object(root_sync, "_get_sync_collections", return_value=[
-            "https://dav.example.com/caldav/Y2FsOi8vMC8zMQ/",
-            "https://dav.example.com/caldav/Y2FsOi8vMTUvMA/",
-        ]):
+        with patch.object(
+            root_sync,
+            "_get_sync_collections",
+            return_value=[
+                "https://dav.example.com/caldav/Y2FsOi8vMC8zMQ/",
+                "https://dav.example.com/caldav/Y2FsOi8vMTUvMA/",
+            ],
+        ):
             url = await root_sync._resolve_write_collection()
 
         assert url == "https://dav.example.com/caldav/Y2FsOi8vMC8zMQ/"
 
     async def test_returns_first_discovered_collection(self, sync):
         """Single collection discovered; returned as-is."""
-        with patch.object(sync, "_get_sync_collections", return_value=[
-            "https://dav.example.com/caldav/123/",
-        ]):
+        with patch.object(
+            sync,
+            "_get_sync_collections",
+            return_value=[
+                "https://dav.example.com/caldav/123/",
+            ],
+        ):
             url = await sync._resolve_write_collection()
 
         assert url == "https://dav.example.com/caldav/123/"

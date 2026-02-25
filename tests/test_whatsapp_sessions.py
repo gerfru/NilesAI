@@ -48,7 +48,9 @@ class TestWhatsAppAction:
         with pytest.MonkeyPatch.context() as m:
             m.setattr("httpx.AsyncClient", lambda: mock_client)
             result = await action.send_message(
-                to="436601234567", text="Hi", instance="niles-wa-5",
+                to="436601234567",
+                text="Hi",
+                instance="niles-wa-5",
             )
             assert "error" not in result
             # Verify the URL includes the custom instance name
@@ -120,6 +122,7 @@ class TestWhatsAppAction:
         assert "lte" in ts_filter
         # Values should be ISO date strings
         from datetime import datetime
+
         gte_dt = datetime.fromisoformat(ts_filter["gte"])
         lte_dt = datetime.fromisoformat(ts_filter["lte"])
         # gte should be ~30 days ago, lte should be ~now
@@ -392,7 +395,9 @@ class TestAgentPerUserInstance:
 
         assert result == {"status": "sent", "to": "436601234567"}
         whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567", text="Hi", instance="niles-wa-5",
+            to="436601234567",
+            text="Hi",
+            instance="niles-wa-5",
         )
 
     async def test_send_without_session_uses_global(self):
@@ -422,7 +427,9 @@ class TestAgentPerUserInstance:
 
         assert result == {"status": "sent", "to": "436601234567"}
         whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567", text="Hi", instance=None,
+            to="436601234567",
+            text="Hi",
+            instance=None,
         )
 
     async def test_send_without_wa_store_uses_global(self):
@@ -449,7 +456,9 @@ class TestAgentPerUserInstance:
 
         assert result == {"status": "sent", "to": "436601234567"}
         whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567", text="Hi", instance=None,
+            to="436601234567",
+            text="Hi",
+            instance=None,
         )
 
 
@@ -717,7 +726,12 @@ class TestAgentGetWhatsAppMessages:
         whatsapp_mock = AsyncMock()
         # Two messages on the same day (2026-02-24 UTC)
         whatsapp_mock.fetch_messages.return_value = [
-            {"from_me": False, "text": "Morgen!", "timestamp": 1772000000, "push_name": "Anna"},
+            {
+                "from_me": False,
+                "text": "Morgen!",
+                "timestamp": 1772000000,
+                "push_name": "Anna",
+            },
             {"from_me": True, "text": "Hey!", "timestamp": 1772003600, "push_name": ""},
         ]
 
@@ -755,7 +769,12 @@ class TestAgentGetWhatsAppMessages:
         whatsapp_mock = AsyncMock()
         # Messages spanning 2 days apart
         whatsapp_mock.fetch_messages.return_value = [
-            {"from_me": False, "text": "Hi", "timestamp": 1771900000, "push_name": "Anna"},
+            {
+                "from_me": False,
+                "text": "Hi",
+                "timestamp": 1771900000,
+                "push_name": "Anna",
+            },
             {"from_me": True, "text": "Hey", "timestamp": 1772100000, "push_name": ""},
         ]
 
@@ -791,9 +810,19 @@ class TestAgentGetWhatsAppMessages:
 
         whatsapp_mock = AsyncMock()
         whatsapp_mock.fetch_messages.return_value = [
-            {"from_me": False, "text": "Eins", "timestamp": 1771900000, "push_name": "Max"},
+            {
+                "from_me": False,
+                "text": "Eins",
+                "timestamp": 1771900000,
+                "push_name": "Max",
+            },
             {"from_me": True, "text": "Zwei", "timestamp": 1771910000, "push_name": ""},
-            {"from_me": False, "text": "Drei", "timestamp": 1771920000, "push_name": "Max"},
+            {
+                "from_me": False,
+                "text": "Drei",
+                "timestamp": 1771920000,
+                "push_name": "Max",
+            },
         ]
 
         agent = NilesAgent(

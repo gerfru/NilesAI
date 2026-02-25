@@ -24,7 +24,10 @@ class WhatsAppAction:
         return {"apikey": self.api_key}
 
     async def send_message(
-        self, to: str, text: str, instance: str | None = None,
+        self,
+        to: str,
+        text: str,
+        instance: str | None = None,
     ) -> dict:
         """
         Send a WhatsApp message.
@@ -79,7 +82,8 @@ class WhatsAppAction:
         # Evolution API expects ISO date strings for gte/lte, converts to unix internally
         now = datetime.now(timezone.utc)
         cutoff_dt = datetime.fromtimestamp(
-            time.time() - (self._MAX_AGE_DAYS * 86400), tz=timezone.utc,
+            time.time() - (self._MAX_AGE_DAYS * 86400),
+            tz=timezone.utc,
         )
         # Both remoteJid AND remoteJidAlt must be set.  Evolution API's
         # Baileys override (PR #2249) combines them with OR so the query
@@ -100,17 +104,24 @@ class WhatsAppAction:
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.post(
-                    url, json=payload, headers=self._headers(), timeout=30,
+                    url,
+                    json=payload,
+                    headers=self._headers(),
+                    timeout=30,
                 )
                 resp.raise_for_status()
                 data = resp.json()
                 records = data.get("messages", {}).get("records", [])
                 if logger.isEnabledFor(logging.DEBUG):
                     msgs = data.get("messages")
-                    keys_info = list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
+                    keys_info = (
+                        list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
+                    )
                     logger.debug(
                         "findMessages %s: %d records (keys: %s)",
-                        remote_jid, len(records), keys_info,
+                        remote_jid,
+                        len(records),
+                        keys_info,
                     )
             except (httpx.HTTPError, ValueError) as e:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
@@ -154,18 +165,22 @@ class WhatsAppAction:
                     text = "[Standort]"
                 else:
                     continue
-            messages.append({
-                "from_me": rec.get("key", {}).get("fromMe", False),
-                "text": text,
-                "timestamp": ts,
-                "push_name": rec.get("pushName", ""),
-            })
+            messages.append(
+                {
+                    "from_me": rec.get("key", {}).get("fromMe", False),
+                    "text": text,
+                    "timestamp": ts,
+                    "push_name": rec.get("pushName", ""),
+                }
+            )
         # Sort chronologically (oldest first)
         messages.sort(key=lambda m: m["timestamp"])
         return messages
 
     async def create_instance(
-        self, instance_name: str, webhook_url: str,
+        self,
+        instance_name: str,
+        webhook_url: str,
     ) -> dict:
         """
         Create a new Evolution API instance with QR code.
@@ -210,16 +225,15 @@ class WhatsAppAction:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(
-                    url, headers=self._headers(), timeout=10
-                )
+                response = await client.get(url, headers=self._headers(), timeout=10)
                 response.raise_for_status()
                 data = response.json()
                 return data.get("instance", {}).get("state", "close")
             except (httpx.HTTPError, ValueError) as e:
                 logger.error(
                     "Failed to get connection state for %s: %s",
-                    instance_name, e,
+                    instance_name,
+                    e,
                 )
                 return "close"
 
@@ -233,14 +247,14 @@ class WhatsAppAction:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(
-                    url, headers=self._headers(), timeout=10
-                )
+                response = await client.get(url, headers=self._headers(), timeout=10)
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, ValueError) as e:
                 logger.error(
-                    "Failed to get QR code for %s: %s", instance_name, e,
+                    "Failed to get QR code for %s: %s",
+                    instance_name,
+                    e,
                 )
                 return {"error": str(e)}
 
@@ -261,7 +275,9 @@ class WhatsAppAction:
                     return data[0].get("ownerJid")
             except (httpx.HTTPError, IndexError, KeyError, ValueError) as e:
                 logger.error(
-                    "Failed to get ownerJid for %s: %s", instance_name, e,
+                    "Failed to get ownerJid for %s: %s",
+                    instance_name,
+                    e,
                 )
         return None
 
@@ -271,14 +287,14 @@ class WhatsAppAction:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.delete(
-                    url, headers=self._headers(), timeout=15
-                )
+                response = await client.delete(url, headers=self._headers(), timeout=15)
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, ValueError) as e:
                 logger.error(
-                    "Failed to logout instance %s: %s", instance_name, e,
+                    "Failed to logout instance %s: %s",
+                    instance_name,
+                    e,
                 )
                 return {"error": str(e)}
 
@@ -288,13 +304,13 @@ class WhatsAppAction:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.delete(
-                    url, headers=self._headers(), timeout=15
-                )
+                response = await client.delete(url, headers=self._headers(), timeout=15)
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, ValueError) as e:
                 logger.error(
-                    "Failed to delete instance %s: %s", instance_name, e,
+                    "Failed to delete instance %s: %s",
+                    instance_name,
+                    e,
                 )
                 return {"error": str(e)}

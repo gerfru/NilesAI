@@ -247,7 +247,6 @@ END:VCALENDAR"""
         assert event is not None
         assert event["location"] == "Konferenzraum 3"
 
-
     def test_transp_default_opaque(self):
         """Events without TRANSP should default to OPAQUE."""
         event = parse_icalendar(SAMPLE_ICS_FULL, "/caldav/123/event1.ics")

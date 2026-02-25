@@ -61,9 +61,7 @@ def _parse_briefing_time(time_str: str) -> tuple[int, int]:
             raise ValueError
         return hour, minute
     except (ValueError, IndexError):
-        logger.warning(
-            "Ungültige Briefing-Zeit '%s', verwende 07:30", time_str
-        )
+        logger.warning("Ungültige Briefing-Zeit '%s', verwende 07:30", time_str)
         return 7, 30
 
 
@@ -166,9 +164,13 @@ async def lifespan(app: FastAPI):
 
     if settings.carddav_url:
         scheduler.add_job(
-            carddav_sync.sync_contacts, "cron", hour=3, minute=0,
+            carddav_sync.sync_contacts,
+            "cron",
+            hour=3,
+            minute=0,
             id="carddav_daily_sync",
-            max_instances=1, misfire_grace_time=300,
+            max_instances=1,
+            misfire_grace_time=300,
         )
         asyncio.create_task(carddav_sync.sync_contacts())
         logger.info("CardDAV sync scheduled (daily at 03:00)")
@@ -179,9 +181,13 @@ async def lifespan(app: FastAPI):
 
     if calendar_sources:
         scheduler.add_job(
-            calendar_manager.sync_all, "cron", hour=3, minute=20,
+            calendar_manager.sync_all,
+            "cron",
+            hour=3,
+            minute=20,
             id="calendar_sources_sync",
-            max_instances=1, misfire_grace_time=300,
+            max_instances=1,
+            misfire_grace_time=300,
         )
         asyncio.create_task(calendar_manager.sync_all())
         logger.info(
@@ -245,6 +251,7 @@ async def lifespan(app: FastAPI):
     tasks_action = None
     if settings.feature_vikunja and settings.vikunja_api_url:
         from .actions.tasks import TasksAction
+
         tasks_action = TasksAction(
             api_url=settings.vikunja_api_url,
             api_token=settings.vikunja_api_token,
@@ -305,7 +312,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Remove the oldest IP entry when the tracking table is full."""
         if len(self._hits) <= self.MAX_TRACKED_IPS:
             return
-        oldest_ip = min(self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0)
+        oldest_ip = min(
+            self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0
+        )
         del self._hits[oldest_ip]
 
     async def dispatch(self, request: Request, call_next):

@@ -14,21 +14,37 @@ from niles.agent.prompts import build_system_prompt
 # Weekday map
 # ---------------------------------------------------------------------------
 
+
 class TestWeekdayMap:
     def test_all_german_weekdays_present(self):
-        for name in ("montag", "dienstag", "mittwoch", "donnerstag",
-                      "freitag", "samstag", "sonntag"):
+        for name in (
+            "montag",
+            "dienstag",
+            "mittwoch",
+            "donnerstag",
+            "freitag",
+            "samstag",
+            "sonntag",
+        ):
             assert name in _WEEKDAY_MAP
 
     def test_all_english_weekdays_present(self):
-        for name in ("monday", "tuesday", "wednesday", "thursday",
-                      "friday", "saturday", "sunday"):
+        for name in (
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ):
             assert name in _WEEKDAY_MAP
 
 
 # ---------------------------------------------------------------------------
 # _parse_date — weekday names
 # ---------------------------------------------------------------------------
+
 
 class TestParseDateMalformedLLM:
     """Small LLMs sometimes wrap dates in dicts or lists."""
@@ -173,6 +189,7 @@ class TestParseDateWeekday:
 # _row_to_dict — all-day events
 # ---------------------------------------------------------------------------
 
+
 class TestRowToDictAllDay:
     @pytest.fixture
     def action(self):
@@ -288,6 +305,7 @@ class TestRowToDictAllDay:
 # _resolve_source_id
 # ---------------------------------------------------------------------------
 
+
 class TestResolveSourceId:
     async def test_returns_id_when_found(self):
         pool = AsyncMock()
@@ -310,6 +328,7 @@ class TestResolveSourceId:
 # ---------------------------------------------------------------------------
 # find_by_query with calendar filter
 # ---------------------------------------------------------------------------
+
 
 class TestFindByQueryCalendarFilter:
     async def test_passes_source_id_to_query(self):
@@ -339,13 +358,21 @@ class TestFindByQueryCalendarFilter:
 # build_system_prompt — upcoming days + calendar sources
 # ---------------------------------------------------------------------------
 
+
 class TestBuildSystemPromptUpcomingDays:
     def test_includes_upcoming_7_days(self):
         prompt = build_system_prompt("Base prompt.", [], timezone="Europe/Vienna")
         assert "Kommende Tage:" in prompt
 
-        weekdays_de = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
-                        "Freitag", "Samstag", "Sonntag"]
+        weekdays_de = [
+            "Montag",
+            "Dienstag",
+            "Mittwoch",
+            "Donnerstag",
+            "Freitag",
+            "Samstag",
+            "Sonntag",
+        ]
         # At least some weekday names should appear in the upcoming section
         found_weekdays = sum(1 for w in weekdays_de if w in prompt)
         assert found_weekdays >= 7  # All 7 upcoming days should be listed
@@ -365,7 +392,9 @@ class TestBuildSystemPromptUpcomingDays:
 class TestBuildSystemPromptCalendarSources:
     def test_includes_calendar_sources(self):
         prompt = build_system_prompt(
-            "Base.", [], timezone="Europe/Vienna",
+            "Base.",
+            [],
+            timezone="Europe/Vienna",
             calendar_sources=["Hauptkalender", "Geburtstage", "Feiertage"],
         )
         assert "## Verfügbare Kalender" in prompt
@@ -379,6 +408,9 @@ class TestBuildSystemPromptCalendarSources:
 
     def test_no_calendar_section_when_none(self):
         prompt = build_system_prompt(
-            "Base.", [], timezone="Europe/Vienna", calendar_sources=None,
+            "Base.",
+            [],
+            timezone="Europe/Vienna",
+            calendar_sources=None,
         )
         assert "Verfügbare Kalender" not in prompt

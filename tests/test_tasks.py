@@ -275,9 +275,7 @@ class TestCreateTask:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await action.create_task(
-                title="Test", project="Nonexistent"
-            )
+            result = await action.create_task(title="Test", project="Nonexistent")
 
         assert "error" in result
         assert "Nonexistent" in result["error"]
@@ -425,12 +423,24 @@ class TestCompleteTask:
         """Multiple matching tasks returns error with matches."""
         # Two tasks that both contain "e"
         tasks_with_overlap = [
-            {"id": 1, "title": "Einkaufen", "done": False,
-             "due_date": "0001-01-01T00:00:00Z", "priority": 0,
-             "description": "", "project_id": 1},
-            {"id": 2, "title": "Email schreiben", "done": False,
-             "due_date": "0001-01-01T00:00:00Z", "priority": 0,
-             "description": "", "project_id": 1},
+            {
+                "id": 1,
+                "title": "Einkaufen",
+                "done": False,
+                "due_date": "0001-01-01T00:00:00Z",
+                "priority": 0,
+                "description": "",
+                "project_id": 1,
+            },
+            {
+                "id": 2,
+                "title": "Email schreiben",
+                "done": False,
+                "due_date": "0001-01-01T00:00:00Z",
+                "priority": 0,
+                "description": "",
+                "project_id": 1,
+            },
         ]
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=_resp(tasks_with_overlap))
