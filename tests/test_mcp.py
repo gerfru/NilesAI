@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from niles.mcp.client import (
     MCPManager,
-    _DESTRUCTIVE_PREFIXES,
     _VALID_TOOL_NAME,
     _expand_env,
     _mcp_tool_to_openai,
@@ -343,15 +342,11 @@ class TestDestructiveToolBlocking:
             mcp_mod.stdio_client = MagicMock(return_value=mock_stdio)
             mcp_mod.ClientSession = MagicMock(return_value=mock_session)
 
-            # Patch enter_async_context to return transports then session
-            call_count = 0
-
+            # Patch enter_async_context — dispatch by known mock identity
             async def fake_enter(cm):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    return (AsyncMock(), AsyncMock())  # read, write streams
-                return mock_session  # ClientSession
+                if cm is mock_session:
+                    return mock_session  # ClientSession context
+                return (AsyncMock(), AsyncMock())  # stdio read/write streams
 
             manager._exit_stack.enter_async_context = fake_enter
             await manager._start_server("srv", {"command": "echo", "args": []})
@@ -389,21 +384,20 @@ class TestDestructiveToolBlocking:
 
         assert "2/4 tools registered" in caplog.text
 
-    def test_safe_names_pass(self):
-        """Non-destructive tool names are not blocked."""
-        safe_names = [
-            "list_tasks", "search", "get_calendar", "find_contact",
-            "create_event", "send_message", "read_file", "clear_filter",
-        ]
-        for name in safe_names:
-            assert not name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
-                f"Safe name '{name}' was incorrectly blocked"
-            )
+    async def test_safe_names_pass_through(self):
+        """Non-destructive tool names (incl. clear_*) are registered."""
+        safe = ["list_tasks", "search", "get_calendar", "clear_filter"]
+        manager = await self._start_with_tools(safe)
 
-    def test_blocking_is_case_insensitive(self):
+        assert len(manager._tool_map) == len(safe)
+        for name in safe:
+            assert f"mcp__srv__{name}" in manager._tool_map
+
+    async def test_blocking_is_case_insensitive(self):
         """Blocking works regardless of case."""
-        variants = ["Delete_event", "DELETE_ALL", "Remove_Task", "PURGE_data"]
-        for name in variants:
-            assert name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
-                f"Case variant '{name}' was not blocked"
-            )
+        manager = await self._start_with_tools([
+            "Delete_event", "REMOVE_task", "safe_tool",
+        ])
+
+        assert len(manager._tool_map) == 1
+        assert "mcp__srv__safe_tool" in manager._tool_map

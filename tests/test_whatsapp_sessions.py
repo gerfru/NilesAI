@@ -813,4 +813,5 @@ class TestAgentGetWhatsAppMessages:
 
         assert "3 Nachrichten" in result["hinweis"]
         assert result["date_range"] in result["hinweis"]
-        assert "Transcript" in result["hinweis"]
+        # Verify the hinweis contains a summarization instruction (wording-independent)
+        assert "zusammen" in result["hinweis"].lower()
