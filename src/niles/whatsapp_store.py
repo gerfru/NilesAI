@@ -87,20 +87,26 @@ class WhatsAppSessionStore:
         )
 
     async def update_status(
-        self, user_id: int, status: str, phone_number: str | None = None,
+        self,
+        user_id: int,
+        status: str,
+        phone_number: str | None = None,
     ) -> None:
         """Update session status (and optionally phone number)."""
         if phone_number is not None:
             await self.pool.execute(
                 "UPDATE whatsapp_sessions SET status = $2, phone_number = $3, "
                 "updated_at = NOW() WHERE user_id = $1",
-                user_id, status, phone_number,
+                user_id,
+                status,
+                phone_number,
             )
         else:
             await self.pool.execute(
                 "UPDATE whatsapp_sessions SET status = $2, "
                 "updated_at = NOW() WHERE user_id = $1",
-                user_id, status,
+                user_id,
+                status,
             )
 
     async def delete_session(self, user_id: int) -> None:

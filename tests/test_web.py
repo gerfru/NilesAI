@@ -29,7 +29,12 @@ from niles.sources.web import (
 CSRF_TOKEN = "test-csrf-token"
 _TEST_NILES_KEY = "test-niles-key"
 _TEST_SESSION_SECRET = "test-session-secret"
-_TEST_USER = {"uid": 1, "email": "test@example.com", "display_name": "Test User", "avatar_url": ""}
+_TEST_USER = {
+    "uid": 1,
+    "email": "test@example.com",
+    "display_name": "Test User",
+    "avatar_url": "",
+}
 
 
 def _make_session_token(user=None, secret=_TEST_SESSION_SECRET):
@@ -50,9 +55,18 @@ def _make_settings(**overrides):
     return Settings(**defaults)
 
 
-def _make_request(*, cookies=None, settings=None, agent=None, history=None,
-                  settings_store=None, user_store=None, wa_store=None,
-                  headers=None, client_ip="127.0.0.1"):
+def _make_request(
+    *,
+    cookies=None,
+    settings=None,
+    agent=None,
+    history=None,
+    settings_store=None,
+    user_store=None,
+    wa_store=None,
+    headers=None,
+    client_ip="127.0.0.1",
+):
     """Build a mock Request with app.state."""
     request = MagicMock()
     request.cookies = cookies or {}
@@ -300,7 +314,9 @@ class TestSettingsEndpoints:
 
         await update_setting(request, key="feature_whatsapp_send_others", value="false")
 
-        settings_store.set.assert_called_once_with("feature_whatsapp_send_others", False)
+        settings_store.set.assert_called_once_with(
+            "feature_whatsapp_send_others", False
+        )
         # apply_overrides updates app.state.settings
         new_settings = request.app.state.settings
         assert new_settings.feature_whatsapp_send_others is False
@@ -348,23 +364,30 @@ class TestSettingsEndpoints:
         with patch("niles.sources.web.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            await update_setting(request, key="llm_base_url", value="http://localhost:9999/v1")
+            await update_setting(
+                request, key="llm_base_url", value="http://localhost:9999/v1"
+            )
 
         mock_openai.assert_called_once_with(
-            base_url="http://localhost:9999/v1", api_key="not-needed",
+            base_url="http://localhost:9999/v1",
+            api_key="not-needed",
         )
         assert agent.llm is mock_client
 
     async def test_update_non_editable_rejected(self):
         settings_store = AsyncMock()
-        settings_store.set.side_effect = ValueError("Setting 'postgres_password' is not editable at runtime")
+        settings_store.set.side_effect = ValueError(
+            "Setting 'postgres_password' is not editable at runtime"
+        )
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
             settings_store=settings_store,
         )
 
-        response = await update_setting(request, key="postgres_password", value="hacked")
+        response = await update_setting(
+            request, key="postgres_password", value="hacked"
+        )
 
         # Should return error toast, not crash
         assert response.status_code == 200  # toast fragment always returns 200
@@ -380,7 +403,9 @@ class TestSettingsEndpoints:
         assert response.status_code == 403
 
     async def test_settings_page_masks_passwords(self):
-        settings = _make_settings(carddav_password="secret123", caldav_password="secret456")
+        settings = _make_settings(
+            carddav_password="secret123", caldav_password="secret456"
+        )
         request = _make_request(
             cookies={SESSION_COOKIE_NAME: _make_session_token()},
             settings=settings,
@@ -472,8 +497,10 @@ class TestChatStreamEndpoint:
         async for chunk in response.body_iterator:
             body += chunk.encode() if isinstance(chunk, str) else chunk
 
-        events = [json.loads(line.removeprefix("data: "))
-                  for line in body.decode().strip().split("\n\n")]
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for line in body.decode().strip().split("\n\n")
+        ]
         # Should contain error message and done event
         assert any("Fehler" in e.get("text", "") for e in events)
         assert events[-1]["type"] == "done"
@@ -506,7 +533,9 @@ class TestGoogleCalendarCallback:
             settings=self._gcal_settings(),
         )
         response = await callback_google_calendar(
-            request, code="abc", state="state",
+            request,
+            code="abc",
+            state="state",
         )
         assert response.status_code == 303
         assert "/ui/login" in response.headers["location"]
@@ -515,7 +544,9 @@ class TestGoogleCalendarCallback:
         """Callback with mismatched state redirects with error."""
         request = self._gcal_request(state="correct-state")
         response = await callback_google_calendar(
-            request, code="abc", state="wrong-state",
+            request,
+            code="abc",
+            state="wrong-state",
         )
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
@@ -524,7 +555,9 @@ class TestGoogleCalendarCallback:
         """Callback without code redirects with error."""
         request = self._gcal_request()
         response = await callback_google_calendar(
-            request, code="", state="valid-state",
+            request,
+            code="",
+            state="valid-state",
         )
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
@@ -533,7 +566,10 @@ class TestGoogleCalendarCallback:
         """Callback with error param from Google redirects with error."""
         request = self._gcal_request()
         response = await callback_google_calendar(
-            request, code="", state="valid-state", error="access_denied",
+            request,
+            code="",
+            state="valid-state",
+            error="access_denied",
         )
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
@@ -552,7 +588,9 @@ class TestGoogleCalendarCallback:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             response = await callback_google_calendar(
-                request, code="test-code", state="valid-state",
+                request,
+                code="test-code",
+                state="valid-state",
             )
 
         assert response.status_code == 303
@@ -565,7 +603,8 @@ class TestGoogleCalendarCallback:
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
-            "access_token": "at", "expires_in": 3600,
+            "access_token": "at",
+            "expires_in": 3600,
             # no refresh_token
         }
 
@@ -576,7 +615,9 @@ class TestGoogleCalendarCallback:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             response = await callback_google_calendar(
-                request, code="test-code", state="valid-state",
+                request,
+                code="test-code",
+                state="valid-state",
             )
 
         assert response.status_code == 303
@@ -592,17 +633,25 @@ class TestGoogleCalendarCallback:
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
-            "access_token": "at", "refresh_token": "rt", "expires_in": 3600,
+            "access_token": "at",
+            "refresh_token": "rt",
+            "expires_in": 3600,
         }
 
         mock_cal_resp = MagicMock()
         mock_cal_resp.status_code = 200
         mock_cal_resp.json.return_value = {
             "items": [
-                {"id": "primary@gmail.com", "summary": "Mein Kalender",
-                 "accessRole": "owner"},
-                {"id": "holidays@google.com", "summary": "Feiertage",
-                 "accessRole": "reader"},
+                {
+                    "id": "primary@gmail.com",
+                    "summary": "Mein Kalender",
+                    "accessRole": "owner",
+                },
+                {
+                    "id": "holidays@google.com",
+                    "summary": "Feiertage",
+                    "accessRole": "reader",
+                },
             ],
         }
 
@@ -614,7 +663,9 @@ class TestGoogleCalendarCallback:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
             response = await callback_google_calendar(
-                request, code="test-code", state="valid-state",
+                request,
+                code="test-code",
+                state="valid-state",
             )
 
         assert response.status_code == 303

@@ -1,136 +1,140 @@
 # Niles AI Core
 
-Lokaler AI-Butler auf Mac Mini M4. Empfaengt Events aus verschiedenen Quellen (WhatsApp, Web-UI, API), verarbeitet sie mit einem lokalen LLM und fuehrt Aktionen aus.
+A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsApp, calendars, contacts, and task managers -- all processed by a local LLM with zero cloud dependencies for core functionality.
 
-## Status
+**Key principles:** 100% local inference, privacy first, extensible via MCP.
 
-| Stage | Status | Beschreibung |
-|-------|--------|-------------|
-| 1 | Abgeschlossen | FastAPI Scaffold, Docker, pytest, /health |
-| 2 | Abgeschlossen | WhatsApp empfangen, LLM-Verarbeitung, antworten |
-| 3 | Abgeschlossen | Key-Value Memory, Konversations-Historie |
-| 4 | Abgeschlossen | CardDAV Kontakt-Sync |
-| 5 | Abgeschlossen | Security Hardening (Auth, Rate Limiting, HTTPS) |
-| 6 | Abgeschlossen | MCP Integration |
-| 7 | Abgeschlossen | CalDAV Kalender-Sync |
-| 8 | Geplant | Email als Event-Quelle |
-| 9 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
-| 10 | Abgeschlossen | Google OAuth, Multi-User, Tailwind CSS, SSE Streaming |
+## Features
 
-## Architektur
+- **WhatsApp Integration** -- Self-chat via "Hey Niles" trigger, message history, contact lookup.
+- **Calendar** -- Multi-source sync (CalDAV, Google Calendar, ICS), event search and creation.
+- **Tasks** -- Vikunja integration (list, create, complete), per-user tokens.
+- **Contacts** -- CardDAV sync with multi-phone support.
+- **Memory** -- Persistent key-value store, injected into every conversation.
+- **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
+- **Web UI** -- Chat with SSE streaming, settings dashboard, calendar/contact management.
+- **MCP** -- Extend Niles with community tools via Model Context Protocol.
+- **Multi-User** -- Google OAuth login, per-user WhatsApp sessions and task lists.
+- **Security** -- HTTPS (Caddy), rate limiting, CSRF protection, no-delete policy.
 
-```
+## Architecture
+
+```text
 Browser / curl / WhatsApp
     |
     v  HTTPS (Caddy, self-signed)
-+--------------------------------------------------+
-|  Niles Core (FastAPI :8000)                      |
-|                                                  |
-|  /ui/*  ---- sources/web.py (htmx + Jinja2)     |
-|                 |  Google OAuth / API-Key Auth   |
-|                 |  Signed Session Cookies        |
-|                 |  SSE Streaming (/api/chat/stream)|
-|                 v                                |
-|  /chat  ---> agent/core.py (NilesAgent) -------> Ollama :11434
-|                 |  Tool-Call Loop (max 5)        |
-|                 |                                |
-|                 +-- memory/store.py     --------> PostgreSQL :5432
-|                 +-- memory/history.py  --------> PostgreSQL :5432
-|                 +-- actions/contacts.py --------> PostgreSQL :5432
-|                 +-- actions/whatsapp.py --------> Evolution API :8080
-|                 +-- actions/calendar.py --------> PostgreSQL :5432
-|                                                  |
-|  /webhook/whatsapp --- sources/whatsapp.py       |
-+--------------------------------------------------+
-```
-
-## Projektstruktur
-
-```
-Niles/
-├── src/niles/                  # Python Backend
-│   ├── main.py                 # FastAPI + Lifespan + Middleware
-│   ├── config.py               # Pydantic Settings
-│   ├── user_store.py           # User-Verwaltung (Google OAuth)
-│   ├── settings_store.py       # Runtime Settings (PostgreSQL)
-│   ├── agent/                  # LLM Agent, Tool-Call-Pipeline
-│   ├── memory/                 # Key-Value Store, Chat-History
-│   ├── actions/                # WhatsApp, Kontakte, Kalender
-│   ├── sources/                # Webhook-Handler, Web-UI (SSE Streaming)
-│   ├── sync/                   # CardDAV, CalDAV Sync
-│   ├── mcp/                    # MCP Client
-│   ├── templates/              # Jinja2 HTML Templates (Tailwind CSS)
-│   └── static/                 # CSS (Tailwind), JavaScript
-├── tests/                      # pytest Tests
-├── config/                     # soul.md (Agent-Persoenlichkeit)
-├── docker/                     # Dockerfile, docker-compose.yml, Caddyfile
-├── scripts/                    # dev.sh, test.sh, start.sh, stop.sh, status.sh
-├── docs/                       # Technische Dokumentation
-├── tailwind.config.js          # Tailwind CSS Konfiguration
-├── pyproject.toml
-└── .env                        # Secrets (nicht in Git)
++-------------------------------------------------------------+
+|  Niles Core (FastAPI :8000)                                 |
+|                                                             |
+|  /ui/*  ---- sources/web.py (htmx + Jinja2 + SSE)           |
+|                 |  Google OAuth / API-Key Auth              |
+|                 v                                           |
+|  /chat  ---> agent/core.py (NilesAgent) --------> Ollama    |
+|                 |  Tool-Call Loop (max 5)           :11434  |
+|                 |                                           |
+|                 +-- actions/contacts.py ----> PostgreSQL    |
+|                 +-- actions/whatsapp.py ----> Evolution API |
+|                 +-- actions/calendar.py ----> PostgreSQL    |
+|                 +-- actions/tasks.py -------> Vikunja       |
+|                 +-- memory/store.py -------> PostgreSQL     |
+|                 +-- mcp/client.py ---------> MCP Servers    |
+|                                                             |
+|  /webhook/whatsapp --- sources/whatsapp.py                  |
+|                                                             |
+|  jobs/briefing.py --- APScheduler (Mo-Fr 07:30, Mo 07:15)   |
++-------------------------------------------------------------+
 ```
 
 ## Quick Start
 
-### Voraussetzungen
-
-- Python >= 3.11
-- Docker Desktop
-- Ollama (laeuft nativ auf dem Host fuer volle GPU-Leistung, Port 11434)
-
-### 1. Environment konfigurieren
+**Prerequisites:** Docker Desktop, Ollama (native on host), Python >= 3.11
 
 ```bash
+# 1. Clone and configure
+git clone <repo-url> Niles && cd Niles
 cp .env.example .env
-# Pflichtfelder setzen: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY
-# Optional: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET fuer Web-UI Login
-```
+# Set: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY
 
-### 2. Services starten
+# 2. Pull the LLM model
+ollama pull llama3.1:8b
 
-```bash
+# 3. Start all services
 ./scripts/start.sh
-```
 
-### 3. Status pruefen
-
-```bash
-./scripts/status.sh
-```
-
-### 4. Web-UI oeffnen
-
-```bash
-# Browser oeffnen:
+# 4. Open Web UI
 # https://localhost/ui/login
 ```
 
-Login via Google OAuth (wenn konfiguriert) oder API-Key.
+For detailed setup including Google OAuth, WhatsApp, Vikunja, CalDAV, and Tailscale: see the [Deployment Guide](docs/Deployment.md).
 
-### 5. API testen
+## Project Structure
 
-```bash
-curl -k -X POST https://localhost/chat \
-  -H "X-API-Key: <NILES_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hallo Niles!"}'
+```text
+Niles/
+src/niles/                     Python Backend
+  main.py                      FastAPI + Lifespan + Middleware
+  config.py                    Pydantic Settings
+  agent/                       LLM Agent, Tool-Call Pipeline, Prompts
+  memory/                      Key-Value Store, Conversation History
+  actions/                     WhatsApp, Contacts, Calendar, Tasks, Briefing
+  jobs/                        Scheduled Jobs (Briefing)
+  sources/                     Webhook Handler, Web-UI (SSE Streaming)
+  sync/                        CardDAV, CalDAV, Google Calendar, iCal Parser
+  mcp/                         MCP Server Manager
+  templates/                   Jinja2 Templates (Tailwind CSS)
+  static/                      CSS, JavaScript
+tests/                         438 tests (pytest + pytest-asyncio)
+config/                        soul.md (Agent Personality)
+docker/                        Dockerfile, docker-compose.yml, Caddyfile
+scripts/                       start, stop, status, dev, test, backup
+docs/                          Technical Documentation
 ```
-
-## Dokumentation
-
-- [Technische Spezifikation](docs/Niles-Core-Spec.md) -- Komponentenbeschreibung und Roadmap
-- [Architektur](docs/Architecture.md) -- Systemuebersicht, Module, Datenfluss, DB-Schema
-- [API Reference](docs/API.md) -- Endpoints, Payloads, Agent-Tools
-- [Development Guide](docs/Development.md) -- Setup, Testing, Konventionen
 
 ## Stack
 
-| Komponente | Technologie | Port |
-|------------|-------------|------|
-| Niles Core | FastAPI (Python) | 8000 |
-| Web UI | Jinja2 + htmx + Tailwind CSS + SSE Streaming | via /ui/* |
-| LLM Inference | Ollama (nativ auf Host) | 11434 |
-| Datenbank | PostgreSQL 15 | 5432 |
-| WhatsApp Gateway | Evolution API v2.3.7 | 8080 |
-| Reverse Proxy | Caddy 2 | 443/8443 |
+| Component     | Technology                         |
+| ------------- | ---------------------------------- |
+| Backend       | FastAPI (Python 3.12)              |
+| Web UI        | Jinja2 + htmx + Tailwind CSS + SSE |
+| LLM           | Ollama (local, llama3.1:8b)        |
+| Database      | PostgreSQL 15                      |
+| WhatsApp      | Evolution API v2.3.7               |
+| Tasks         | Vikunja                            |
+| Reverse Proxy | Caddy 2 (self-signed TLS)          |
+| Scheduling    | APScheduler                        |
+| Extensions    | MCP (Model Context Protocol)       |
+
+## Agent Tools
+
+The LLM can invoke these tools during conversations:
+
+| Tool                    | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `find_contact`          | Search contacts by name                  |
+| `send_whatsapp`         | Send WhatsApp message (by name or number) |
+| `get_whatsapp_messages` | Read chat history (last 30 days)         |
+| `find_event`            | Search calendar events                   |
+| `create_event`          | Create calendar event                    |
+| `list_tasks`            | List open tasks from Vikunja             |
+| `create_task`           | Create a new task                        |
+| `complete_task`         | Mark a task as done                      |
+| `remember` / `recall`   | Persistent key-value memory              |
+
+MCP tools from external servers are automatically discovered and added.
+
+## Development
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest tests/ -v
+```
+
+See [Development Guide](docs/Development.md) for details on testing, Docker workflow, and conventions.
+
+## Documentation
+
+- [Deployment Guide](docs/Deployment.md) -- Setup, configuration, backup, troubleshooting
+- [API Reference](docs/API.md) -- Endpoints, payloads, agent tools
+- [Development Guide](docs/Development.md) -- Testing, Docker, conventions
+- [Technical Spec](docs/Niles-Core-Spec.md) -- Architecture, components, roadmap

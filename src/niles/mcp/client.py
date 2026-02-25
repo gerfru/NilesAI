@@ -26,8 +26,14 @@ _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 # "data_wipe_all") will pass through.  For stricter control, use a
 # per-server allowlist in mcp_servers.yaml.
 _DESTRUCTIVE_PREFIXES = (
-    "delete", "remove", "drop", "destroy", "purge",
-    "erase", "wipe", "truncate",
+    "delete",
+    "remove",
+    "drop",
+    "destroy",
+    "purge",
+    "erase",
+    "wipe",
+    "truncate",
 )
 
 
@@ -37,7 +43,9 @@ def _expand_env(value: str) -> str:
     def _replacer(match: re.Match) -> str:
         var_name = match.group(1)
         if var_name not in os.environ:
-            logger.warning("Environment variable ${%s} not set, using empty string", var_name)
+            logger.warning(
+                "Environment variable ${%s} not set, using empty string", var_name
+            )
         return os.environ.get(var_name, "")
 
     return re.sub(r"\$\{(\w+)\}", _replacer, value)
@@ -59,7 +67,9 @@ class MCPManager:
     def _load_config(self) -> dict:
         """Load and parse the YAML config file."""
         if not self._config_path.exists():
-            logger.info("MCP config not found at %s, no servers to start", self._config_path)
+            logger.info(
+                "MCP config not found at %s, no servers to start", self._config_path
+            )
             return {}
 
         with open(self._config_path, encoding="utf-8") as f:
@@ -83,7 +93,9 @@ class MCPManager:
 
         tool_count = len(self._tool_map)
         server_count = len(self._sessions)
-        logger.info("MCP: %d server(s) started, %d tool(s) available", server_count, tool_count)
+        logger.info(
+            "MCP: %d server(s) started, %d tool(s) available", server_count, tool_count
+        )
 
     async def _start_server(self, name: str, config: dict) -> None:
         """Start a single MCP server and register its tools."""
@@ -92,7 +104,11 @@ class MCPManager:
         env_config = config.get("env", {})
 
         # Expand environment variables in env config
-        env = {k: _expand_env(str(v)) for k, v in env_config.items()} if env_config else None
+        env = (
+            {k: _expand_env(str(v)) for k, v in env_config.items()}
+            if env_config
+            else None
+        )
 
         params = StdioServerParameters(command=command, args=args, env=env)
 
@@ -119,7 +135,9 @@ class MCPManager:
                 continue
             if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
                 logger.warning(
-                    "Blocking destructive MCP tool: %s/%s", name, tool.name,
+                    "Blocking destructive MCP tool: %s/%s",
+                    name,
+                    tool.name,
                 )
                 continue
             prefixed = f"mcp{_SEP}{name}{_SEP}{tool.name}"
@@ -129,7 +147,9 @@ class MCPManager:
 
         logger.info(
             "MCP server '%s' started (%d/%d tools registered)",
-            name, registered, len(result.tools),
+            name,
+            registered,
+            len(result.tools),
         )
 
     def get_openai_tools(self) -> list[dict]:

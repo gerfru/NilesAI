@@ -51,7 +51,9 @@ class TestMCPToolToOpenAI:
         assert result["type"] == "function"
         assert result["function"]["name"] == "mcp__test__search"
         assert result["function"]["description"] == "A test tool"
-        assert result["function"]["parameters"]["properties"]["query"]["type"] == "string"
+        assert (
+            result["function"]["parameters"]["properties"]["query"]["type"] == "string"
+        )
 
     def test_handles_none_description(self):
         mock_tool = MagicMock()
@@ -87,10 +89,7 @@ class TestMCPManagerConfig:
     def test_load_config_with_servers(self, tmp_path):
         config = tmp_path / "mcp.yaml"
         config.write_text(
-            "servers:\n"
-            "  myserver:\n"
-            "    command: echo\n"
-            "    args: [hello]\n"
+            "servers:\n  myserver:\n    command: echo\n    args: [hello]\n"
         )
 
         manager = MCPManager(config_path=config)
@@ -358,9 +357,13 @@ class TestDestructiveToolBlocking:
 
     async def test_destructive_tool_blocked(self):
         """Tools starting with destructive prefixes are not registered."""
-        manager = await self._start_with_tools([
-            "delete_event", "remove_contact", "list_items",
-        ])
+        manager = await self._start_with_tools(
+            [
+                "delete_event",
+                "remove_contact",
+                "list_items",
+            ]
+        )
 
         assert len(manager._tool_map) == 1
         assert "mcp__srv__list_items" in manager._tool_map
@@ -378,9 +381,14 @@ class TestDestructiveToolBlocking:
     async def test_registered_count_in_log(self, caplog):
         """Log message shows registered/total count correctly."""
         with caplog.at_level(logging.INFO):
-            await self._start_with_tools([
-                "delete_event", "remove_contact", "list_items", "search",
-            ])
+            await self._start_with_tools(
+                [
+                    "delete_event",
+                    "remove_contact",
+                    "list_items",
+                    "search",
+                ]
+            )
 
         assert "2/4 tools registered" in caplog.text
 
@@ -395,9 +403,13 @@ class TestDestructiveToolBlocking:
 
     async def test_blocking_is_case_insensitive(self):
         """Blocking works regardless of case."""
-        manager = await self._start_with_tools([
-            "Delete_event", "REMOVE_task", "safe_tool",
-        ])
+        manager = await self._start_with_tools(
+            [
+                "Delete_event",
+                "REMOVE_task",
+                "safe_tool",
+            ]
+        )
 
         assert len(manager._tool_map) == 1
         assert "mcp__srv__safe_tool" in manager._tool_map
