@@ -20,10 +20,14 @@ _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 # Block destructive MCP tools from being exposed to the LLM.
 # A tool whose name starts with any of these prefixes (case-insensitive)
-# is silently filtered out during discovery.
+# is filtered out during discovery with a warning log.
+# NOTE: This is a heuristic safety net, not strict enforcement.
+# Tools with destructive verbs in non-prefix position (e.g. "bulk_remove",
+# "data_wipe_all") will pass through.  For stricter control, use a
+# per-server allowlist in mcp_servers.yaml.
 _DESTRUCTIVE_PREFIXES = (
     "delete", "remove", "drop", "destroy", "purge",
-    "erase", "wipe", "truncate", "clear",
+    "erase", "wipe", "truncate",
 )
 
 
@@ -108,6 +112,7 @@ class MCPManager:
             # Discover tools
             result = await session.list_tools()
 
+        registered = 0
         for tool in result.tools:
             if not _VALID_TOOL_NAME.match(tool.name):
                 logger.warning("Skipping tool with invalid name: %s", tool.name)
@@ -120,9 +125,11 @@ class MCPManager:
             prefixed = f"mcp{_SEP}{name}{_SEP}{tool.name}"
             self._tool_map[prefixed] = (name, tool.name)
             self._openai_tools.append(_mcp_tool_to_openai(prefixed, tool))
+            registered += 1
 
         logger.info(
-            "MCP server '%s' started (%d tools)", name, len(result.tools)
+            "MCP server '%s' started (%d/%d tools registered)",
+            name, registered, len(result.tools),
         )
 
     def get_openai_tools(self) -> list[dict]:

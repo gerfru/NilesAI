@@ -320,46 +320,80 @@ class TestDestructiveToolBlocking:
         tool.inputSchema = {"type": "object", "properties": {}}
         return tool
 
+    async def _start_with_tools(self, tool_names: list[str]) -> MCPManager:
+        """Helper: run _start_server with mocked MCP session returning given tools."""
+        manager = MCPManager()
+
+        mock_session = AsyncMock()
+        mock_list_result = MagicMock()
+        mock_list_result.tools = [self._make_mock_tool(n) for n in tool_names]
+        mock_session.list_tools.return_value = mock_list_result
+        mock_session.initialize = AsyncMock()
+
+        # Mock the async context managers that _start_server enters
+        mock_stdio = AsyncMock()
+        mock_stdio.__aenter__ = AsyncMock(return_value=(AsyncMock(), AsyncMock()))
+        mock_stdio.__aexit__ = AsyncMock(return_value=False)
+
+        import niles.mcp.client as mcp_mod
+
+        original_stdio = mcp_mod.stdio_client
+        original_session = mcp_mod.ClientSession
+        try:
+            mcp_mod.stdio_client = MagicMock(return_value=mock_stdio)
+            mcp_mod.ClientSession = MagicMock(return_value=mock_session)
+
+            # Patch enter_async_context to return transports then session
+            call_count = 0
+
+            async def fake_enter(cm):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return (AsyncMock(), AsyncMock())  # read, write streams
+                return mock_session  # ClientSession
+
+            manager._exit_stack.enter_async_context = fake_enter
+            await manager._start_server("srv", {"command": "echo", "args": []})
+        finally:
+            mcp_mod.stdio_client = original_stdio
+            mcp_mod.ClientSession = original_session
+
+        return manager
+
     async def test_destructive_tool_blocked(self):
         """Tools starting with destructive prefixes are not registered."""
-        manager = MCPManager()
-        manager._sessions["srv"] = MagicMock()
-
-        mock_result = MagicMock()
-        mock_result.tools = [
-            self._make_mock_tool("delete_event"),
-            self._make_mock_tool("remove_contact"),
-            self._make_mock_tool("list_items"),
-        ]
-
-        # Simulate what _start_server does after session.list_tools()
-        for tool in mock_result.tools:
-            if not _VALID_TOOL_NAME.match(tool.name):
-                continue
-            if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
-                continue
-            prefixed = f"mcp__srv__{tool.name}"
-            manager._tool_map[prefixed] = ("srv", tool.name)
-            manager._openai_tools.append(_mcp_tool_to_openai(prefixed, tool))
+        manager = await self._start_with_tools([
+            "delete_event", "remove_contact", "list_items",
+        ])
 
         assert len(manager._tool_map) == 1
         assert "mcp__srv__list_items" in manager._tool_map
         assert "mcp__srv__delete_event" not in manager._tool_map
         assert "mcp__srv__remove_contact" not in manager._tool_map
 
-    def test_all_destructive_prefixes_block(self):
-        """Every prefix in _DESTRUCTIVE_PREFIXES blocks matching tool names."""
-        for prefix in _DESTRUCTIVE_PREFIXES:
-            tool_name = f"{prefix}_something"
-            assert tool_name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
-                f"Prefix '{prefix}' did not block '{tool_name}'"
-            )
+    async def test_blocking_logs_warning(self, caplog):
+        """Blocked tools produce a warning log entry from production code."""
+        with caplog.at_level(logging.WARNING):
+            await self._start_with_tools(["delete_calendar"])
+
+        assert "Blocking destructive MCP tool" in caplog.text
+        assert "delete_calendar" in caplog.text
+
+    async def test_registered_count_in_log(self, caplog):
+        """Log message shows registered/total count correctly."""
+        with caplog.at_level(logging.INFO):
+            await self._start_with_tools([
+                "delete_event", "remove_contact", "list_items", "search",
+            ])
+
+        assert "2/4 tools registered" in caplog.text
 
     def test_safe_names_pass(self):
         """Non-destructive tool names are not blocked."""
         safe_names = [
             "list_tasks", "search", "get_calendar", "find_contact",
-            "create_event", "send_message", "read_file",
+            "create_event", "send_message", "read_file", "clear_filter",
         ]
         for name in safe_names:
             assert not name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
@@ -373,24 +407,3 @@ class TestDestructiveToolBlocking:
             assert name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
                 f"Case variant '{name}' was not blocked"
             )
-
-    async def test_blocking_logs_warning(self, caplog):
-        """Blocked tools produce a warning log entry."""
-        manager = MCPManager()
-        manager._sessions["srv"] = MagicMock()
-
-        mock_result = MagicMock()
-        mock_result.tools = [self._make_mock_tool("delete_calendar")]
-
-        with caplog.at_level(logging.WARNING):
-            for tool in mock_result.tools:
-                if not _VALID_TOOL_NAME.match(tool.name):
-                    continue
-                if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
-                    logging.getLogger("niles.mcp.client").warning(
-                        "Blocking destructive MCP tool: %s/%s", "srv", tool.name,
-                    )
-                    continue
-
-        assert "Blocking destructive MCP tool" in caplog.text
-        assert "delete_calendar" in caplog.text

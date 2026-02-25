@@ -5,6 +5,7 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 
 import httpx
@@ -69,6 +70,9 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_whatsapp_messages",
+            # Summarization instruction (2/3) — keep in sync with:
+            # 1/3: config/soul.md "Nachrichten lesen"
+            # 3/3: hinweis field in get_whatsapp_messages result below
             "description": (
                 "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
                 "Suche nach Kontaktname oder Telefonnummer. "
@@ -918,20 +922,22 @@ class NilesAgent:
             contact_name = contact if not contact.replace("+", "").replace(" ", "").isdigit() else (
                 messages[0].get("push_name") or phone
             )
+            local_tz = ZoneInfo(self.config.timezone)
             lines = []
             for msg in messages:
-                ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc)
+                ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc).astimezone(local_tz)
                 who = "Du" if msg["from_me"] else contact_name
                 lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
             transcript = "\n".join(lines)
 
-            # Compute date range for LLM context
+            # Compute date range for LLM context (in user's local timezone)
+            # See also: config/soul.md "Nachrichten lesen" + hinweis below
             first_dt = datetime.fromtimestamp(
                 messages[0]["timestamp"], tz=timezone.utc,
-            )
+            ).astimezone(local_tz)
             last_dt = datetime.fromtimestamp(
                 messages[-1]["timestamp"], tz=timezone.utc,
-            )
+            ).astimezone(local_tz)
             if first_dt.date() == last_dt.date():
                 date_range = first_dt.strftime("%d.%m.%Y")
             else:
@@ -945,6 +951,9 @@ class NilesAgent:
                 "chat_with": contact_name,
                 "count": len(messages),
                 "date_range": date_range,
+                # Summarization instruction (3/3) — keep in sync with:
+                # 1/3: config/soul.md "Nachrichten lesen"
+                # 2/3: tool description above
                 "hinweis": (
                     f"{len(messages)} Nachrichten ({date_range}). "
                     "Fasse die wichtigsten Punkte zusammen: "
