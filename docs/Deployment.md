@@ -112,7 +112,7 @@ Guides step by step through the setup with status checks.
 
 ## 3. Ollama (LLM Backend)
 
-Ollama runs **natively on the host** (not in Docker) to utilize full GPU performance.
+Ollama runs **natively on the host** (not in Docker) to utilize full GPU performance. See [Ollama documentation](https://docs.ollama.com/) for details.
 
 ### Installation
 
@@ -152,22 +152,27 @@ The default values in `.env` work for most setups:
 
 Without Google OAuth, the web UI is only accessible via API key. With Google OAuth, users can conveniently log in via Google.
 
+> Official guides: [OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) | [Configure OAuth Consent](https://developers.google.com/workspace/guides/configure-oauth-consent)
+
 ### Step 1: Google Cloud Project
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (e.g., "Niles AI")
-3. Configure **APIs & Services > OAuth consent screen**:
+3. **Enable APIs** -- Go to **APIs & Services > Library** and enable:
+   - **Google Calendar API** ([docs](https://developers.google.com/workspace/calendar/api/guides/overview))
+4. Configure **APIs & Services > OAuth consent screen**:
    - User Type: External
    - App name: "Niles AI"
    - Scopes: `email`, `profile`, `openid`
-   - For Google Calendar additionally: `https://www.googleapis.com/auth/calendar.readonly`
+   - For Google Calendar additionally: `https://www.googleapis.com/auth/calendar` (full read/write access)
+   - Add yourself as **test user** (required while the app is in "Testing" publishing status)
 
 ### Step 2: Create OAuth Client
 
 1. **APIs & Services > Credentials > Create Credentials > OAuth client ID**
 2. Application type: **Web application**
 3. Name: "Niles"
-4. **Authorized redirect URIs** (enter both!):
+4. **Authorized redirect URIs** -- add both on the **same** client:
 
 ```
 https://<YOUR-URL>/ui/callback/google
@@ -177,6 +182,8 @@ https://<YOUR-URL>/ui/callback/google/calendar
 Examples:
 - Local: `https://localhost/ui/callback/google`
 - Tailscale: `https://niles.example.ts.net/ui/callback/google`
+
+> **Important:** Use a single OAuth client for both login and calendar. Both redirect URIs must be on the same client that matches `GOOGLE_CLIENT_ID` in `.env`.
 
 ### Step 3: Configure .env
 
@@ -199,9 +206,13 @@ BASE_URL=https://niles.example.ts.net
 
 Open `https://<YOUR-URL>/ui/login` -- the Google login button should appear.
 
+> **Note:** While your app is in "Testing" mode (not verified by Google), you will see a warning page: "Google has not verified this app". Click **Continue** to proceed. This is normal for personal/private apps and only visible to test users. Verification is only required for apps used by external users.
+
 ---
 
 ## 5. WhatsApp (Evolution API)
+
+> [Evolution API documentation](https://doc.evolution-api.com/)
 
 ### How It Works
 
@@ -325,7 +336,7 @@ The old `CALDAV_*` variables from `.env` are automatically migrated to the datab
 
 ## 8. Tasks (Vikunja)
 
-Vikunja is an open-source task manager. Niles can create, list, and complete tasks through it.
+[Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it.
 
 ### Initial Setup
 
@@ -470,7 +481,7 @@ Set `FEATURE_BRIEFING_DAILY=false` and `FEATURE_BRIEFING_WEEKLY=false` in `.env`
 
 ### Caddy (Reverse Proxy)
 
-Caddy runs as a Docker container and terminates TLS with **self-signed certificates**. Configuration in `docker/Caddyfile`.
+[Caddy](https://caddyserver.com/docs/) runs as a Docker container and terminates TLS with **self-signed certificates**. Configuration in `docker/Caddyfile`.
 
 #### Adjust Hostnames
 
@@ -502,7 +513,7 @@ docker restart niles_caddy
 
 ### Tailscale (Remote Access)
 
-Tailscale enables secure access from anywhere -- without port forwarding or VPN configuration.
+[Tailscale](https://tailscale.com/kb/1081/magicdns) enables secure access from anywhere -- without port forwarding or VPN configuration. See also: [Tailscale HTTPS](https://tailscale.com/kb/1153/enabling-https).
 
 #### Setup
 
