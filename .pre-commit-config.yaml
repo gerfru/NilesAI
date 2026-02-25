@@ -2,7 +2,7 @@
 repos:
   # --- Secret Scanning ---
   - repo: https://github.com/trufflesecurity/trufflehog
-    rev: v3.88.0  # Aktuelle Version prüfen: https://github.com/trufflesecurity/trufflehog/releases
+    rev: v3.88.0  # Check latest version: https://github.com/trufflesecurity/trufflehog/releases
     hooks:
       - id: trufflehog
         name: TruffleHog Secret Scan
@@ -12,7 +12,7 @@ repos:
 
   # --- Python Linting ---
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6  # Aktuelle Version prüfen: https://github.com/astral-sh/ruff-pre-commit/releases
+    rev: v0.9.6  # Check latest version: https://github.com/astral-sh/ruff-pre-commit/releases
     hooks:
       - id: ruff
         name: Ruff Lint
