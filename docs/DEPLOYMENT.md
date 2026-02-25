@@ -237,7 +237,7 @@ Niles kann direkt im eigenen WhatsApp-Chat angesprochen werden -- ohne dass eine
 | ----- | ------------ | ------------ |
 | Self-Chat mit Trigger | ja | ja (immer) |
 | Self-Chat ohne Trigger | nein | nein |
-| Eingehend (fremde Personen) | ja (Memory, History) | nein (nie) |
+| Eingehend (fremde Personen) | ja (von Evolution API gespeichert) | nein (nie) |
 | Web-UI | ja | ja (Streaming) |
 
 **Web-UI WhatsApp-Log:** Unter `/ui/chat?channel=whatsapp` ist der Self-Chat-Verlauf als Read-Only-Log einsehbar. Der Tab erscheint automatisch, sobald eine WhatsApp-Verbindung besteht.
@@ -259,6 +259,7 @@ Login mit dem `EVOLUTION_API_KEY` aus der `.env`.
 | QR-Code erscheint nicht | Container neustarten: `docker restart niles_evolution_api` |
 | Session verloren | Neu verbinden ueber Settings > WhatsApp > Verbinden |
 | Nachrichten kommen nicht an | Webhook pruefen: `./scripts/status.sh` |
+| Nachrichten fehlen (LID) | WhatsApp nutzt seit 2025 LID-Adressen. Niles unterstuetzt dies automatisch (PR #29). Falls nach einem Update alte Nachrichten fehlen: `DATABASE_SAVE_DATA_NEW_MESSAGE=true` in Evolution API pruefen. |
 
 ---
 

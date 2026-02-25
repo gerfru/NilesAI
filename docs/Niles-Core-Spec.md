@@ -1,8 +1,8 @@
 # Niles AI Core -- Technische Spezifikation
 
-> **Version:** 6.0
-> **Stand:** 2026-02-24
-> **Status:** Stage 1-7, 9-10 abgeschlossen. PR #22-26 abgeschlossen. Stage 8 geplant.
+> **Version:** 7.0
+> **Stand:** 2026-02-25
+> **Status:** Stage 1-7, 9-10 abgeschlossen. PR #22-26, #29 abgeschlossen. Stage 8 geplant.
 
 ---
 
@@ -360,7 +360,7 @@ class NilesAgent:
 | ---- | --------- | ------------ |
 | `find_contact` | `name: str` | Kontaktsuche in PostgreSQL. Gibt `full_name`, `phone` (bevorzugte), `phones` (alle mit Typ), `email` zurueck. |
 | `send_whatsapp` | `to: str, text: str` | Nachricht senden (Nummer oder Name). Multi-Phone: fragt User bei mehreren Nummern (TTL 5 min). Per-User Instance Resolution. |
-| `get_whatsapp_messages` | `contact: str, limit?: int` | WhatsApp-Chatverlauf lesen (nach Kontaktname oder Telefonnummer). Max 50, 30-Tage-Window. Via Evolution API `findMessages`. |
+| `get_whatsapp_messages` | `contact: str, limit?: int` | WhatsApp-Chatverlauf lesen (nach Kontaktname oder Telefonnummer). Max 50, 30-Tage-Window. Via Evolution API `findMessages`. Result enthaelt `date_range` und `hinweis` fuer LLM-Zusammenfassung. |
 | `remember` | `key: str, value: str` | Fakt im Memory speichern |
 | `recall` | `key: str` | Fakt aus Memory abrufen |
 | `find_event` | `query?, date_from?, date_to?, calendar?` | Kalender-Events suchen (max 10 Ergebnisse). Unterstuetzt Datumsfilter und Kalender-Auswahl. |
@@ -502,6 +502,8 @@ Webhook-Handler fuer Evolution API v2.3.7:
 
 **Self-Chat chat_id:** `wa-self-{nummer}` — eigene Konversations-Historie, getrennt von fremden Chats und Web-UI.
 
+**LID-Adressierung:** WhatsApp nutzt seit 2025 LID (Linked Identity Device) Adressen. Neue Nachrichten haben `key.remoteJid = "...@lid"` statt `"...@s.whatsapp.net"`. Die Phone-JID steht in `key.remoteJidAlt`. Der Webhook-Handler erkennt `@lid`-JIDs und verwendet stattdessen `remoteJidAlt` fuer Sender-Extraktion, chat_id und Reply-Routing.
+
 **Fremde Nachrichten:** Werden von der Evolution API intern gespeichert (kein LLM-Call, kein Web-Chat, kein Auto-Reply). Der Agent liest sie per `get_whatsapp_messages`-Tool direkt via Evolution API `findMessages`-Endpoint ("Was hat mir Max geschrieben?"). Kontaktname wird per `contacts.find_by_name()` zu Telefonnummer aufgeloest, dann als JID an die API uebergeben. 30-Tage-Window, max 50 Nachrichten. Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
 
 **Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`). Fuer Self-Chat wird die Instance aus dem Webhook-Payload verwendet. Fuer `get_whatsapp_messages` wird die Instance per `_resolve_wa_instance(chat_id)` aus der `whatsapp_sessions`-Tabelle ermittelt.
@@ -522,6 +524,10 @@ class WhatsAppAction:
 ```
 
 `send_message` sendet via `POST /message/sendText/{instance}` an Evolution API. Timeout 30s. Optionaler `instance`-Parameter fuer Per-User WhatsApp Sessions (Fallback: globale `evolution_instance` aus Config).
+
+`fetch_messages` fragt Nachrichten via `POST /chat/findMessages/{instance}` ab. Der Filter-Payload setzt sowohl `remoteJid` als auch `remoteJidAlt` auf die Phone-JID — Evolution API's Baileys-Override (PR #2249) kombiniert diese mit OR, sodass sowohl alte Phone-JIDs als auch neue LID-Nachrichten gefunden werden. Beide Keys muessen gesetzt sein (bei nur einem Key erzeugt der OR-Clause einen leeren Match, Prisma-Bug). Client-seitiger 30-Tage-Filter, max 50 Nachrichten, chronologisch sortiert.
+
+**Tool-Result Metadaten:** Das `get_whatsapp_messages`-Tool gibt neben dem Transcript zusaetzlich `date_range` (formatierter Zeitraum) und `hinweis` (Zusammenfassungs-Anweisung) zurueck — analog zum `hinweis`-Feld in `find_event`. Diese Felder helfen dem 8B-LLM, strukturierte Zusammenfassungen statt roher Transcript-Dumps zu produzieren.
 
 Instance-Management-Methoden steuern Evolution API Instanzen fuer den Per-User WhatsApp-Flow (erstellen, QR-Code abrufen, Verbindungsstatus pruefen, trennen, loeschen).
 
@@ -565,6 +571,8 @@ APScheduler fuer taeglichen Sync: CardDAV 03:00 (wenn `carddav_url` konfiguriert
 ### 3.16 MCP Client (`src/niles/mcp/client.py`)
 
 MCP Server Manager fuer externe Tool-Integrationen. Konfiguration via `config/mcp_servers.yaml`.
+
+**Destructive Tool Blocking:** Bei der Tool-Entdeckung werden MCP-Tools mit destruktiven Namenspraefixen automatisch geblockt (delete, remove, drop, destroy, purge, erase, wipe, truncate, clear). Case-insensitive. Geblockte Tools werden geloggt aber nicht registriert. Dies verhindert, dass ein MCP-Server versehentlich Loesch-Faehigkeiten an das LLM exponiert.
 
 ### 3.17 Task Management (`src/niles/actions/tasks.py`)
 
@@ -793,6 +801,24 @@ CREATE TABLE IF NOT EXISTS settings_overrides (
 - Caddy schreibt JSON-formatierte Access Logs pro Service
 - Log-Rotation: 10 MB pro Datei, 3 Dateien behalten
 - Dateien: `access-niles.log`, `access-evolution.log`
+
+### 5.6 Datenintegritaet (Keine Loeschungen)
+
+Niles folgt dem Prinzip **"Lesen und Erstellen, niemals Loeschen"**:
+
+- **Kein LLM-Tool hat Loesch-Faehigkeiten.** `complete_task` markiert Aufgaben als erledigt (kein Delete). `remember` ueberschreibt per UPSERT (kein Delete).
+- **`MemoryStore.delete()` existiert** aber ist NICHT als Tool exponiert — nur intern fuer Web-UI.
+- **MCP-Tools:** Destruktive Namenspraefixe werden automatisch geblockt (§3.16).
+- **Evolution API:** Niles nutzt nur `sendText` und `findMessages` — keine Delete-Endpunkte.
+- **soul.md Regel 7:** Das LLM wird explizit angewiesen, dass es keine Daten loeschen kann und bei Loesch-Anfragen auf die jeweilige App verweisen soll.
+
+| Integration | Lesen | Erstellen | Aendern | Loeschen |
+| ----------- | ----- | --------- | ------- | -------- |
+| WhatsApp (Evolution) | Ja | Ja (senden) | Nein | Nein |
+| Kalender (CalDAV/Google) | Ja | Ja | Nein | Nein |
+| Tasks (Vikunja) | Ja | Ja | Ja (complete) | Nein |
+| Kontakte (CardDAV) | Ja | Nein | Nein | Nein |
+| Memory (PostgreSQL) | Ja | Ja | Ja (update) | Nein |
 
 ---
 
@@ -1026,6 +1052,7 @@ Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 | -- | `feat/whatsapp-per-user-sessions` | #22 | Abgeschlossen | Per-User WhatsApp Sessions, Multi-Phone, RRULE, CardDAV UI |
 | -- | `feat/whatsapp-self-chat` | #25 | Abgeschlossen | WhatsApp Self-Chat ("Hey Niles" Trigger), TRANSP (busy/free), Feature-Flag-Umbau |
 | -- | `fix/calendar-filter-guard` | #26 | Abgeschlossen | Calendar-Filter-Guard, Hallucination-Guard (hinweis-Feld) |
+| -- | `feat/whatsapp-inbox` | #29 | Abgeschlossen | WhatsApp Inbox (findMessages statt lokale DB), LID-Adressierung, Zusammenfassungs-Metadaten, MCP Destructive-Tool-Blocking, No-Delete-Policy |
 
 ### Roadmap
 
