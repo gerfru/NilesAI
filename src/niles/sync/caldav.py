@@ -90,7 +90,9 @@ async def upsert_event(pool: asyncpg.Pool, event: dict, source_id: int | None) -
 
 
 async def cleanup_recurring_occurrences(
-    pool: asyncpg.Pool, master_uid: str, source_id: int | None = None,
+    pool: asyncpg.Pool,
+    master_uid: str,
+    source_id: int | None = None,
 ) -> int:
     """Delete old expanded occurrences and the master row for a recurring event.
 
@@ -106,12 +108,15 @@ async def cleanup_recurring_occurrences(
         result = await pool.execute(
             "DELETE FROM events WHERE source_id = $1 AND "
             "(caldav_uid = $2 OR caldav_uid LIKE $3 ESCAPE '\\')",
-            source_id, master_uid, like_pattern,
+            source_id,
+            master_uid,
+            like_pattern,
         )
     else:
         result = await pool.execute(
             "DELETE FROM events WHERE caldav_uid = $1 OR caldav_uid LIKE $2 ESCAPE '\\'",
-            master_uid, like_pattern,
+            master_uid,
+            like_pattern,
         )
     # asyncpg returns "DELETE N"
     deleted = int(result.split()[-1]) if result else 0
@@ -217,11 +222,15 @@ class CalDAVSync:
                     event = parse_icalendar(ics_text, href)
                     if event:
                         expanded = expand_recurring_event(
-                            event, window_start, window_end,
+                            event,
+                            window_start,
+                            window_end,
                         )
                         if event.get("rrule"):
                             await cleanup_recurring_occurrences(
-                                self.pool, event["caldav_uid"], self.source_id,
+                                self.pool,
+                                event["caldav_uid"],
+                                self.source_id,
                             )
                         for occ in expanded:
                             await self._upsert_event(occ)
@@ -233,15 +242,18 @@ class CalDAVSync:
         return count
 
     async def _report_time_range(
-        self, collection_url: str, start: str, end: str,
+        self,
+        collection_url: str,
+        start: str,
+        end: str,
     ) -> list[tuple[str, str]]:
         """Send CalDAV REPORT with time-range filter. Returns [(ics_text, href), ...]."""
         body = (
             '<?xml version="1.0" encoding="utf-8"?>'
             '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
             "<D:prop><D:getetag/><C:calendar-data/></D:prop>"
-            "<C:filter><C:comp-filter name=\"VCALENDAR\">"
-            "<C:comp-filter name=\"VEVENT\">"
+            '<C:filter><C:comp-filter name="VCALENDAR">'
+            '<C:comp-filter name="VEVENT">'
             f'<C:time-range start="{start}" end="{end}"/>'
             "</C:comp-filter></C:comp-filter></C:filter>"
             "</C:calendar-query>"
@@ -301,7 +313,8 @@ class CalDAVSync:
         # Discover sub-collections (hrefs ending with /)
         root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
         collections = [
-            h for h in hrefs
+            h
+            for h in hrefs
             if h.endswith("/") and h != root_path and "schedule-" not in h
         ]
 
@@ -330,7 +343,10 @@ class CalDAVSync:
         Results are cached for 60 seconds to avoid repeated PROPFIND requests.
         """
         now = time.monotonic()
-        if self._collections_cache is not None and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL:
+        if (
+            self._collections_cache is not None
+            and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL
+        ):
             return self._collections_cache
 
         xml_text = await self._propfind_request(self.caldav_url)
@@ -453,7 +469,7 @@ class CalDAVSync:
         if location:
             ics_body += f"LOCATION:{_escape_ical_text(location)}\r\n"
         ics_body += "TRANSP:OPAQUE\r\n"
-        ics_body += "END:VEVENT\r\n" "END:VCALENDAR\r\n"
+        ics_body += "END:VEVENT\r\nEND:VCALENDAR\r\n"
 
         # Resolve target collection (root URL requires discovery)
         target_url = await self._resolve_write_collection()

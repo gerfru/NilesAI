@@ -280,8 +280,7 @@ class TestAgentPerUserVikunja:
         if not agent.config.feature_vikunja:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
-                t for t in all_tools
-                if t["function"]["name"] not in _task_tools
+                t for t in all_tools if t["function"]["name"] not in _task_tools
             ]
 
         tool_names = {t["function"]["name"] for t in all_tools}
@@ -305,8 +304,7 @@ class TestAgentPerUserVikunja:
         if not agent.config.feature_vikunja:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
-                t for t in all_tools
-                if t["function"]["name"] not in _task_tools
+                t for t in all_tools if t["function"]["name"] not in _task_tools
             ]
 
         tool_names = {t["function"]["name"] for t in all_tools}

@@ -133,7 +133,9 @@ class CardDAVSync:
                     VALUES ($1, $2, $3)
                     ON CONFLICT (contact_id, number) DO NOTHING
                     """,
-                    row["id"], phone_type, number,
+                    row["id"],
+                    phone_type,
+                    number,
                 )
 
     async def sync_contacts(self) -> int:
@@ -322,7 +324,8 @@ class CardDAVSync:
 
         # Sync phones: delete old, insert current
         await self.pool.execute(
-            "DELETE FROM contact_phones WHERE contact_id = $1", contact_id,
+            "DELETE FROM contact_phones WHERE contact_id = $1",
+            contact_id,
         )
         for phone_type, number in phones:
             await self.pool.execute(
@@ -331,5 +334,7 @@ class CardDAVSync:
                 VALUES ($1, $2, $3)
                 ON CONFLICT (contact_id, number) DO NOTHING
                 """,
-                contact_id, phone_type, number,
+                contact_id,
+                phone_type,
+                number,
             )

@@ -120,7 +120,9 @@ class CalendarSourceManager:
         # Strip embedded credentials from URL (https://user:pass@host → https://host)
         parsed = urlparse(url)
         if parsed.username or parsed.password:
-            url = parsed._replace(netloc=parsed.hostname + (f":{parsed.port}" if parsed.port else "")).geturl()
+            url = parsed._replace(
+                netloc=parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+            ).geturl()
         if len(url) > 2048:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
         if len(name) > 200:
@@ -137,9 +139,14 @@ class CalendarSourceManager:
             RETURNING id, name, url, source_type, writable, enabled,
                       last_synced, last_error, created_at
             """,
-            name, url, source_type, writable,
-            auth_user, auth_password,
-            google_refresh_token, google_token_expiry,
+            name,
+            url,
+            source_type,
+            writable,
+            auth_user,
+            auth_password,
+            google_refresh_token,
+            google_token_expiry,
         )
         logger.info("Added calendar source: %s (%s)", name, source_type)
         return dict(row)
@@ -147,7 +154,8 @@ class CalendarSourceManager:
     async def remove_source(self, source_id: int) -> bool:
         """Remove a calendar source. Events are CASCADE-deleted."""
         result = await self.pool.execute(
-            "DELETE FROM calendar_sources WHERE id = $1", source_id,
+            "DELETE FROM calendar_sources WHERE id = $1",
+            source_id,
         )
         removed = result == "DELETE 1"
         if removed:
@@ -203,9 +211,13 @@ class CalendarSourceManager:
                 total += count
             except Exception:
                 logger.exception(
-                    "Sync failed for source %d (%s)", src["id"], src["name"],
+                    "Sync failed for source %d (%s)",
+                    src["id"],
+                    src["name"],
                 )
-        logger.info("Calendar sync complete: %d events from %d sources", total, len(sources))
+        logger.info(
+            "Calendar sync complete: %d events from %d sources", total, len(sources)
+        )
         return total
 
     async def sync_source(self, source_id: int) -> int | None:
@@ -240,11 +252,15 @@ class CalendarSourceManager:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url, timeout=_ICS_TIMEOUT, follow_redirects=True,
+                    url,
+                    timeout=_ICS_TIMEOUT,
+                    follow_redirects=True,
                 )
                 response.raise_for_status()
                 if len(response.content) > _MAX_ICS_SIZE:
-                    raise ValueError(f"ICS file too large: {len(response.content)} bytes")
+                    raise ValueError(
+                        f"ICS file too large: {len(response.content)} bytes"
+                    )
         except Exception as exc:
             await self._set_error(source_id, str(exc))
             raise
@@ -264,7 +280,9 @@ class CalendarSourceManager:
                 expanded = expand_recurring_event(event, window_start, window_end)
                 if event.get("rrule"):
                     await cleanup_recurring_occurrences(
-                        self.pool, event["caldav_uid"], source_id,
+                        self.pool,
+                        event["caldav_uid"],
+                        source_id,
                     )
                 for occ in expanded:
                     await self._upsert_event(occ, source_id)
@@ -303,7 +321,9 @@ class CalendarSourceManager:
                 client_secret=self.settings.google_client_secret,
             )
         if source["source_type"] == "caldav":
-            return httpx.BasicAuth(source["auth_user"] or "", source["auth_password"] or "")
+            return httpx.BasicAuth(
+                source["auth_user"] or "", source["auth_password"] or ""
+            )
         return None
 
     # --- Event creation ---
@@ -352,7 +372,8 @@ class CalendarSourceManager:
         sanitized = _CREDENTIAL_RE.sub("://***@", error_msg)[:500]
         await self.pool.execute(
             "UPDATE calendar_sources SET last_error = $1 WHERE id = $2",
-            sanitized, source_id,
+            sanitized,
+            source_id,
         )
 
     async def _migrate_env_source(self) -> None:
@@ -385,7 +406,5 @@ def _split_vevents(ics_text: str) -> list[str]:
         end_idx = part.find("END:VEVENT")
         if end_idx >= 0:
             vevent = part[: end_idx + len("END:VEVENT")]
-            blocks.append(
-                "BEGIN:VCALENDAR\nBEGIN:VEVENT" + vevent + "\nEND:VCALENDAR"
-            )
+            blocks.append("BEGIN:VCALENDAR\nBEGIN:VEVENT" + vevent + "\nEND:VCALENDAR")
     return blocks

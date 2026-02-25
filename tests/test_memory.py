@@ -107,6 +107,7 @@ class TestConversationHistory:
     async def test_get_recent_returns_chronological(self, history, pool):
         # DB returns newest first (DESC), get_recent should reverse
         from datetime import datetime, timezone
+
         ts1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
         ts2 = datetime(2025, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
         pool.fetch.return_value = [
