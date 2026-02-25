@@ -18,6 +18,14 @@ _SEP = "__"
 _STARTUP_TIMEOUT = 30  # seconds
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+# Block destructive MCP tools from being exposed to the LLM.
+# A tool whose name starts with any of these prefixes (case-insensitive)
+# is silently filtered out during discovery.
+_DESTRUCTIVE_PREFIXES = (
+    "delete", "remove", "drop", "destroy", "purge",
+    "erase", "wipe", "truncate", "clear",
+)
+
 
 def _expand_env(value: str) -> str:
     """Expand ${VAR} references in a string using os.environ."""
@@ -103,6 +111,11 @@ class MCPManager:
         for tool in result.tools:
             if not _VALID_TOOL_NAME.match(tool.name):
                 logger.warning("Skipping tool with invalid name: %s", tool.name)
+                continue
+            if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
+                logger.warning(
+                    "Blocking destructive MCP tool: %s/%s", name, tool.name,
+                )
                 continue
             prefixed = f"mcp{_SEP}{name}{_SEP}{tool.name}"
             self._tool_map[prefixed] = (name, tool.name)
