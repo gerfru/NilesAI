@@ -122,9 +122,12 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
         return {"status": "ignored", "reason": "echo of own reply"}
 
     # Extract text from different message types
-    text = message.get("conversation") or message.get("extendedTextMessage", {}).get(
-        "text"
+    # fmt: off
+    text = (
+        message.get("conversation")
+        or message.get("extendedTextMessage", {}).get("text")
     )
+    # fmt: on
 
     if not text:
         return {"status": "ignored", "reason": "no text content"}
