@@ -1,12 +1,18 @@
 """Niles CLI — user management commands.
 
 Usage:
+    # Interactive (password prompt, not visible in ps):
     docker exec -it niles_core python -m niles.cli create-user \\
-        --email admin@example.com --name "Admin" --password "secure-pw"
+        --email admin@example.com --name "Admin"
+
+    # Non-interactive (for scripts):
+    echo "secure-pw" | docker exec -i niles_core python -m niles.cli create-user \\
+        --email admin@example.com --name "Admin" --password-stdin
 """
 
 import argparse
 import asyncio
+import getpass
 import sys
 
 import asyncpg
@@ -49,6 +55,17 @@ async def _create_user(email: str, name: str, password: str) -> None:
         await pool.close()
 
 
+def _read_password(args) -> str:
+    """Read password from --password-stdin or interactive prompt."""
+    if args.password_stdin:
+        pw = sys.stdin.readline().rstrip("\n")
+        if not pw:
+            print("Error: empty password from stdin")
+            sys.exit(1)
+        return pw
+    return getpass.getpass("Password (min 8 chars): ")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Niles CLI")
     sub = parser.add_subparsers(dest="command")
@@ -56,11 +73,19 @@ def main() -> None:
     create = sub.add_parser("create-user", help="Create a new user with password")
     create.add_argument("--email", required=True, help="User email address")
     create.add_argument("--name", required=True, help="Display name")
-    create.add_argument("--password", required=True, help="Password")
+    create.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read password from stdin (for scripts)",
+    )
 
     args = parser.parse_args()
     if args.command == "create-user":
-        asyncio.run(_create_user(args.email, args.name, args.password))
+        password = _read_password(args)
+        if len(password) < 8:
+            print("Error: password must be at least 8 characters")
+            sys.exit(1)
+        asyncio.run(_create_user(args.email, args.name, password))
     else:
         parser.print_help()
         sys.exit(1)
