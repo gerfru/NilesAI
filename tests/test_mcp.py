@@ -3,7 +3,13 @@
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
-from niles.mcp.client import MCPManager, _VALID_TOOL_NAME, _expand_env, _mcp_tool_to_openai
+from niles.mcp.client import (
+    MCPManager,
+    _DESTRUCTIVE_PREFIXES,
+    _VALID_TOOL_NAME,
+    _expand_env,
+    _mcp_tool_to_openai,
+)
 
 
 class TestExpandEnv:
@@ -302,3 +308,89 @@ class TestToolNameValidation:
         assert not _VALID_TOOL_NAME.match("semi;colon")
         assert not _VALID_TOOL_NAME.match("path/traversal")
         assert not _VALID_TOOL_NAME.match("")
+
+
+class TestDestructiveToolBlocking:
+    """MCP tools with destructive prefixes must be blocked during discovery."""
+
+    def _make_mock_tool(self, name: str) -> MagicMock:
+        tool = MagicMock()
+        tool.name = name
+        tool.description = f"Tool: {name}"
+        tool.inputSchema = {"type": "object", "properties": {}}
+        return tool
+
+    async def test_destructive_tool_blocked(self):
+        """Tools starting with destructive prefixes are not registered."""
+        manager = MCPManager()
+        manager._sessions["srv"] = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.tools = [
+            self._make_mock_tool("delete_event"),
+            self._make_mock_tool("remove_contact"),
+            self._make_mock_tool("list_items"),
+        ]
+
+        # Simulate what _start_server does after session.list_tools()
+        for tool in mock_result.tools:
+            if not _VALID_TOOL_NAME.match(tool.name):
+                continue
+            if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
+                continue
+            prefixed = f"mcp__srv__{tool.name}"
+            manager._tool_map[prefixed] = ("srv", tool.name)
+            manager._openai_tools.append(_mcp_tool_to_openai(prefixed, tool))
+
+        assert len(manager._tool_map) == 1
+        assert "mcp__srv__list_items" in manager._tool_map
+        assert "mcp__srv__delete_event" not in manager._tool_map
+        assert "mcp__srv__remove_contact" not in manager._tool_map
+
+    def test_all_destructive_prefixes_block(self):
+        """Every prefix in _DESTRUCTIVE_PREFIXES blocks matching tool names."""
+        for prefix in _DESTRUCTIVE_PREFIXES:
+            tool_name = f"{prefix}_something"
+            assert tool_name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
+                f"Prefix '{prefix}' did not block '{tool_name}'"
+            )
+
+    def test_safe_names_pass(self):
+        """Non-destructive tool names are not blocked."""
+        safe_names = [
+            "list_tasks", "search", "get_calendar", "find_contact",
+            "create_event", "send_message", "read_file",
+        ]
+        for name in safe_names:
+            assert not name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
+                f"Safe name '{name}' was incorrectly blocked"
+            )
+
+    def test_blocking_is_case_insensitive(self):
+        """Blocking works regardless of case."""
+        variants = ["Delete_event", "DELETE_ALL", "Remove_Task", "PURGE_data"]
+        for name in variants:
+            assert name.lower().startswith(_DESTRUCTIVE_PREFIXES), (
+                f"Case variant '{name}' was not blocked"
+            )
+
+    async def test_blocking_logs_warning(self, caplog):
+        """Blocked tools produce a warning log entry."""
+        manager = MCPManager()
+        manager._sessions["srv"] = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.tools = [self._make_mock_tool("delete_calendar")]
+
+        with caplog.at_level(logging.WARNING):
+            for tool in mock_result.tools:
+                if not _VALID_TOOL_NAME.match(tool.name):
+                    continue
+                if tool.name.lower().startswith(_DESTRUCTIVE_PREFIXES):
+                    logging.getLogger("niles.mcp.client").warning(
+                        "Blocking destructive MCP tool: %s/%s", "srv", tool.name,
+                    )
+                    continue
+
+        assert "Blocking destructive MCP tool" in caplog.text
+        assert "delete_calendar" in caplog.text

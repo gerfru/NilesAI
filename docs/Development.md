@@ -285,6 +285,16 @@ Hinweis: LLM-Parameter werden dabei manchmal als String statt als korrektem Typ 
 - Level konfigurierbar via `LOG_LEVEL` Environment-Variable
 - Format: `%(asctime)s %(levelname)s %(name)s: %(message)s`
 
+### Security: Keine Loeschungen
+
+Niles darf keine Benutzerdaten loeschen. Dieses Prinzip wird auf drei Ebenen durchgesetzt:
+
+1. **Keine Delete-Tools:** Die TOOLS-Liste enthaelt keine Loesch-Operationen. `complete_task` markiert nur als erledigt.
+2. **MCP Destructive-Tool-Blocking:** MCP-Tools mit destruktiven Namenspraefixen (`delete_`, `remove_`, `drop_`, etc.) werden bei der Tool-Entdeckung automatisch geblockt (`src/niles/mcp/client.py`, `_DESTRUCTIVE_PREFIXES`).
+3. **soul.md Regel 7:** Das LLM wird angewiesen, bei Loesch-Anfragen auf die jeweilige App zu verweisen.
+
+Wenn neue Tools oder Integrationen hinzugefuegt werden: keine `delete_*`-Methoden an das LLM exponieren. Loeschungen nur ueber Web-UI mit expliziter User-Interaktion.
+
 ---
 
 ## 9. Weitere Dokumentation
