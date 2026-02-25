@@ -61,20 +61,18 @@ class WhatsAppAction:
     async def fetch_messages(
         self,
         remote_jid: str,
-        limit: int = 50,
         instance: str | None = None,
     ) -> list[dict]:
         """Fetch message history from Evolution API (last 30 days).
 
         Args:
             remote_jid: WhatsApp JID (e.g. "436601234567@s.whatsapp.net")
-            limit: Maximum number of messages to return
             instance: Evolution API instance (defaults to global)
 
         Returns:
             List of message dicts with keys: from_me, text, timestamp, push_name.
-            Sorted by timestamp ascending (oldest first), trimmed to `limit`
-            most recent messages.
+            Sorted by timestamp ascending (oldest first). Returns all messages
+            within the 30-day window.
         """
         inst = instance or self.instance
         url = f"{self.base_url}/chat/findMessages/{inst}"
@@ -118,7 +116,8 @@ class WhatsAppAction:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
 
-        # Transform to clean format + 30-day client-side filter
+        # Belt-and-suspenders: re-apply 30-day cutoff on the client side
+        # in case Evolution API returns stale records outside the requested window.
         cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
         messages = []
         for rec in records:
@@ -161,9 +160,9 @@ class WhatsAppAction:
                 "timestamp": ts,
                 "push_name": rec.get("pushName", ""),
             })
-        # Sort chronologically (oldest first), return only the N most recent
+        # Sort chronologically (oldest first)
         messages.sort(key=lambda m: m["timestamp"])
-        return messages[-limit:] if len(messages) > limit else messages
+        return messages
 
     async def create_instance(
         self, instance_name: str, webhook_url: str,

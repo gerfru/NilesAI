@@ -86,7 +86,6 @@ class TestWhatsAppAction:
             m.setattr("httpx.AsyncClient", lambda: mock_client)
             result = await action.fetch_messages(
                 remote_jid="436601234567@s.whatsapp.net",
-                limit=10,
                 instance="niles-wa-1",
             )
 
@@ -156,38 +155,6 @@ class TestWhatsAppAction:
 
         assert len(result) == 1
         assert result[0]["text"] == "[Bild]"
-
-    async def test_fetch_messages_trims_to_limit(self, action):
-        """Only the N most recent messages are returned."""
-        records = [
-            {
-                "key": {"fromMe": False},
-                "pushName": "X",
-                "message": {"conversation": f"Msg {i}"},
-                "messageTimestamp": 1771900000 + i,
-            }
-            for i in range(5)
-        ]
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"messages": {"records": records}}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-                limit=3,
-            )
-
-        assert len(result) == 3
-        # Should be the 3 most recent (Msg 2, 3, 4)
-        assert result[0]["text"] == "Msg 2"
-        assert result[2]["text"] == "Msg 4"
 
     async def test_fetch_messages_handles_string_timestamp(self, action):
         """messageTimestamp may be a string — must be cast to int."""
@@ -530,10 +497,14 @@ class TestAgentGetWhatsAppMessages:
         assert result["chat_with"] == "Max"
         assert "Treffen wir uns morgen?" in result["transcript"]
         assert "Max: Treffen wir uns morgen?" in result["transcript"]
+        # date_range and hinweis metadata for LLM summarization
+        assert "date_range" in result
+        assert result["date_range"]  # non-empty
+        assert "hinweis" in result
+        assert "1 Nachrichten" in result["hinweis"]
         contacts_mock.find_by_name.assert_called_once_with("Max")
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436601234567@s.whatsapp.net",
-            limit=10,
             instance=None,
         )
 
@@ -571,7 +542,6 @@ class TestAgentGetWhatsAppMessages:
         contacts_mock.find_by_name.assert_not_called()
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436601234567@s.whatsapp.net",
-            limit=10,
             instance=None,
         )
 
@@ -602,7 +572,6 @@ class TestAgentGetWhatsAppMessages:
 
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436601234567@s.whatsapp.net",
-            limit=10,
             instance=None,
         )
 
@@ -687,78 +656,6 @@ class TestAgentGetWhatsAppMessages:
 
         assert "error" in result
 
-    async def test_get_messages_limit_capped(self):
-        """Limit is capped at 50."""
-        from niles.agent.core import NilesAgent
-
-        contacts_mock = AsyncMock()
-        contacts_mock.find_by_name.return_value = {
-            "full_name": "Max",
-            "phone": "436601234567",
-            "phones": [],
-            "email": None,
-        }
-
-        whatsapp_mock = AsyncMock()
-        whatsapp_mock.fetch_messages.return_value = []
-
-        agent = NilesAgent(
-            config=_make_settings(),
-            contacts=contacts_mock,
-            whatsapp=whatsapp_mock,
-            memory=AsyncMock(),
-            history=AsyncMock(),
-        )
-
-        tool_call = MagicMock()
-        tool_call.id = "call_msg_5"
-        tool_call.function.name = "get_whatsapp_messages"
-        tool_call.function.arguments = json.dumps({"contact": "Max", "limit": 999})
-
-        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
-
-        whatsapp_mock.fetch_messages.assert_called_once_with(
-            remote_jid="436601234567@s.whatsapp.net",
-            limit=50,
-            instance=None,
-        )
-
-    async def test_get_messages_limit_as_string(self):
-        """LLM may pass limit as string — must be cast to int."""
-        from niles.agent.core import NilesAgent
-
-        contacts_mock = AsyncMock()
-        contacts_mock.find_by_name.return_value = {
-            "full_name": "Max",
-            "phone": "436601234567",
-            "phones": [],
-            "email": None,
-        }
-
-        whatsapp_mock = AsyncMock()
-        whatsapp_mock.fetch_messages.return_value = []
-
-        agent = NilesAgent(
-            config=_make_settings(),
-            contacts=contacts_mock,
-            whatsapp=whatsapp_mock,
-            memory=AsyncMock(),
-            history=AsyncMock(),
-        )
-
-        tool_call = MagicMock()
-        tool_call.id = "call_msg_str"
-        tool_call.function.name = "get_whatsapp_messages"
-        tool_call.function.arguments = json.dumps({"contact": "Max", "limit": "10"})
-
-        await agent._execute_tool_call(tool_call, chat_id="web-user-1")
-
-        whatsapp_mock.fetch_messages.assert_called_once_with(
-            remote_jid="436601234567@s.whatsapp.net",
-            limit=10,
-            instance=None,
-        )
-
     async def test_get_messages_uses_per_user_instance(self):
         """Per-user instance is resolved and passed to fetch_messages."""
         from niles.agent.core import NilesAgent
@@ -802,6 +699,119 @@ class TestAgentGetWhatsAppMessages:
 
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436609999999@s.whatsapp.net",
-            limit=10,
             instance="niles-wa-5",
         )
+
+    async def test_get_messages_date_range_same_day(self):
+        """date_range shows single date when all messages are on the same day."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Anna",
+            "phone": "436601111111",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        # Two messages on the same day (2026-02-24 UTC)
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Morgen!", "timestamp": 1772000000, "push_name": "Anna"},
+            {"from_me": True, "text": "Hey!", "timestamp": 1772003600, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_dr_same"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Anna"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        # Single date, no range separator
+        assert "\u2013" not in result["date_range"]
+        assert "2026" in result["date_range"]
+
+    async def test_get_messages_date_range_multi_day(self):
+        """date_range shows start–end when messages span multiple days."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Anna",
+            "phone": "436601111111",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        # Messages spanning 2 days apart
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Hi", "timestamp": 1771900000, "push_name": "Anna"},
+            {"from_me": True, "text": "Hey", "timestamp": 1772100000, "push_name": ""},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_dr_multi"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Anna"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        # En-dash separator between two different dates
+        assert " \u2013 " in result["date_range"]
+
+    async def test_get_messages_hinweis_contains_count_and_range(self):
+        """hinweis field contains message count and date_range value."""
+        from niles.agent.core import NilesAgent
+
+        contacts_mock = AsyncMock()
+        contacts_mock.find_by_name.return_value = {
+            "full_name": "Max",
+            "phone": "436601234567",
+            "phones": [],
+            "email": None,
+        }
+
+        whatsapp_mock = AsyncMock()
+        whatsapp_mock.fetch_messages.return_value = [
+            {"from_me": False, "text": "Eins", "timestamp": 1771900000, "push_name": "Max"},
+            {"from_me": True, "text": "Zwei", "timestamp": 1771910000, "push_name": ""},
+            {"from_me": False, "text": "Drei", "timestamp": 1771920000, "push_name": "Max"},
+        ]
+
+        agent = NilesAgent(
+            config=_make_settings(),
+            contacts=contacts_mock,
+            whatsapp=whatsapp_mock,
+            memory=AsyncMock(),
+            history=AsyncMock(),
+        )
+
+        tool_call = MagicMock()
+        tool_call.id = "call_hinweis"
+        tool_call.function.name = "get_whatsapp_messages"
+        tool_call.function.arguments = json.dumps({"contact": "Max"})
+
+        result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
+
+        assert "3 Nachrichten" in result["hinweis"]
+        assert result["date_range"] in result["hinweis"]
+        # Verify the hinweis contains a summarization instruction (wording-independent)
+        assert "zusammen" in result["hinweis"].lower()
