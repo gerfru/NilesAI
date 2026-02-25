@@ -205,23 +205,38 @@ async def _require_admin(
     return user, None
 
 
-async def _require_admin_page(
+async def _require_auth_page(
     request: Request,
 ) -> tuple[dict | None, Response | None]:
-    """Check session + admin status (no CSRF). For GET page requests."""
+    """Check session + verify user exists in DB (no CSRF). For GET pages.
+
+    Invalidates session when the user row no longer exists in the DB.
+    """
     user = _get_session_user(request)
     if user is None:
         return None, RedirectResponse(url="/ui/login", status_code=303)
 
-    # Refresh is_admin from DB
     uid = user.get("uid")
     user_store = getattr(request.app.state, "user_store", None)
     if uid and user_store:
         db_row = await user_store.get_by_id(uid)
         if db_row is None:
-            return None, RedirectResponse(url="/ui/login", status_code=303)
+            response = RedirectResponse(url="/ui/login", status_code=303)
+            response.delete_cookie(SESSION_COOKIE_NAME)
+            response.delete_cookie(CSRF_COOKIE_NAME)
+            return None, response
         user["is_admin"] = db_row.get("is_admin", False)
 
+    return user, None
+
+
+async def _require_admin_page(
+    request: Request,
+) -> tuple[dict | None, Response | None]:
+    """Check session + admin status (no CSRF). For GET admin pages."""
+    user, error = await _require_auth_page(request)
+    if error:
+        return None, error
     if not user.get("is_admin"):
         return None, RedirectResponse(url="/ui/settings", status_code=303)
     return user, None
@@ -390,9 +405,7 @@ async def login_submit(
         )
 
     # Update last_login
-    await user_store.pool.execute(
-        "UPDATE users SET last_login = NOW() WHERE id = $1", user["id"]
-    )
+    await user_store.update_last_login(user["id"])
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
@@ -606,9 +619,9 @@ async def chat_page(
     channel: str = Query(default="web"),
 ):
     """Chat page with channel selection and per-user conversation history."""
-    user = _get_session_user(request)
-    if user is None:
-        return RedirectResponse(url="/ui/login", status_code=303)
+    user, error = await _require_auth_page(request)
+    if error:
+        return error
 
     wa_store = getattr(request.app.state, "wa_store", None)
 
@@ -652,9 +665,9 @@ async def chat_page(
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, error: str = Query(default="")):
     """Settings dashboard (safe dict, no __dict__ access)."""
-    user = _get_session_user(request)
-    if user is None:
-        return RedirectResponse(url="/ui/login", status_code=303)
+    user, error = await _require_auth_page(request)
+    if error:
+        return error
 
     # Map error codes to user-visible messages
     error_msg = ""
@@ -812,10 +825,21 @@ async def chat_clear(request: Request):
     return HTMLResponse("")
 
 
+_USER_EDITABLE_SETTINGS = {
+    "feature_briefing_daily",
+    "feature_briefing_weekly",
+    "briefing_daily_time",
+    "briefing_weekly_time",
+}
+
+
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
 async def update_setting(request: Request, key: str, value: str = Form(...)):
     """Update a single runtime setting."""
-    _user, error = await _require_auth_and_csrf(request)
+    if key in _USER_EDITABLE_SETTINGS:
+        _user, error = await _require_auth_and_csrf(request)
+    else:
+        _user, error = await _require_admin(request)
     if error:
         return error
 

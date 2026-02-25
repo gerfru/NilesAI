@@ -144,6 +144,12 @@ class UserStore:
         )
         return result == "UPDATE 1"
 
+    async def update_last_login(self, user_id: int) -> None:
+        """Set last_login to current timestamp."""
+        await self.pool.execute(
+            "UPDATE users SET last_login = NOW() WHERE id = $1", user_id
+        )
+
     async def list_all(self) -> list[dict]:
         """List all users (for admin page)."""
         rows = await self.pool.fetch(
