@@ -3,7 +3,12 @@
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
-from niles.mcp.client import MCPManager, _VALID_TOOL_NAME, _expand_env, _mcp_tool_to_openai
+from niles.mcp.client import (
+    MCPManager,
+    _VALID_TOOL_NAME,
+    _expand_env,
+    _mcp_tool_to_openai,
+)
 
 
 class TestExpandEnv:
@@ -302,3 +307,97 @@ class TestToolNameValidation:
         assert not _VALID_TOOL_NAME.match("semi;colon")
         assert not _VALID_TOOL_NAME.match("path/traversal")
         assert not _VALID_TOOL_NAME.match("")
+
+
+class TestDestructiveToolBlocking:
+    """MCP tools with destructive prefixes must be blocked during discovery."""
+
+    def _make_mock_tool(self, name: str) -> MagicMock:
+        tool = MagicMock()
+        tool.name = name
+        tool.description = f"Tool: {name}"
+        tool.inputSchema = {"type": "object", "properties": {}}
+        return tool
+
+    async def _start_with_tools(self, tool_names: list[str]) -> MCPManager:
+        """Helper: run _start_server with mocked MCP session returning given tools."""
+        manager = MCPManager()
+
+        mock_session = AsyncMock()
+        mock_list_result = MagicMock()
+        mock_list_result.tools = [self._make_mock_tool(n) for n in tool_names]
+        mock_session.list_tools.return_value = mock_list_result
+        mock_session.initialize = AsyncMock()
+
+        # Mock the async context managers that _start_server enters
+        mock_stdio = AsyncMock()
+        mock_stdio.__aenter__ = AsyncMock(return_value=(AsyncMock(), AsyncMock()))
+        mock_stdio.__aexit__ = AsyncMock(return_value=False)
+
+        import niles.mcp.client as mcp_mod
+
+        original_stdio = mcp_mod.stdio_client
+        original_session = mcp_mod.ClientSession
+        try:
+            mcp_mod.stdio_client = MagicMock(return_value=mock_stdio)
+            mcp_mod.ClientSession = MagicMock(return_value=mock_session)
+
+            # Patch enter_async_context — dispatch by known mock identity
+            async def fake_enter(cm):
+                if cm is mock_session:
+                    return mock_session  # ClientSession context
+                return (AsyncMock(), AsyncMock())  # stdio read/write streams
+
+            manager._exit_stack.enter_async_context = fake_enter
+            await manager._start_server("srv", {"command": "echo", "args": []})
+        finally:
+            mcp_mod.stdio_client = original_stdio
+            mcp_mod.ClientSession = original_session
+
+        return manager
+
+    async def test_destructive_tool_blocked(self):
+        """Tools starting with destructive prefixes are not registered."""
+        manager = await self._start_with_tools([
+            "delete_event", "remove_contact", "list_items",
+        ])
+
+        assert len(manager._tool_map) == 1
+        assert "mcp__srv__list_items" in manager._tool_map
+        assert "mcp__srv__delete_event" not in manager._tool_map
+        assert "mcp__srv__remove_contact" not in manager._tool_map
+
+    async def test_blocking_logs_warning(self, caplog):
+        """Blocked tools produce a warning log entry from production code."""
+        with caplog.at_level(logging.WARNING):
+            await self._start_with_tools(["delete_calendar"])
+
+        assert "Blocking destructive MCP tool" in caplog.text
+        assert "delete_calendar" in caplog.text
+
+    async def test_registered_count_in_log(self, caplog):
+        """Log message shows registered/total count correctly."""
+        with caplog.at_level(logging.INFO):
+            await self._start_with_tools([
+                "delete_event", "remove_contact", "list_items", "search",
+            ])
+
+        assert "2/4 tools registered" in caplog.text
+
+    async def test_safe_names_pass_through(self):
+        """Non-destructive tool names (incl. clear_*) are registered."""
+        safe = ["list_tasks", "search", "get_calendar", "clear_filter"]
+        manager = await self._start_with_tools(safe)
+
+        assert len(manager._tool_map) == len(safe)
+        for name in safe:
+            assert f"mcp__srv__{name}" in manager._tool_map
+
+    async def test_blocking_is_case_insensitive(self):
+        """Blocking works regardless of case."""
+        manager = await self._start_with_tools([
+            "Delete_event", "REMOVE_task", "safe_tool",
+        ])
+
+        assert len(manager._tool_map) == 1
+        assert "mcp__srv__safe_tool" in manager._tool_map
