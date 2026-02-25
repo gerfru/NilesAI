@@ -38,7 +38,10 @@ class UserStore:
         return None
 
     async def create_or_update(
-        self, email: str, display_name: str, avatar_url: str | None = None,
+        self,
+        email: str,
+        display_name: str,
+        avatar_url: str | None = None,
     ) -> dict:
         """Create a new user or update last_login + profile for existing user."""
         row = await self.pool.fetchrow(

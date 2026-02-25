@@ -9,20 +9,29 @@ from niles.settings_store import EDITABLE_SETTINGS, _validate_key
 class TestEditableWhitelist:
     def test_contains_expected_keys(self):
         expected = {
-            "llm_base_url", "llm_model", "timezone", "log_level",
+            "llm_base_url",
+            "llm_model",
+            "timezone",
+            "log_level",
             "feature_whatsapp_send_others",
             "caldav_calendars",
-            "carddav_url", "carddav_user", "carddav_password",
+            "carddav_url",
+            "carddav_user",
+            "carddav_password",
             "feature_vikunja",
-            "feature_briefing_daily", "feature_briefing_weekly",
-            "briefing_daily_time", "briefing_weekly_time",
+            "feature_briefing_daily",
+            "feature_briefing_weekly",
+            "briefing_daily_time",
+            "briefing_weekly_time",
         }
         assert EDITABLE_SETTINGS == expected
 
     def test_does_not_contain_credentials(self):
         """Infrastructure credentials that must never be runtime-editable."""
         forbidden = {
-            "postgres_password", "evolution_api_key", "niles_api_key",
+            "postgres_password",
+            "evolution_api_key",
+            "niles_api_key",
             "caldav_password",
         }
         assert forbidden.isdisjoint(EDITABLE_SETTINGS)
@@ -102,9 +111,12 @@ class TestApplyOverrides:
             postgres_password="test",
             evolution_api_key="test",
         )
-        result = apply_overrides(settings, {
-            "timezone": "US/Eastern",
-            "log_level": "DEBUG",
-        })
+        result = apply_overrides(
+            settings,
+            {
+                "timezone": "US/Eastern",
+                "log_level": "DEBUG",
+            },
+        )
         assert result.timezone == "US/Eastern"
         assert result.log_level == "DEBUG"

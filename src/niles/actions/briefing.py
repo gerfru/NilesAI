@@ -32,7 +32,9 @@ class BriefingGenerator:
     # -----------------------------------------------------------------
 
     async def _get_events_for_range(
-        self, date_from: datetime, date_to: datetime,
+        self,
+        date_from: datetime,
+        date_to: datetime,
     ) -> list[dict]:
         """Fetch calendar events within a date range."""
         rows = await self.pool.fetch(
@@ -98,9 +100,7 @@ class BriefingGenerator:
         for t in tasks:
             if "due_date" in t:
                 try:
-                    due = datetime.fromisoformat(
-                        t["due_date"].replace("Z", "+00:00")
-                    )
+                    due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                     if due < now:
                         overdue.append(t)
                 except (ValueError, TypeError):
@@ -132,9 +132,7 @@ class BriefingGenerator:
         line = f"{prefix}{task['title']}"
         if "due_date" in task:
             try:
-                due = datetime.fromisoformat(
-                    task["due_date"].replace("Z", "+00:00")
-                )
+                due = datetime.fromisoformat(task["due_date"].replace("Z", "+00:00"))
                 local_due = due.astimezone(self.tz)
                 line += f" (fällig: {local_due.strftime('%d.%m.')})"
             except (ValueError, TypeError):
@@ -144,8 +142,13 @@ class BriefingGenerator:
     def _weekday_de(self, dt: datetime) -> str:
         """Return German weekday name."""
         names = [
-            "Montag", "Dienstag", "Mittwoch", "Donnerstag",
-            "Freitag", "Samstag", "Sonntag",
+            "Montag",
+            "Dienstag",
+            "Mittwoch",
+            "Donnerstag",
+            "Freitag",
+            "Samstag",
+            "Sonntag",
         ]
         return names[dt.weekday()]
 
@@ -178,9 +181,7 @@ class BriefingGenerator:
                 continue
             if "due_date" in t:
                 try:
-                    due = datetime.fromisoformat(
-                        t["due_date"].replace("Z", "+00:00")
-                    )
+                    due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                     if due.astimezone(self.tz).date() == today_date:
                         tasks_today.append(t)
                 except (ValueError, TypeError):
@@ -290,9 +291,7 @@ class BriefingGenerator:
 
             lines.append(f"📋 *Offene Aufgaben:* {total_open}")
             if tasks_this_week:
-                lines.append(
-                    f"  ↳ davon {len(tasks_this_week)} diese Woche fällig"
-                )
+                lines.append(f"  ↳ davon {len(tasks_this_week)} diese Woche fällig")
             lines.append("")
 
         lines.append("Gute Woche! 💪")

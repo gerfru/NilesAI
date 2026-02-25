@@ -118,7 +118,9 @@ class TestGenerateDaily:
 
     @pytest.mark.asyncio
     async def test_with_overdue_tasks(self, generator):
-        overdue = [{"title": "Steuererklärung", "id": 1, "due_date": "2026-02-20T00:00:00Z"}]
+        overdue = [
+            {"title": "Steuererklärung", "id": 1, "due_date": "2026-02-20T00:00:00Z"}
+        ]
         generator._get_events_for_range = AsyncMock(return_value=[])
         generator._get_open_tasks = AsyncMock(return_value=overdue)
 
@@ -192,12 +194,14 @@ class TestParseTime:
 
     def test_valid_time(self):
         from niles.main import _parse_briefing_time
+
         assert _parse_briefing_time("07:30") == (7, 30)
         assert _parse_briefing_time("23:59") == (23, 59)
         assert _parse_briefing_time("00:00") == (0, 0)
 
     def test_invalid_time_fallback(self):
         from niles.main import _parse_briefing_time
+
         assert _parse_briefing_time("25:00") == (7, 30)
         assert _parse_briefing_time("abc") == (7, 30)
         assert _parse_briefing_time("") == (7, 30)
@@ -291,11 +295,23 @@ class TestOverdueTodayDeduplication:
         """A task due at 01:00 today (already past) should appear only in Überfällig."""
         # Task due at 01:00 today Vienna time — already past if briefing runs at 07:30
         now = datetime.now(tz=TZ).replace(hour=7, minute=30, second=0, microsecond=0)
-        due_early_today = now.replace(hour=1, minute=0).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        due_early_today = (
+            now.replace(hour=1, minute=0)
+            .astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
         tasks = [
             {"title": "Frühaufgabe", "id": 10, "due_date": due_early_today},
-            {"title": "Spätaufgabe", "id": 11, "due_date": now.replace(hour=18).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")},
+            {
+                "title": "Spätaufgabe",
+                "id": 11,
+                "due_date": now.replace(hour=18)
+                .astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
         ]
         generator._get_events_for_range = AsyncMock(return_value=[])
         generator._get_open_tasks = AsyncMock(return_value=tasks)
@@ -322,7 +338,12 @@ class TestOverdueTodayDeduplication:
     async def test_remaining_count_not_negative(self, generator):
         """With overdue+today dedup, remaining count must never be negative."""
         now = datetime.now(tz=TZ).replace(hour=7, minute=30, second=0, microsecond=0)
-        due_early = now.replace(hour=1).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        due_early = (
+            now.replace(hour=1)
+            .astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
         # 1 task, overdue (due today at 01:00, it's 07:30 now)
         tasks = [{"title": "Only task", "id": 1, "due_date": due_early}]
@@ -373,10 +394,12 @@ class TestSendBriefingReturnValue:
         from niles.jobs.briefing import send_daily_briefing
 
         pool = AsyncMock()
-        pool.fetchrow = AsyncMock(return_value={
-            "phone_number": "436601234567",
-            "instance_name": "niles-wa-1",
-        })
+        pool.fetchrow = AsyncMock(
+            return_value={
+                "phone_number": "436601234567",
+                "instance_name": "niles-wa-1",
+            }
+        )
         briefing_gen = AsyncMock()
         briefing_gen.generate_daily = AsyncMock(return_value="Test briefing")
         whatsapp = AsyncMock()
@@ -389,7 +412,9 @@ class TestSendBriefingReturnValue:
         result = await send_daily_briefing(app_state)
         assert result is True
         whatsapp.send_message.assert_called_once_with(
-            to="436601234567", text="Test briefing", instance="niles-wa-1",
+            to="436601234567",
+            text="Test briefing",
+            instance="niles-wa-1",
         )
 
     @pytest.mark.asyncio
@@ -398,10 +423,12 @@ class TestSendBriefingReturnValue:
         from niles.jobs.briefing import send_daily_briefing
 
         pool = AsyncMock()
-        pool.fetchrow = AsyncMock(return_value={
-            "phone_number": "436601234567",
-            "instance_name": "niles-wa-1",
-        })
+        pool.fetchrow = AsyncMock(
+            return_value={
+                "phone_number": "436601234567",
+                "instance_name": "niles-wa-1",
+            }
+        )
         briefing_gen = AsyncMock()
         briefing_gen.generate_daily = AsyncMock(side_effect=RuntimeError("boom"))
         app_state = SimpleNamespace(
