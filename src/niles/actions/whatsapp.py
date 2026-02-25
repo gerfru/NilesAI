@@ -116,7 +116,8 @@ class WhatsAppAction:
                 logger.error("Failed to fetch messages from %s: %s", inst, e)
                 return []
 
-        # Transform to clean format + 30-day client-side filter
+        # Belt-and-suspenders: re-apply 30-day cutoff on the client side
+        # in case Evolution API returns stale records outside the requested window.
         cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
         messages = []
         for rec in records:
