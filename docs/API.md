@@ -1,76 +1,76 @@
 # Niles AI Core -- API Reference
 
-> **Stand:** 2026-02-23
+> **Updated:** 2026-02-25
 
 ---
 
 ## HTTPS (Caddy Reverse Proxy)
 
-Alle externen Zugriffe laufen ueber HTTPS via Caddy Reverse Proxy mit self-signed Zertifikaten (`tls internal`).
+All external access goes through HTTPS via the Caddy reverse proxy with self-signed certificates (`tls internal`).
 
-| Port | Service | Intern |
-| ---- | ------- | ------ |
-| 443 | Niles Core API + Web-UI | niles_core:8000 |
+| Port | Service | Internal |
+| ---- | ------- | -------- |
+| 443 | Niles Core API + Web UI | niles_core:8000 |
 | 8443 | Evolution API | evolution_api:8080 |
 
-- **Self-signed Zertifikate:** Browser-Warnung beim ersten Zugriff akzeptieren
-- **curl:** `--insecure` Flag verwenden (oder `-k`)
-- **Interner Docker-Traffic:** bleibt HTTP (Container-zu-Container)
+- **Self-signed certificates:** Accept the browser warning on first access
+- **curl:** Use the `--insecure` flag (or `-k`)
+- **Internal Docker traffic:** Remains HTTP (container-to-container)
 
 ---
 
-## Authentifizierung
+## Authentication
 
 ### /chat -- API Key
 
-Erwartet den Header `X-API-Key` mit dem Wert von `NILES_API_KEY`. Wird kein Key gesetzt, generiert Niles beim Start einen zufaelligen Key (abrufbar via `docker exec niles_core printenv NILES_API_KEY`).
+Expects the `X-API-Key` header with the value of `NILES_API_KEY`. If no key is set, Niles generates a random key on startup (retrievable via `docker exec niles_core printenv NILES_API_KEY`).
 
 ```bash
 curl -k -X POST https://localhost/chat \
   -H "X-API-Key: <NILES_API_KEY>" \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hallo"}'
+  -d '{"message": "Hello"}'
 ```
 
 ### /webhook/whatsapp -- URL Token
 
-Erwartet den Query-Parameter `?token=` mit dem Wert von `EVOLUTION_API_KEY`. Evolution API (self-hosted v2.3.x) kann keine Custom-Headers bei Webhook-Requests senden (Feature-Request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), daher wird ein URL-Token verwendet.
+Expects the query parameter `?token=` with the value of `EVOLUTION_API_KEY`. Evolution API (self-hosted v2.3.x) cannot send custom headers in webhook requests (feature request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), so a URL token is used instead.
 
 ```text
 POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
 ```
 
-**Risikobewertung:** Query-Parameter koennen in Server-Logs erscheinen. Caddy loggt standardmaessig keine Query-Parameter. Der Webhook-Traffic laeuft intern ueber das Docker-Netzwerk (HTTP, Container-zu-Container), nie ueber das oeffentliche Netz. Sobald Evolution API Custom-Headers unterstuetzt, sollte auf Header-basierte Authentifizierung migriert werden.
+**Risk assessment:** Query parameters can appear in server logs. Caddy does not log query parameters by default. The webhook traffic runs internally over the Docker network (HTTP, container-to-container), never over the public network. Once Evolution API supports custom headers, migration to header-based authentication is recommended.
 
-### /ui/* -- Session Cookies (Google OAuth oder API-Key)
+### /ui/* -- Session Cookies (Google OAuth or API Key)
 
-Die Web-UI verwendet signierte Session-Cookies (itsdangerous). Login ueber zwei Wege:
+The web UI uses signed session cookies (itsdangerous). Login via two methods:
 
-1. **Google OAuth 2.0** (primaer, wenn `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` konfiguriert)
-2. **API-Key** (Fallback, wenn kein Google OAuth konfiguriert)
+1. **Google OAuth 2.0** (primary, when `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` are configured)
+2. **API Key** (fallback, when Google OAuth is not configured)
 
-Session-Cookies werden mit `SESSION_SECRET` signiert (nicht `NILES_API_KEY`). Alle POST-Endpoints erfordern zusaetzlich ein CSRF-Token (Double-Submit Pattern: `niles_csrf` Cookie + `X-CSRF-Token` Header).
+Session cookies are signed with `SESSION_SECRET` (not `NILES_API_KEY`). All POST endpoints additionally require a CSRF token (Double-Submit Pattern: `niles_csrf` cookie + `X-CSRF-Token` header).
 
-### /health -- Kein Auth
+### /health -- No Auth
 
-Health Check ist oeffentlich zugaenglich. Rate Limiting (60 req/min) gilt nicht fuer `/health`.
+Health check is publicly accessible. Rate limiting (60 req/min) does not apply to `/health`.
 
 ### Rate Limiting
 
-Alle Endpoints (ausser `/health` und `/static`) sind auf 60 Requests pro Minute pro Client-IP begrenzt. Bei Ueberschreitung wird HTTP 429 zurueckgegeben.
+All endpoints (except `/health` and `/static`) are limited to 60 requests per minute per client IP. HTTP 429 is returned when exceeded.
 
-API-Key Login (`POST /ui/login`) hat zusaetzlich ein eigenes Limit: max 5 Versuche pro IP in 5 Minuten.
+API key login (`POST /ui/login`) has an additional dedicated limit: max 5 attempts per IP in 5 minutes.
 
 ### Secrets Rotation
 
-Keys koennen jederzeit rotiert werden:
+Keys can be rotated at any time:
 
-1. Neuen Key in `.env` setzen (`NILES_API_KEY`, `SESSION_SECRET`, `EVOLUTION_API_KEY`)
-2. Container neu starten: `./scripts/start.sh`
-3. Bei Aenderung von `EVOLUTION_API_KEY`: Webhook-URL in der Evolution API aktualisieren (siehe unten)
-4. Bei Aenderung von `SESSION_SECRET`: Alle bestehenden Web-UI Sessions werden ungueltig (Benutzer muessen sich erneut einloggen)
+1. Set new key in `.env` (`NILES_API_KEY`, `SESSION_SECRET`, `EVOLUTION_API_KEY`)
+2. Restart containers: `./scripts/start.sh`
+3. When changing `EVOLUTION_API_KEY`: Update the webhook URL in the Evolution API (see below)
+4. When changing `SESSION_SECRET`: All existing web UI sessions become invalid (users must log in again)
 
-Wird `NILES_API_KEY` oder `SESSION_SECRET` nicht gesetzt, generiert Niles bei jedem Containerstart einen neuen Key (automatische Rotation).
+If `NILES_API_KEY` or `SESSION_SECRET` is not set, Niles generates a new key on each container start (automatic rotation).
 
 ---
 
@@ -78,7 +78,7 @@ Wird `NILES_API_KEY` oder `SESSION_SECRET` nicht gesetzt, generiert Niles bei je
 
 ### GET /health
 
-Health Check. Gibt den Status des Servers und DB-Pool-Info zurueck.
+Health check. Returns server status and DB pool info.
 
 **Response:**
 
@@ -93,13 +93,13 @@ Health Check. Gibt den Status des Servers und DB-Pool-Info zurueck.
 
 ### POST /chat
 
-Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachricht ueber den Agent (inkl. Tool-Calls, Memory, History) und gibt die Antwort zurueck.
+Direct chat interface for tests and integrations. Processes the message through the agent (including tool calls, memory, history) and returns the response.
 
 **Request:**
 
 ```json
 {
-  "message": "Wie heisst der Bundeskanzler?"
+  "message": "What's the weather like?"
 }
 ```
 
@@ -107,215 +107,215 @@ Direkte Chat-Schnittstelle fuer Tests und Integrationen. Verarbeitet die Nachric
 
 ```json
 {
-  "response": "Der aktuelle Bundeskanzler ist ..."
+  "response": "I don't have access to weather data, but ..."
 }
 ```
 
 **Status Codes:**
 
-| Code | Bedeutung |
-| ---- | --------- |
-| 200 | Nachricht verarbeitet |
-| 401 | Fehlender oder ungueltiger API Key |
-| 422 | Ungueltige Request-Daten |
-| 500 | Interner Fehler |
+| Code | Meaning |
+| ---- | ------- |
+| 200 | Message processed |
+| 401 | Missing or invalid API key |
+| 422 | Invalid request data |
+| 500 | Internal error |
 
-**Hinweise:**
+**Notes:**
 
-- Erfordert `X-API-Key` Header (siehe Authentifizierung)
-- Verwendet `chat_id = "api"` fuer die Konversations-Historie
-- Memory und Tool-Calls sind voll verfuegbar (gleiche Pipeline wie WhatsApp)
+- Requires `X-API-Key` header (see Authentication)
+- Uses `chat_id = "api"` for conversation history
+- Memory and tool calls are fully available (same pipeline as WhatsApp)
 
 ---
 
 ### POST /webhook/whatsapp
 
-Webhook-Endpoint fuer die Evolution API. Empfaengt WhatsApp-Events.
+Webhook endpoint for the Evolution API. Receives WhatsApp events.
 
-**Verarbeitungslogik:**
+**Processing logic:**
 
-1. Nur `event == "messages.upsert"` wird verarbeitet, alles andere ignoriert
-2. Text wird aus `message.conversation` oder `message.extendedTextMessage.text` extrahiert
-3. Nachrichten ohne Textinhalt werden ignoriert
-4. **Eigene Nachrichten (Self-Chat, `fromMe: true`):**
-   - Echo-Guard: kuerzlich gesendete Message-IDs werden uebersprungen
-   - Trigger-Erkennung ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles")
-   - Bei Trigger: Agent verarbeitet, Antwort zuruecksenden
-   - Ohne Trigger: ignorieren
-5. **Fremde Nachrichten (`fromMe: false`):**
-   - Werden ignoriert (kein LLM-Call, kein Auto-Reply)
-   - Evolution API speichert Nachrichten intern (abfragbar via `get_whatsapp_messages` Tool)
+1. Only `event == "messages.upsert"` is processed, everything else is ignored
+2. Text is extracted from `message.conversation` or `message.extendedTextMessage.text`
+3. Messages without text content are ignored
+4. **Own messages (self-chat, `fromMe: true`):**
+   - Echo guard: recently sent message IDs are skipped
+   - Trigger detection ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles")
+   - With trigger: Agent processes, sends response back
+   - Without trigger: Ignored
+5. **External messages (`fromMe: false`):**
+   - Ignored (no LLM call, no auto-reply)
+   - Evolution API stores messages internally (queryable via `get_whatsapp_messages` tool)
 
-**Authentifizierung:** Erfordert `?token=<EVOLUTION_API_KEY>` als Query-Parameter. HTTP 401 bei ungueltigem Token.
+**Authentication:** Requires `?token=<EVOLUTION_API_KEY>` as query parameter. HTTP 401 for invalid tokens.
 
-**Response:** Gibt immer HTTP 200 zurueck (verhindert Retry-Spam durch die Evolution API).
+**Response:** Always returns HTTP 200 (prevents retry spam from the Evolution API).
 
 ---
 
-## Web-UI Endpoints (`/ui/*`)
+## Web UI Endpoints (`/ui/*`)
 
-Alle `/ui/*` Routen verwenden signierte Session-Cookies. Nicht-eingeloggte Benutzer werden auf `/ui/login` umgeleitet.
+All `/ui/*` routes use signed session cookies. Unauthenticated users are redirected to `/ui/login`.
 
 ### GET /ui/login
 
-Login-Seite. Zeigt je nach Konfiguration:
+Login page. Shows depending on configuration:
 
-- **Google OAuth konfiguriert:** "Mit Google anmelden"-Button + API-Key als ausklappbarer Fallback
-- **Kein Google OAuth:** API-Key Eingabefeld als primaerer Login
+- **Google OAuth configured:** "Sign in with Google" button + API key as expandable fallback
+- **No Google OAuth:** API key input field as primary login
 
 ### POST /ui/login
 
-API-Key Login (Fallback). Erwartet `api_key` als Form-Feld. Erstellt bei Erfolg eine lokale Admin-Session (`uid=0`).
+API key login (fallback). Expects `api_key` as form field. On success, creates a local admin session (`uid=0`).
 
-**Status Codes:** 303 (Redirect bei Erfolg), 401 (falscher Key), 429 (Rate Limit)
+**Status Codes:** 303 (redirect on success), 401 (wrong key), 429 (rate limit)
 
 ### GET /ui/login/google
 
-Leitet zum Google OAuth Consent Screen weiter. Setzt `oauth_state` Cookie fuer CSRF-Schutz.
+Redirects to Google OAuth consent screen. Sets `oauth_state` cookie for CSRF protection.
 
 ### GET /ui/callback/google
 
-Google OAuth Callback. Tauscht Authorization-Code gegen Access-Token, ruft Userinfo ab, prueft:
+Google OAuth callback. Exchanges authorization code for access token, retrieves user info, checks:
 
-1. State-Parameter (CSRF)
-2. `email_verified` (nur verifizierte Accounts)
-3. `GOOGLE_ALLOWED_EMAILS` Whitelist (wenn konfiguriert)
+1. State parameter (CSRF)
+2. `email_verified` (only verified accounts)
+3. `GOOGLE_ALLOWED_EMAILS` whitelist (if configured)
 
-Erstellt oder aktualisiert User in DB, setzt Session-Cookie.
+Creates or updates user in DB, sets session cookie.
 
-**Fehlerbehandlung:** OAuth-Fehlercodes werden auf sichere deutsche Meldungen gemappt (kein Reflection von Fehlerparametern).
+**Error handling:** OAuth error codes are mapped to safe messages (no reflection of error parameters).
 
 ### POST /ui/logout
 
-Loescht Session-, CSRF- und OAuth-State-Cookies. POST (nicht GET) um Logout-CSRF zu verhindern.
+Deletes session, CSRF, and OAuth state cookies. POST (not GET) to prevent logout CSRF.
 
-- **htmx-Requests:** Gibt `HX-Redirect: /ui/login` Header zurueck
-- **Regulaere Requests:** HTTP 303 Redirect
+- **htmx requests:** Returns `HX-Redirect: /ui/login` header
+- **Regular requests:** HTTP 303 redirect
 
 ### GET /ui/chat
 
-Chat-Seite mit per-User Konversations-Historie. Zeigt die letzten 20 Nachrichten (paginiert).
+Chat page with per-user conversation history. Shows the last 20 messages (paginated).
 
 ### GET /ui/settings
 
-Settings-Dashboard. Zeigt Feature-Flags, Text-Settings und Infrastruktur-Settings (Passwoerter maskiert).
+Settings dashboard. Shows feature flags, text settings, and infrastructure settings (passwords masked).
 
 ### GET /ui/api/chat/history
 
-Laed aeltere Chat-Nachrichten (Pagination). Query-Parameter: `offset` (default: 0).
+Loads older chat messages (pagination). Query parameter: `offset` (default: 0).
 
-Gibt ein HTML-Fragment (htmx) zurueck.
+Returns an HTML fragment (htmx).
 
 ### POST /ui/api/chat/stream
 
-Sendet eine Chat-Nachricht und streamt die Antwort via SSE (Server-Sent Events). Erwartet `message` als Form-Feld + CSRF-Token.
+Sends a chat message and streams the response via SSE (Server-Sent Events). Expects `message` as form field + CSRF token.
 
-**Ablauf:**
+**Flow:**
 
-1. User-Nachricht wird sofort im Browser als Chat-Bubble angezeigt (client-seitig, kein Server-Roundtrip)
-2. SSE-Stream liefert Events:
-   - `{"type": "status", "text": "find_contact..."}` -- Tool-Call laeuft
-   - `{"type": "chunk", "text": "partial text"}` -- Antwort-Text (Wort fuer Wort)
-   - `{"type": "done"}` -- Stream beendet
-3. Markdown wird nach Abschluss client-seitig gerendert (marked.js + DOMPurify)
+1. User message is immediately displayed in the browser as a chat bubble (client-side, no server roundtrip)
+2. SSE stream delivers events:
+   - `{"type": "status", "text": "find_contact..."}` -- Tool call running
+   - `{"type": "chunk", "text": "partial text"}` -- Response text (word by word)
+   - `{"type": "done"}` -- Stream ended
+3. Markdown is rendered client-side after completion (marked.js + DOMPurify)
 
-**Validierung:** Nachrichten ueber 2000 Zeichen werden mit HTTP 400 abgelehnt.
+**Validation:** Messages over 2000 characters are rejected with HTTP 400.
 
-**Response:** `Content-Type: text/event-stream` mit `X-Accel-Buffering: no` Header.
+**Response:** `Content-Type: text/event-stream` with `X-Accel-Buffering: no` header.
 
 ### POST /ui/api/chat
 
-Fallback-Endpoint (nicht-streaming). Sendet eine Chat-Nachricht. Erwartet `message` als Form-Feld + CSRF-Token.
+Fallback endpoint (non-streaming). Sends a chat message. Expects `message` as form field + CSRF token.
 
-Verarbeitet die Nachricht ueber den Agent (gleiche Pipeline wie `/chat` und WhatsApp). Gibt HTML-Fragment mit User- und Assistant-Nachricht zurueck.
+Processes the message through the agent (same pipeline as `/chat` and WhatsApp). Returns an HTML fragment with user and assistant messages.
 
 ### POST /ui/api/chat/clear
 
-Loescht die Chat-Historie des aktuellen Users. Erfordert CSRF-Token.
+Clears the chat history of the current user. Requires CSRF token.
 
 ### GET /ui/api/calendar/sources
 
-Gibt die Liste aller konfigurierten Kalenderquellen als HTML-Fragment (htmx) zurueck. Zeigt Name, URL, Typ-Badge (ICS/CalDAV/Google), Sync-Status und Fehler.
+Returns the list of all configured calendar sources as an HTML fragment (htmx). Shows name, URL, type badge (ICS/CalDAV/Google), sync status, and errors.
 
 ### POST /ui/api/calendar/sources
 
-Fuegt eine neue Kalenderquelle hinzu. Erwartet Form-Felder: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Google-Kalender werden nicht ueber dieses Formular hinzugefuegt, sondern ueber den OAuth-Flow (siehe unten). Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+Adds a new calendar source. Expects form fields: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Google calendars are not added through this form but via the OAuth flow (see below). Returns the updated source list as HTML fragment.
 
-**Validierung:** Nur HTTPS-URLs, max 2048 Zeichen URL, max 200 Zeichen Name.
+**Validation:** Only HTTPS URLs, max 2048 characters URL, max 200 characters name.
 
 ### DELETE /ui/api/calendar/sources/{source_id}
 
-Entfernt eine Kalenderquelle. Events der Quelle werden via CASCADE automatisch geloescht. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+Removes a calendar source. Events from the source are automatically deleted via CASCADE. Returns the updated source list as HTML fragment.
 
 ### POST /ui/api/calendar/sources/{source_id}/sync
 
-Triggert einen manuellen Sync fuer eine einzelne Kalenderquelle. Gibt die aktualisierte Quellenliste als HTML-Fragment zurueck.
+Triggers a manual sync for a single calendar source. Returns the updated source list as HTML fragment.
 
 ### GET /ui/api/calendar/google/connect
 
-Leitet zu Google OAuth mit Calendar-Scope weiter (erfordert Login-Session). Setzt einen `gcal_oauth_state`-Cookie fuer CSRF-Schutz. Nur sichtbar wenn `GOOGLE_CLIENT_ID` und `GOOGLE_CLIENT_SECRET` konfiguriert sind.
+Redirects to Google OAuth with calendar scope (requires login session). Sets a `gcal_oauth_state` cookie for CSRF protection. Only visible when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured.
 
 ### GET /ui/callback/google/calendar
 
-Google OAuth Callback fuer Calendar-Verbindung. Tauscht Authorization-Code gegen Access+Refresh-Token, entdeckt alle Kalender via Google Calendar REST API und erstellt automatisch `calendar_sources`-Eintraege (owner/writer als beschreibbar, reader als nur-lesen). Triggert initialen Sync im Hintergrund. Redirect-URI muss in der Google Cloud Console registriert sein: `https://<HOST>/ui/callback/google/calendar`.
+Google OAuth callback for calendar connection. Exchanges authorization code for access + refresh tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries (owner/writer as writable, reader as read-only). Triggers initial sync in the background. Redirect URI must be registered in the Google Cloud Console: `https://<HOST>/ui/callback/google/calendar`.
 
 ### POST /ui/api/settings/{key}
 
-Aendert eine einzelne Runtime-Einstellung. Erwartet `value` als Form-Feld + CSRF-Token.
+Changes a single runtime setting. Expects `value` as form field + CSRF token.
 
-- Nur Keys in `EDITABLE_SETTINGS` sind erlaubt (Feature-Flags, LLM-Config, Timezone, Log-Level, CardDAV-Credentials)
-- Unbekannte Keys werden mit Fehlermeldung abgelehnt
-- Aenderungen werden in `settings_overrides` Tabelle persistiert
+- Only keys in `EDITABLE_SETTINGS` are allowed (feature flags, LLM config, timezone, log level, CardDAV credentials)
+- Unknown keys are rejected with an error message
+- Changes are persisted in the `settings_overrides` table
 
 ### GET /ui/api/whatsapp/status
 
-Gibt den WhatsApp-Verbindungsstatus des aktuellen Users als HTML-Fragment zurueck. Zeigt verbundene Telefonnummer, QR-Code (wenn connecting), oder Verbindungs-Button.
+Returns the WhatsApp connection status of the current user as an HTML fragment. Shows connected phone number, QR code (when connecting), or connect button.
 
 ### POST /ui/api/whatsapp/connect
 
-Erstellt eine neue Evolution API Instance fuer den aktuellen User und gibt den QR-Code zur WhatsApp-Verknuepfung zurueck. Instance-Name: `niles-wa-{user_id}`. Webhook wird automatisch konfiguriert.
+Creates a new Evolution API instance for the current user and returns the QR code for WhatsApp pairing. Instance name: `niles-wa-{user_id}`. Webhook is automatically configured.
 
 ### POST /ui/api/whatsapp/disconnect
 
-Trennt die WhatsApp-Verbindung des aktuellen Users. Fuehrt Logout und Delete der Evolution API Instance durch und entfernt die Session aus der DB.
+Disconnects the current user's WhatsApp connection. Performs logout and deletion of the Evolution API instance and removes the session from the DB.
 
 ### GET /ui/api/contacts/status
 
-Gibt den CardDAV-Verbindungsstatus als HTML-Fragment zurueck. Zeigt Anzahl synchronisierter Kontakte und letzte Sync-Zeit.
+Returns the CardDAV connection status as an HTML fragment. Shows number of synced contacts and last sync time.
 
 ### POST /ui/api/contacts/connect
 
-Testet CardDAV-Verbindung mit den uebergebenen Credentials (`url`, `username`, `password`). Bei Erfolg: Credentials in Settings-Store speichern, initialen Sync starten und taeglichen Sync-Job registrieren.
+Tests CardDAV connection with the provided credentials (`url`, `username`, `password`). On success: saves credentials in settings store, starts initial sync, and registers daily sync job.
 
 ### POST /ui/api/contacts/disconnect
 
-Entfernt CardDAV-Credentials aus dem Settings-Store, loescht alle synchronisierten Kontakte und entfernt den Sync-Job.
+Removes CardDAV credentials from the settings store, deletes all synced contacts, and removes the sync job.
 
 ### POST /ui/api/contacts/sync
 
-Triggert einen manuellen CardDAV-Kontakt-Sync. Gibt den aktualisierten Status als HTML-Fragment zurueck.
+Triggers a manual CardDAV contact sync. Returns the updated status as HTML fragment.
 
 ### GET /ui/api/caldav/calendars
 
-Gibt die verfuegbaren CalDAV-Kalender-Collections als HTML-Fragment zurueck (via PROPFIND Discovery).
+Returns available CalDAV calendar collections as an HTML fragment (via PROPFIND discovery).
 
 ---
 
 ## Agent Tools
 
-Der Agent kann ueber LLM Tool-Calls folgende Funktionen ausfuehren:
+The agent can execute the following functions via LLM tool calls:
 
 ### find_contact
 
-Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank. Unterstuetzt Multi-Word-Suche (z.B. "Thomas Brunner" matcht auch "Brunner Thomas").
+Searches for a contact by name in the PostgreSQL database. Supports multi-word search (e.g., "Thomas Brunner" also matches "Brunner Thomas").
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `name` | string | Ja | Name oder Namensteil (ein- oder mehrwortig) |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `name` | string | Yes | Name or partial name (single or multi-word) |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
 {
@@ -329,256 +329,281 @@ Sucht einen Kontakt nach Name in der PostgreSQL-Datenbank. Unterstuetzt Multi-Wo
 }
 ```
 
-**Return (Fehler):**
+**Return (error):**
 
 ```json
-{"error": "Kontakt 'Maxl' nicht gefunden"}
+{"error": "Contact 'Maxl' not found"}
 ```
 
-**Suchpriorisierung:** exakt > prefix > partial > multi-word across name fields.
+**Search prioritization:** exact > prefix > partial > multi-word across name fields.
 
 ---
 
 ### send_whatsapp
 
-Sendet eine WhatsApp-Nachricht. Akzeptiert Telefonnummern oder Kontaktnamen (wird automatisch aufgeloest).
+Sends a WhatsApp message. Accepts phone numbers or contact names (resolved automatically).
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `to` | string | Ja | Telefonnummer (z.B. `"436601234567"`) oder Kontaktname |
-| `text` | string | Ja | Nachrichtentext |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `to` | string | Yes | Phone number (e.g., `"436601234567"`) or contact name |
+| `text` | string | Yes | Message text |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
 {"status": "sent", "to": "436601234567"}
 ```
 
-**Hinweise:**
+**Notes:**
 
-- Wenn `to` keine Zahl ist, wird zuerst `find_contact` ausgefuehrt
-- **Multi-Phone:** Hat der Kontakt mehrere Nummern, wird der User nach einer Auswahl gefragt (nummerierte Liste, 5 min TTL). Diese Auswahl umgeht das LLM komplett (Bypass-Flow).
-- Telefonnummern werden automatisch in JID-Format konvertiert (`@s.whatsapp.net`)
-- **Per-User Instance:** Bei Web-UI Users wird die per-User WhatsApp Instance verwendet (Fallback: globale Instance)
-- Timeout: 30 Sekunden
+- If `to` is not a number, `find_contact` is executed first
+- **Multi-phone:** If the contact has multiple numbers, the user is asked for a selection (numbered list, 5 min TTL). This selection bypasses the LLM completely (bypass flow).
+- Phone numbers are automatically converted to JID format (`@s.whatsapp.net`)
+- **Per-user instance:** For web UI users, the per-user WhatsApp instance is used (fallback: global instance)
+- Timeout: 30 seconds
 
 ---
 
 ### get_whatsapp_messages
 
-Liest WhatsApp-Chatverlauf eines Kontakts. Nutzt die Evolution API (`POST /chat/findMessages/{instance}`).
+Reads a contact's WhatsApp chat history. Uses the Evolution API (`POST /chat/findMessages/{instance}`).
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `contact` | string | Ja | Kontaktname oder Telefonnummer |
-| `limit` | integer | Nein | Maximale Anzahl (Standard: 10, Max: 50) |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `contact` | string | Yes | Contact name or phone number |
 
-**Return (Erfolg):**
-
-```json
-{"messages": [{"from_me": false, "text": "Hallo!", "timestamp": 1771900000, "push_name": "Max"}], "count": 1}
-```
-
-**Return (Fehler):**
+**Return (success):**
 
 ```json
-{"error": "Kontakt 'Nobody' nicht gefunden"}
+{"messages": [{"from_me": false, "text": "Hello!", "timestamp": 1771900000, "push_name": "Max"}], "count": 1}
 ```
 
-**Hinweise:**
+**Return (error):**
 
-- Kontaktname wird via `find_contact` in Telefonnummer aufgeloest, dann als JID (`@s.whatsapp.net`) an die Evolution API uebergeben
-- Gibt sowohl eingehende als auch ausgehende Nachrichten zurueck (Konversationskontext)
-- **30-Tage-Window:** Nur Nachrichten der letzten 30 Tage
-- **Per-User Instance:** Verwendet die Instance des anfragenden Users
-- Nicht-Text-Nachrichten (Bilder, Audio etc.) werden uebersprungen
+```json
+{"error": "Contact 'Nobody' not found"}
+```
+
+**Notes:**
+
+- Contact name is resolved to phone number via `find_contact`, then passed as JID (`@s.whatsapp.net`) to the Evolution API
+- Returns both incoming and outgoing messages (conversation context)
+- **30-day window:** Only messages from the last 30 days
+- **Per-user instance:** Uses the requesting user's instance
+- Non-text messages (images, audio, etc.) receive placeholders ([Image], [Video], [Voice message], [Sticker], [Document], [Contact], [Location])
 
 ---
 
 ### remember
 
-Speichert einen Fakt dauerhaft im Key-Value Memory. UPSERT-Semantik: existierende Keys werden ueberschrieben.
+Stores a fact permanently in the key-value memory. UPSERT semantics: existing keys are overwritten.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `key` | string | Ja | Kurzer Schluessel (z.B. `"zahnarzt_termin"`) |
-| `value` | string | Ja | Zu merkender Inhalt |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `key` | string | Yes | Short key (e.g., `"dentist_appointment"`) |
+| `value` | string | Yes | Content to remember |
 
 **Return:**
 
 ```json
-{"status": "saved", "key": "zahnarzt_termin"}
+{"status": "saved", "key": "dentist_appointment"}
 ```
 
 ---
 
 ### recall
 
-Ruft einen gespeicherten Fakt aus dem Memory ab.
+Retrieves a stored fact from memory.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `key` | string | Ja | Schluessel |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `key` | string | Yes | Key |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
-{"key": "zahnarzt_termin", "value": "Morgen um 10 Uhr"}
+{"key": "dentist_appointment", "value": "Tomorrow at 10 AM"}
 ```
 
-**Hinweis:** Alle Memory-Eintraege werden automatisch in den System Prompt injiziert. `recall` ist nur noetig, wenn der Agent gezielt nach einem bestimmten Key suchen will.
+**Note:** All memory entries are automatically injected into the system prompt. `recall` is only needed when the agent wants to search for a specific key.
 
 ---
 
 ### find_event
 
-Sucht Kalender-Events aus allen konfigurierten Kalenderquellen (ICS, CalDAV, Google). Max 10 Ergebnisse, sortiert nach Startzeit.
+Searches calendar events from all configured calendar sources (ICS, CalDAV, Google). Max 10 results, sorted by start time.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `query` | string | Nein | Suchbegriff (Name, Ort, Beschreibung). Leer fuer reine Datumssuche. |
-| `date_from` | string | Nein | Startdatum (ISO-Format, z.B. `"2026-02-20"`). |
-| `date_to` | string | Nein | Enddatum (ISO-Format). Nur bei expliziten Zeitraeumen. |
-| `calendar` | string | Nein | Name des Kalenders fuer gezielte Suche. |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `query` | string | No | Search term (name, location, description). Leave empty for date-only search. |
+| `date_from` | string | No | Start date (ISO format, e.g., `"2026-02-20"`). |
+| `date_to` | string | No | End date (ISO format). Only for explicit date ranges. |
+| `calendar` | string | No | Calendar name for targeted search. |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
 {"events": [...], "count": 3}
 ```
 
-Jedes Event-Objekt enthaelt:
+Each event object contains:
 
-| Feld | Typ | Immer | Beschreibung |
-| ---- | --- | ----- | ------------ |
-| `summary` | string | Ja | Titel des Termins |
-| `start` | string | Ja | Startzeit (ISO) oder Datum bei Ganztags-Events |
-| `all_day` | boolean | Ja | `true` fuer ganztaegige Termine |
-| `end` | string | Nein | Endzeit (ISO), nur wenn vorhanden |
-| `description` | string | Nein | Beschreibung, nur wenn vorhanden |
-| `location` | string | Nein | Ort, nur wenn vorhanden |
-| `status` | string | Nein | `"verfuegbar"` wenn der Termin die Zeit nicht blockiert (iCal `TRANSP:TRANSPARENT`). Fehlt bei normalen (blockierenden) Terminen. |
+| Field | Type | Always | Description |
+| ----- | ---- | ------ | ----------- |
+| `summary` | string | Yes | Event title |
+| `start` | string | Yes | Start time (ISO) or date for all-day events |
+| `all_day` | boolean | Yes | `true` for all-day events |
+| `end` | string | No | End time (ISO), only if present |
+| `description` | string | No | Description, only if present |
+| `location` | string | No | Location, only if present |
+| `status` | string | No | `"available"` when the event does not block time (iCal `TRANSP:TRANSPARENT`). Missing for normal (blocking) events. |
 
-**Return (Fehler):**
+**Return (error):**
 
 ```json
-{"error": "Keine Termine gefunden"}
+{"error": "No events found"}
 ```
 
 ---
 
 ### create_event
 
-Erstellt einen neuen Kalender-Eintrag auf der ersten beschreibbaren Kalenderquelle (via `CalendarSourceManager`). Gibt einen Fehler zurueck wenn keine beschreibbare Quelle konfiguriert ist.
+Creates a new calendar entry on the first writable calendar source (via `CalendarSourceManager`). Returns an error if no writable source is configured.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `summary` | string | Ja | Titel des Events |
-| `start` | string | Ja | Startzeit (ISO-Format, z.B. `"2026-02-20T14:00"`) |
-| `end` | string | Nein | Endzeit (ISO-Format). Standard: 1 Stunde nach Start. |
-| `description` | string | Nein | Beschreibung des Termins |
-| `location` | string | Nein | Ort des Termins |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `summary` | string | Yes | Event title |
+| `start` | string | Yes | Start time (ISO format, e.g., `"2026-02-20T14:00"`) |
+| `end` | string | No | End time (ISO format). Default: 1 hour after start. |
+| `description` | string | No | Event description |
+| `location` | string | No | Event location |
 
 ---
 
 ### list_tasks
 
-Listet offene Aufgaben aus Vikunja. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+Lists open tasks from Vikunja. Only available when `feature_vikunja` is active.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `project` | string | Nein | Projektname zum Filtern. Leer = alle Projekte. |
-| `include_done` | boolean | Nein | Auch erledigte Aufgaben anzeigen. Standard: false. |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `project` | string | No | Project name to filter. Empty = all projects. |
+| `include_done` | boolean | No | Also show completed tasks. Default: false. |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
-{"tasks": [{"id": 1, "title": "Milch kaufen", "done": false, "due_date": "2026-02-25T18:00:00Z"}], "count": 1}
+{"tasks": [{"id": 1, "title": "Buy milk", "done": false, "due_date": "2026-02-25T18:00:00Z"}], "count": 1}
 ```
 
-**Return (Fehler):**
+**Return (error):**
 
 ```json
-{"error": "Keine Aufgaben gefunden"}
+{"error": "No tasks found"}
 ```
 
 ---
 
 ### create_task
 
-Erstellt eine neue Aufgabe in Vikunja. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+Creates a new task in Vikunja. Only available when `feature_vikunja` is active.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `title` | string | Ja | Titel der Aufgabe |
-| `description` | string | Nein | Beschreibung der Aufgabe |
-| `due_date` | string | Nein | Faelligkeitsdatum (ISO-Format, z.B. `"2026-02-25T18:00"`) |
-| `priority` | integer | Nein | Prioritaet: 0=keine, 1=niedrig, 2=mittel, 3=hoch, 4=dringend. Standard: 0. |
-| `project` | string | Nein | Projektname. Leer = Standard-Projekt. |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `title` | string | Yes | Task title |
+| `description` | string | No | Task description |
+| `due_date` | string | No | Due date (ISO format, e.g., `"2026-02-25T18:00"`) |
+| `priority` | integer | No | Priority: 0=none, 1=low, 2=medium, 3=high, 4=urgent. Default: 0. |
+| `project` | string | No | Project name. Empty = default project. |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
-{"created": true, "id": 20, "title": "Zahnarzt anrufen", "project_id": 1}
+{"created": true, "id": 20, "title": "Call dentist", "project_id": 1}
 ```
 
-**Return (Fehler):**
+**Return (error):**
 
 ```json
-{"error": "Projekt 'Nonexistent' nicht gefunden"}
+{"error": "Project 'Nonexistent' not found"}
 ```
 
 ---
 
 ### complete_task
 
-Markiert eine Aufgabe als erledigt. Sucht nach dem Titel in offenen Aufgaben. Nur verfuegbar wenn `feature_vikunja` aktiv ist.
+Marks a task as done. Searches by title among open tasks. Only available when `feature_vikunja` is active.
 
-**Parameter:**
+**Parameters:**
 
-| Name | Typ | Pflicht | Beschreibung |
-| ---- | --- | ------- | ------------ |
-| `title` | string | Ja | Titel oder Teil des Titels der Aufgabe |
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `title` | string | Yes | Title or partial title of the task |
 
-**Return (Erfolg):**
+**Return (success):**
 
 ```json
-{"completed": true, "title": "Milch kaufen"}
+{"completed": true, "title": "Buy milk"}
 ```
 
-**Return (Fehler -- nicht gefunden):**
+**Return (error -- not found):**
 
 ```json
-{"error": "Keine offene Aufgabe gefunden: 'Nonexistent'"}
+{"error": "No open task found: 'Nonexistent'"}
 ```
 
-**Return (Fehler -- mehrdeutig):**
+**Return (error -- ambiguous):**
 
 ```json
-{"error": "Mehrere Aufgaben gefunden. Welche meinst du?", "matches": ["Einkaufen", "Email schreiben"]}
+{"error": "Multiple tasks found. Which one do you mean?", "matches": ["Shopping", "Write email"]}
 ```
 
 ---
 
-## Evolution API Webhook-Konfiguration
+## Automated Briefings (Scheduled)
 
-Die Evolution API muss so konfiguriert werden, dass sie Webhooks an Niles sendet:
+Niles automatically sends daily and weekly overviews via WhatsApp. These are not triggered through the API but run as APScheduler cron jobs.
+
+| Briefing | Schedule | Feature Flag |
+| -------- | -------- | ------------ |
+| Daily | Mon-Fri, configurable (default: 07:30) | `FEATURE_BRIEFING_DAILY` |
+| Weekly | Monday, configurable (default: 07:15) | `FEATURE_BRIEFING_WEEKLY` |
+
+**Prerequisites:**
+
+- Feature flag enabled (`true` in `.env` or Settings UI)
+- WhatsApp connected in the web UI (recipient number is automatically detected from `whatsapp_sessions`)
+
+**No LLM call.** Pure database queries (calendar events from PostgreSQL) + Vikunja API (open tasks) + template formatting.
+
+**Daily briefing content:** Today's appointments, overdue tasks, tasks due today, open tasks summary.
+
+**Weekly overview content:** Mon-Fri appointments grouped by day, open tasks compact.
+
+**Distinction:** When a user asks in chat for a daily overview ("What's on today?"), the agent uses the `find_event` + `list_tasks` tools instead (LLM-based). The automated briefings are template-based and do not require an LLM.
+
+Times and feature flags are configurable via the web UI (Settings > Briefing) or `.env`. See [Deployment Guide](Deployment.md#9-briefing-dailyweekly) for setup details.
+
+---
+
+## Evolution API Webhook Configuration
+
+The Evolution API must be configured to send webhooks to Niles:
 
 ```bash
 curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
@@ -593,31 +618,31 @@ curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
   }'
 ```
 
-**Hinweis:** Die Webhook-URL nutzt den Docker-internen Hostnamen `niles_core` (HTTP, Container-zu-Container). Der `curl`-Aufruf selbst geht ueber Caddy (HTTPS).
+**Note:** The webhook URL uses the Docker-internal hostname `niles_core` (HTTP, container-to-container). The `curl` call itself goes through Caddy (HTTPS).
 
 ---
 
-## Fehlerbehandlung
+## Error Handling
 
-| Szenario | Verhalten |
-| -------- | --------- |
-| LLM nicht erreichbar | Fehlermeldung an User, Fehler geloggt |
-| LLM gibt leere Antwort | Warning geloggt, leerer String zurueckgegeben |
-| Tool-Call mit ungueltigen Argumenten | `{"error": "Invalid arguments"}` zurueck an LLM |
-| Unbekannter Tool-Name | `{"error": "Unknown tool: ..."}` zurueck an LLM |
-| Max Tool-Runden erreicht (5) | Warning geloggt, Fallback-Nachricht an User |
-| Webhook: ungueltiges JSON | Warning geloggt, HTTP 200 |
-| Webhook: Agent-Fehler | Exception geloggt, HTTP 200 (kein Retry) |
-| WhatsApp senden fehlgeschlagen | Fehler geloggt, `{"error": "..."}` zurueck an LLM |
-| Web-UI: Session ungueltig | Redirect zu /ui/login |
-| Web-UI: CSRF ungueltig | 403, Redirect zu /ui/login (via HX-Redirect) |
-| Web-UI: Agent-Fehler | Fehlermeldung im Chat-Fragment angezeigt |
-| Web-UI: SSE Stream-Fehler | Fehlermeldung als Assistant-Bubble angezeigt |
-| Web-UI: Nachricht zu lang (>2000) | HTTP 400, Nachricht nicht gesendet |
+| Scenario | Behavior |
+| -------- | -------- |
+| LLM unreachable | Error message to user, error logged |
+| LLM returns empty response | Warning logged, empty string returned |
+| Tool call with invalid arguments | `{"error": "Invalid arguments"}` returned to LLM |
+| Unknown tool name | `{"error": "Unknown tool: ..."}` returned to LLM |
+| Max tool rounds reached (5) | Warning logged, fallback message to user |
+| Webhook: invalid JSON | Warning logged, HTTP 200 |
+| Webhook: agent error | Exception logged, HTTP 200 (no retry) |
+| WhatsApp send failed | Error logged, `{"error": "..."}` returned to LLM |
+| Web UI: invalid session | Redirect to /ui/login |
+| Web UI: invalid CSRF | 403, redirect to /ui/login (via HX-Redirect) |
+| Web UI: agent error | Error message displayed in chat fragment |
+| Web UI: SSE stream error | Error message shown as assistant bubble |
+| Web UI: message too long (>2000) | HTTP 400, message not sent |
 
 ---
 
-## Weitere Dokumentation
+## Further Documentation
 
-- [Technische Spezifikation](Niles-Core-Spec.md) -- Architektur, Komponenten, Konfiguration, Roadmap
-- [Development Guide](Development.md) -- Setup, Testing, Konventionen
+- [Technical Specification](Niles-Core-Spec.md) -- Architecture, components, configuration
+- [Development Guide](Development.md) -- Setup, testing, conventions

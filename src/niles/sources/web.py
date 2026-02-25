@@ -97,15 +97,18 @@ def _get_session_user(request: Request) -> dict | None:
 def _create_session_cookie(request: Request, response: Response, user: dict) -> None:
     """Set signed session cookie with user data."""
     serializer = _get_serializer(request)
-    token = serializer.dumps({
-        "uid": user["id"],
-        "email": user["email"],
-        "display_name": user.get("display_name", user["email"]),
-        "avatar_url": user.get("avatar_url") or "",
-    })
+    token = serializer.dumps(
+        {
+            "uid": user["id"],
+            "email": user["email"],
+            "display_name": user.get("display_name", user["email"]),
+            "avatar_url": user.get("avatar_url") or "",
+        }
+    )
     is_secure = _is_secure_context(request)
     response.set_cookie(
-        SESSION_COOKIE_NAME, token,
+        SESSION_COOKIE_NAME,
+        token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         secure=is_secure,
@@ -127,9 +130,12 @@ def _ensure_csrf_cookie(request: Request, response: Response) -> None:
     if CSRF_COOKIE_NAME not in request.cookies:
         is_secure = _is_secure_context(request)
         response.set_cookie(
-            CSRF_COOKIE_NAME, secrets.token_urlsafe(32),
-            max_age=COOKIE_MAX_AGE, httponly=False,
-            secure=is_secure, samesite="strict",
+            CSRF_COOKIE_NAME,
+            secrets.token_urlsafe(32),
+            max_age=COOKIE_MAX_AGE,
+            httponly=False,
+            secure=is_secure,
+            samesite="strict",
         )
 
 
@@ -137,13 +143,18 @@ def _set_csrf_cookie(request: Request, response: Response) -> None:
     """Always set a fresh CSRF cookie (used after login)."""
     is_secure = _is_secure_context(request)
     response.set_cookie(
-        CSRF_COOKIE_NAME, secrets.token_urlsafe(32),
-        max_age=COOKIE_MAX_AGE, httponly=False,
-        secure=is_secure, samesite="strict",
+        CSRF_COOKIE_NAME,
+        secrets.token_urlsafe(32),
+        max_age=COOKIE_MAX_AGE,
+        httponly=False,
+        secure=is_secure,
+        samesite="strict",
     )
 
 
-async def _require_auth_and_csrf(request: Request) -> tuple[dict | None, Response | None]:
+async def _require_auth_and_csrf(
+    request: Request,
+) -> tuple[dict | None, Response | None]:
     """Check session + CSRF + user existence in DB.
 
     Returns (user_dict, None) or (None, error_response).
@@ -176,7 +187,10 @@ def _user_chat_id(user: dict) -> str:
 
 
 async def _resolve_channel(
-    user: dict, channel: str, wa_store, wa_session: dict | None = None,
+    user: dict,
+    channel: str,
+    wa_store,
+    wa_session: dict | None = None,
 ) -> tuple[str, bool]:
     """Resolve channel name to (chat_id, readonly).
 
@@ -188,7 +202,9 @@ async def _resolve_channel(
         if session is None and wa_store:
             session = await wa_store.get_session(user["uid"])
         if session and session.get("phone_number"):
-            chat_id = f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
+            chat_id = (
+                f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
+            )
             return chat_id, True
     return _user_chat_id(user), False
 
@@ -207,7 +223,8 @@ def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> 
     # Fallback: derive from request headers (less secure behind reverse proxy)
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get(
-        "x-forwarded-host", request.headers.get("host", "localhost"),
+        "x-forwarded-host",
+        request.headers.get("host", "localhost"),
     )
     return f"{scheme}://{host}{path}"
 
@@ -234,7 +251,9 @@ def _safe_settings_dict(settings) -> dict:
         "evolution_api_key": "********",
         "caldav_url (Legacy)": settings.caldav_url,
         "caldav_user (Legacy)": settings.caldav_user,
-        "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
+        "caldav_password (Legacy)": "********"
+        if settings.caldav_password
+        else "(not set)",
     }
 
     briefing = {
@@ -259,10 +278,14 @@ def _safe_settings_dict(settings) -> dict:
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Login page: Google OAuth button or API-key form (fallback)."""
-    return templates.TemplateResponse(request, "login.html", {
-        "error": None,
-        "google_configured": _google_configured(request),
-    })
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "error": None,
+            "google_configured": _google_configured(request),
+        },
+    )
 
 
 @router.post("/login")
@@ -272,7 +295,8 @@ async def login_submit(request: Request, api_key: str = Form(...)):
 
     if not _check_login_rate(client_ip):
         return templates.TemplateResponse(
-            request, "login.html",
+            request,
+            "login.html",
             {
                 "error": "Zu viele Anmeldeversuche. Bitte warte 5 Minuten.",
                 "google_configured": _google_configured(request),
@@ -285,7 +309,8 @@ async def login_submit(request: Request, api_key: str = Form(...)):
     expected = request.app.state.settings.niles_api_key
     if not api_key or len(api_key) > 256 or not hmac.compare_digest(api_key, expected):
         return templates.TemplateResponse(
-            request, "login.html",
+            request,
+            "login.html",
             {
                 "error": "Ungueltiger API-Key",
                 "google_configured": _google_configured(request),
@@ -326,9 +351,12 @@ async def login_google(request: Request):
 
     response = RedirectResponse(url=auth_url, status_code=303)
     response.set_cookie(
-        "oauth_state", state,
-        max_age=600, httponly=True,
-        secure=_is_secure_context(request), samesite="lax",
+        "oauth_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=_is_secure_context(request),
+        samesite="lax",
     )
     return response
 
@@ -351,18 +379,26 @@ async def callback_google(
             "invalid_scope": "Ungueltige Berechtigungen.",
         }
         safe_msg = error_messages.get(error, "Bitte erneut versuchen.")
-        return templates.TemplateResponse(request, "login.html", {
-            "error": f"Google Login fehlgeschlagen: {safe_msg}",
-            "google_configured": gc,
-        })
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": f"Google Login fehlgeschlagen: {safe_msg}",
+                "google_configured": gc,
+            },
+        )
 
     # Verify state parameter (CSRF protection for OAuth)
     stored_state = request.cookies.get("oauth_state", "")
     if not state or not stored_state or not hmac.compare_digest(state, stored_state):
-        return templates.TemplateResponse(request, "login.html", {
-            "error": "Ungueltiger OAuth-State. Bitte erneut versuchen.",
-            "google_configured": gc,
-        })
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Ungueltiger OAuth-State. Bitte erneut versuchen.",
+                "google_configured": gc,
+            },
+        )
 
     settings = request.app.state.settings
     redirect_uri = _build_redirect_uri(request)
@@ -370,51 +406,77 @@ async def callback_google(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Exchange authorization code for tokens
-            token_resp = await client.post(GOOGLE_TOKEN_URL, data={
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "code": code,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            })
+            token_resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+            )
             if token_resp.status_code != 200:
                 logger.error("Google token exchange failed: %s", token_resp.text)
-                return templates.TemplateResponse(request, "login.html", {
-                    "error": "Token-Austausch fehlgeschlagen.",
-                    "google_configured": gc,
-                })
+                return templates.TemplateResponse(
+                    request,
+                    "login.html",
+                    {
+                        "error": "Token-Austausch fehlgeschlagen.",
+                        "google_configured": gc,
+                    },
+                )
             tokens = token_resp.json()
 
             # Get user info from Google
-            userinfo_resp = await client.get(_GOOGLE_USERINFO_URL, headers={
-                "Authorization": f"Bearer {tokens['access_token']}",
-            })
+            userinfo_resp = await client.get(
+                _GOOGLE_USERINFO_URL,
+                headers={
+                    "Authorization": f"Bearer {tokens['access_token']}",
+                },
+            )
             if userinfo_resp.status_code != 200:
                 logger.error("Google userinfo failed: %s", userinfo_resp.text)
-                return templates.TemplateResponse(request, "login.html", {
-                    "error": "Benutzerinformationen konnten nicht abgerufen werden.",
-                    "google_configured": gc,
-                })
+                return templates.TemplateResponse(
+                    request,
+                    "login.html",
+                    {
+                        "error": "Benutzerinformationen konnten nicht abgerufen werden.",
+                        "google_configured": gc,
+                    },
+                )
             userinfo = userinfo_resp.json()
     except httpx.HTTPError as e:
         logger.error("Google OAuth HTTP error: %s", e)
-        return templates.TemplateResponse(request, "login.html", {
-            "error": "Verbindung zu Google fehlgeschlagen.",
-            "google_configured": gc,
-        })
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Verbindung zu Google fehlgeschlagen.",
+                "google_configured": gc,
+            },
+        )
 
     email = userinfo.get("email", "")
     if not email:
-        return templates.TemplateResponse(request, "login.html", {
-            "error": "Keine E-Mail-Adresse von Google erhalten.",
-            "google_configured": gc,
-        })
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Keine E-Mail-Adresse von Google erhalten.",
+                "google_configured": gc,
+            },
+        )
 
     if not userinfo.get("verified_email", userinfo.get("email_verified", False)):
-        return templates.TemplateResponse(request, "login.html", {
-            "error": "E-Mail-Adresse nicht verifiziert.",
-            "google_configured": gc,
-        })
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "E-Mail-Adresse nicht verifiziert.",
+                "google_configured": gc,
+            },
+        )
 
     # Check allowed emails whitelist
     if settings.google_allowed_emails:
@@ -425,10 +487,14 @@ async def callback_google(
         ]
         if email.lower() not in allowed:
             logger.warning("Google login rejected for %s (not in allowed list)", email)
-            return templates.TemplateResponse(request, "login.html", {
-                "error": "Diese E-Mail-Adresse ist nicht berechtigt.",
-                "google_configured": gc,
-            })
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {
+                    "error": "Diese E-Mail-Adresse ist nicht berechtigt.",
+                    "google_configured": gc,
+                },
+            )
 
     # Create or update user in DB
     user_store = request.app.state.user_store
@@ -484,19 +550,27 @@ async def chat_page(
 
     # Determine available channels (WhatsApp only if connected with phone)
     available_channels = [("web", "Web-Chat")]
-    if wa_session and wa_session.get("phone_number") and wa_session["status"] == "connected":
+    if (
+        wa_session
+        and wa_session.get("phone_number")
+        and wa_session["status"] == "connected"
+    ):
         available_channels.append(("whatsapp", "WhatsApp"))
 
-    response = templates.TemplateResponse(request, "chat.html", {
-        "messages": messages,
-        "has_more": has_more,
-        "next_offset": _CHAT_PAGE_SIZE,
-        "active_page": "chat",
-        "user": user,
-        "channel": channel if not readonly or channel == "whatsapp" else "web",
-        "readonly": readonly,
-        "available_channels": available_channels,
-    })
+    response = templates.TemplateResponse(
+        request,
+        "chat.html",
+        {
+            "messages": messages,
+            "has_more": has_more,
+            "next_offset": _CHAT_PAGE_SIZE,
+            "active_page": "chat",
+            "user": user,
+            "channel": channel if not readonly or channel == "whatsapp" else "web",
+            "readonly": readonly,
+            "available_channels": available_channels,
+        },
+    )
     _ensure_csrf_cookie(request, response)
     return response
 
@@ -514,13 +588,17 @@ async def settings_page(request: Request, error: str = Query(default="")):
         error_msg = "Google Kalender-Verbindung fehlgeschlagen. Bitte erneut versuchen."
 
     safe = _safe_settings_dict(request.app.state.settings)
-    response = templates.TemplateResponse(request, "settings.html", {
-        **safe,
-        "active_page": "settings",
-        "user": user,
-        "google_configured": _google_configured(request),
-        "calendar_error": error_msg,
-    })
+    response = templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            **safe,
+            "active_page": "settings",
+            "user": user,
+            "google_configured": _google_configured(request),
+            "calendar_error": error_msg,
+        },
+    )
     _ensure_csrf_cookie(request, response)
     return response
 
@@ -544,13 +622,17 @@ async def chat_history(
     history = request.app.state.history
     messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE, offset=offset)
     has_more = len(messages) == _CHAT_PAGE_SIZE
-    return templates.TemplateResponse(request, "fragments/history.html", {
-        "messages": messages,
-        "has_more": has_more,
-        "next_offset": offset + _CHAT_PAGE_SIZE,
-        "user": user,
-        "channel": channel,
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/history.html",
+        {
+            "messages": messages,
+            "has_more": has_more,
+            "next_offset": offset + _CHAT_PAGE_SIZE,
+            "user": user,
+            "channel": channel,
+        },
+    )
 
 
 @router.post("/api/chat", response_class=HTMLResponse)
@@ -561,7 +643,9 @@ async def chat_send(request: Request, message: str = Form(...)):
         return error
 
     if len(message) > 2000:
-        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
+        return Response(
+            status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
+        )
 
     chat_id = _user_chat_id(user)
     agent = request.app.state.agent
@@ -579,17 +663,20 @@ async def chat_send(request: Request, message: str = Form(...)):
     except Exception:
         logger.exception("Agent error processing web chat message")
         response_text = (
-            "Entschuldigung, es ist ein Fehler aufgetreten. "
-            "Bitte versuche es erneut."
+            "Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es erneut."
         )
 
-    return templates.TemplateResponse(request, "fragments/message.html", {
-        "user_message": message,
-        "assistant_message": response_text,
-        "user_timestamp": now,
-        "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
-        "user": user,
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/message.html",
+        {
+            "user_message": message,
+            "assistant_message": response_text,
+            "user_timestamp": now,
+            "assistant_timestamp": datetime.now(timezone.utc).isoformat(),
+            "user": user,
+        },
+    )
 
 
 @router.post("/api/chat/stream")
@@ -605,7 +692,9 @@ async def chat_stream(request: Request, message: str = Form(...)):
         return error
 
     if len(message) > 2000:
-        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
+        return Response(
+            status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
+        )
 
     chat_id = _user_chat_id(user)
     agent = request.app.state.agent
@@ -623,7 +712,9 @@ async def chat_stream(request: Request, message: str = Form(...)):
                 yield f"data: {data}\n\n"
         except Exception:
             logger.exception("Agent streaming error")
-            err = json.dumps({"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."})
+            err = json.dumps(
+                {"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."}
+            )
             yield f"data: {err}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -659,10 +750,14 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
 
     # Validate key exists on settings before touching DB
     if not hasattr(settings, key):
-        return templates.TemplateResponse(request, "fragments/toast.html", {
-            "message": f"Unbekannte Einstellung: '{key}'",
-            "toast_type": "error",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {
+                "message": f"Unbekannte Einstellung: '{key}'",
+                "toast_type": "error",
+            },
+        )
 
     # Convert value to appropriate type
     if key.startswith("feature_"):
@@ -691,18 +786,27 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
             elif key == "llm_base_url":
                 # Ollama ignores the key; non-empty string required by SDK
                 agent.llm = AsyncOpenAI(
-                    base_url=new_settings.llm_base_url, api_key="not-needed",
+                    base_url=new_settings.llm_base_url,
+                    api_key="not-needed",
                 )
     except ValueError as e:
-        return templates.TemplateResponse(request, "fragments/toast.html", {
-            "message": str(e),
-            "toast_type": "error",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {
+                "message": str(e),
+                "toast_type": "error",
+            },
+        )
 
-    return templates.TemplateResponse(request, "fragments/toast.html", {
-        "message": f"'{key}' gespeichert",
-        "toast_type": "success",
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/toast.html",
+        {
+            "message": f"'{key}' gespeichert",
+            "toast_type": "success",
+        },
+    )
 
 
 @router.post("/api/briefing/test/{briefing_type}", response_class=HTMLResponse)
@@ -713,10 +817,14 @@ async def briefing_test(request: Request, briefing_type: str):
         return error
 
     if briefing_type not in ("daily", "weekly"):
-        return templates.TemplateResponse(request, "fragments/toast.html", {
-            "message": "Unbekannter Briefing-Typ",
-            "toast_type": "error",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {
+                "message": "Unbekannter Briefing-Typ",
+                "toast_type": "error",
+            },
+        )
 
     from ..jobs.briefing import send_daily_briefing, send_weekly_briefing
 
@@ -727,21 +835,33 @@ async def briefing_test(request: Request, briefing_type: str):
             sent = await send_weekly_briefing(request.app.state)
     except Exception:
         logger.exception("Manual briefing test failed")
-        return templates.TemplateResponse(request, "fragments/toast.html", {
-            "message": "Briefing fehlgeschlagen (siehe Logs)",
-            "toast_type": "error",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {
+                "message": "Briefing fehlgeschlagen (siehe Logs)",
+                "toast_type": "error",
+            },
+        )
 
     if not sent:
-        return templates.TemplateResponse(request, "fragments/toast.html", {
-            "message": "Kein WhatsApp verbunden",
-            "toast_type": "error",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {
+                "message": "Kein WhatsApp verbunden",
+                "toast_type": "error",
+            },
+        )
 
-    return templates.TemplateResponse(request, "fragments/toast.html", {
-        "message": f"{'Tages' if briefing_type == 'daily' else 'Wochen'}briefing gesendet",
-        "toast_type": "success",
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/toast.html",
+        {
+            "message": f"{'Tages' if briefing_type == 'daily' else 'Wochen'}briefing gesendet",
+            "toast_type": "success",
+        },
+    )
 
 
 @router.get("/api/caldav/calendars", response_class=HTMLResponse)
@@ -764,10 +884,14 @@ async def caldav_calendars(request: Request):
     # Determine which are currently selected
     selected = caldav.allowed_collections()
 
-    return templates.TemplateResponse(request, "fragments/calendars.html", {
-        "collections": collections,
-        "selected": selected,
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/calendars.html",
+        {
+            "collections": collections,
+            "selected": selected,
+        },
+    )
 
 
 # --- Calendar source management ---
@@ -787,9 +911,13 @@ async def calendar_sources_list(request: Request):
         )
 
     sources = await manager.get_sources()
-    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-        "sources": sources,
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/calendar_sources.html",
+        {
+            "sources": sources,
+        },
+    )
 
 
 @router.post("/api/calendar/sources", response_class=HTMLResponse)
@@ -829,21 +957,33 @@ async def calendar_source_add(
         )
     except asyncpg.UniqueViolationError:
         sources = await manager.get_sources()
-        return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-            "sources": sources,
-            "error": "Diese Quelle existiert bereits.",
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/calendar_sources.html",
+            {
+                "sources": sources,
+                "error": "Diese Quelle existiert bereits.",
+            },
+        )
     except ValueError as exc:
         sources = await manager.get_sources()
-        return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-            "sources": sources,
-            "error": str(exc),
-        })
+        return templates.TemplateResponse(
+            request,
+            "fragments/calendar_sources.html",
+            {
+                "sources": sources,
+                "error": str(exc),
+            },
+        )
 
     sources = await manager.get_sources()
-    return templates.TemplateResponse(request, "fragments/calendar_sources.html", {
-        "sources": sources,
-    })
+    return templates.TemplateResponse(
+        request,
+        "fragments/calendar_sources.html",
+        {
+            "sources": sources,
+        },
+    )
 
 
 @router.delete("/api/calendar/sources/{source_id}", response_class=HTMLResponse)
@@ -935,9 +1075,12 @@ async def google_calendar_connect(request: Request):
 
     response = RedirectResponse(url=auth_url, status_code=303)
     response.set_cookie(
-        _GCAL_OAUTH_COOKIE, state,
-        max_age=600, httponly=True,
-        secure=_is_secure_context(request), samesite="lax",
+        _GCAL_OAUTH_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        secure=_is_secure_context(request),
+        samesite="lax",
     )
     return response
 
@@ -976,16 +1119,22 @@ async def callback_google_calendar(
 
     # Exchange authorization code for tokens
     async with httpx.AsyncClient() as client:
-        token_resp = await client.post(GOOGLE_TOKEN_URL, data={
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-        }, timeout=30)
+        token_resp = await client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+            timeout=30,
+        )
 
     if token_resp.status_code != 200:
-        logger.error("Google Calendar token exchange failed: %d", token_resp.status_code)
+        logger.error(
+            "Google Calendar token exchange failed: %d", token_resp.status_code
+        )
         return RedirectResponse(url=_fail_url, status_code=303)
 
     tokens = token_resp.json()
@@ -994,8 +1143,10 @@ async def callback_google_calendar(
     expires_in = tokens.get("expires_in", 3600)
 
     if not access_token or not refresh_token:
-        logger.error("Google Calendar OAuth: missing tokens (refresh_token=%s)",
-                      "present" if refresh_token else "absent")
+        logger.error(
+            "Google Calendar OAuth: missing tokens (refresh_token=%s)",
+            "present" if refresh_token else "absent",
+        )
         return RedirectResponse(url=_fail_url, status_code=303)
 
     token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -1026,7 +1177,9 @@ async def callback_google_calendar(
 
         # Build Google CalDAV URL
         encoded_id = urllib.parse.quote(cal_id, safe="")
-        caldav_url = f"https://apidata.googleusercontent.com/caldav/v2/{encoded_id}/events/"
+        caldav_url = (
+            f"https://apidata.googleusercontent.com/caldav/v2/{encoded_id}/events/"
+        )
 
         try:
             await manager.add_source(
@@ -1099,7 +1252,9 @@ async def whatsapp_status(request: Request):
                 if owner_jid and "@" in owner_jid:
                     phone = owner_jid.split("@")[0]
                 await wa_store.update_status(
-                    user["uid"], "connected", phone_number=phone,
+                    user["uid"],
+                    "connected",
+                    phone_number=phone,
                 )
             ctx["wa_status"] = "connected"
             ctx["wa_phone"] = phone or ""
@@ -1113,9 +1268,7 @@ async def whatsapp_status(request: Request):
             # will be overwritten on next reconnect via upsert_session
             ctx["wa_status"] = "disconnected"
 
-    return templates.TemplateResponse(
-        request, "fragments/whatsapp_status.html", ctx
-    )
+    return templates.TemplateResponse(request, "fragments/whatsapp_status.html", ctx)
 
 
 @router.post("/api/whatsapp/connect", response_class=HTMLResponse)
@@ -1168,11 +1321,13 @@ async def whatsapp_connect(request: Request):
         return response
 
     return templates.TemplateResponse(
-        request, "fragments/whatsapp_status.html", {
+        request,
+        "fragments/whatsapp_status.html",
+        {
             "wa_status": "connecting",
             "wa_qr": qr_base64,
             "wa_phone": "",
-        }
+        },
     )
 
 
@@ -1201,11 +1356,13 @@ async def whatsapp_disconnect(request: Request):
         await wa_store.delete_session(user["uid"])
 
     return templates.TemplateResponse(
-        request, "fragments/whatsapp_status.html", {
+        request,
+        "fragments/whatsapp_status.html",
+        {
             "wa_status": "disconnected",
             "wa_phone": "",
             "wa_qr": "",
-        }
+        },
     )
 
 
@@ -1245,7 +1402,9 @@ async def contacts_status(request: Request):
 
     ctx = await _contacts_status_ctx(request)
     return templates.TemplateResponse(
-        request, "fragments/carddav_status.html", ctx,
+        request,
+        "fragments/carddav_status.html",
+        ctx,
     )
 
 
@@ -1264,18 +1423,22 @@ async def contacts_connect(
     carddav_sync = getattr(request.app.state, "carddav_sync", None)
     if not carddav_sync:
         return templates.TemplateResponse(
-            request, "fragments/carddav_status.html",
+            request,
+            "fragments/carddav_status.html",
             {"connected": False, "carddav_error": "CardDAV Sync nicht verfuegbar."},
         )
 
     settings = request.app.state.settings
 
     # Apply overrides temporarily for connection test (not persisted yet)
-    new_settings = apply_overrides(settings, {
-        "carddav_url": url.strip(),
-        "carddav_user": username.strip(),
-        "carddav_password": password,
-    })
+    new_settings = apply_overrides(
+        settings,
+        {
+            "carddav_url": url.strip(),
+            "carddav_user": username.strip(),
+            "carddav_password": password,
+        },
+    )
     carddav_sync.update_config(new_settings)
 
     # Test connection BEFORE saving to DB
@@ -1284,7 +1447,8 @@ async def contacts_connect(
         # Revert to previous config
         carddav_sync.update_config(settings)
         return templates.TemplateResponse(
-            request, "fragments/carddav_status.html",
+            request,
+            "fragments/carddav_status.html",
             {"connected": False, "carddav_error": message},
         )
 
@@ -1299,7 +1463,8 @@ async def contacts_connect(
         logger.exception("Failed to persist CardDAV credentials")
         carddav_sync.update_config(settings)
         return templates.TemplateResponse(
-            request, "fragments/carddav_status.html",
+            request,
+            "fragments/carddav_status.html",
             {"connected": False, "carddav_error": f"Speichern fehlgeschlagen: {exc}"},
         )
 
@@ -1309,9 +1474,13 @@ async def contacts_connect(
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler and not scheduler.get_job("carddav_daily_sync"):
         scheduler.add_job(
-            carddav_sync.sync_contacts, "cron", hour=3, minute=0,
+            carddav_sync.sync_contacts,
+            "cron",
+            hour=3,
+            minute=0,
             id="carddav_daily_sync",
-            max_instances=1, misfire_grace_time=300,
+            max_instances=1,
+            misfire_grace_time=300,
         )
         logger.info("CardDAV daily sync job registered via UI")
 
@@ -1323,7 +1492,9 @@ async def contacts_connect(
 
     ctx = await _contacts_status_ctx(request)
     return templates.TemplateResponse(
-        request, "fragments/carddav_status.html", ctx,
+        request,
+        "fragments/carddav_status.html",
+        ctx,
     )
 
 
@@ -1341,11 +1512,14 @@ async def contacts_disconnect(request: Request):
         await settings_store.delete(key)
 
     # Apply overrides (empty strings revert to env/defaults)
-    new_settings = apply_overrides(request.app.state.settings, {
-        "carddav_url": "",
-        "carddav_user": "",
-        "carddav_password": "",
-    })
+    new_settings = apply_overrides(
+        request.app.state.settings,
+        {
+            "carddav_url": "",
+            "carddav_user": "",
+            "carddav_password": "",
+        },
+    )
     request.app.state.settings = new_settings
 
     carddav_sync = getattr(request.app.state, "carddav_sync", None)
@@ -1361,7 +1535,8 @@ async def contacts_disconnect(request: Request):
         logger.exception("Failed to delete contacts on disconnect")
 
     return templates.TemplateResponse(
-        request, "fragments/carddav_status.html",
+        request,
+        "fragments/carddav_status.html",
         {"connected": False, "carddav_error": None},
     )
 
@@ -1378,7 +1553,9 @@ async def contacts_sync(request: Request):
         ctx = await _contacts_status_ctx(request)
         ctx["carddav_error"] = "CardDAV Sync nicht verfuegbar."
         return templates.TemplateResponse(
-            request, "fragments/carddav_status.html", ctx,
+            request,
+            "fragments/carddav_status.html",
+            ctx,
         )
 
     try:
@@ -1388,7 +1565,9 @@ async def contacts_sync(request: Request):
 
     ctx = await _contacts_status_ctx(request)
     return templates.TemplateResponse(
-        request, "fragments/carddav_status.html", ctx,
+        request,
+        "fragments/carddav_status.html",
+        ctx,
     )
 
 
@@ -1446,7 +1625,9 @@ async def vikunja_status(request: Request):
             ctx["vikunja_error"] = "Keine Vikunja API-URL konfiguriert."
 
     return templates.TemplateResponse(
-        request, "fragments/vikunja_status.html", ctx,
+        request,
+        "fragments/vikunja_status.html",
+        ctx,
     )
 
 
@@ -1467,22 +1648,31 @@ async def vikunja_connect(
     vikunja_store = getattr(request.app.state, "vikunja_store", None)
     if not vikunja_store:
         return templates.TemplateResponse(
-            request, "fragments/vikunja_status.html",
-            {"vikunja_connected": False, "vikunja_project_count": 0,
-             "vikunja_error": "Vikunja nicht verfuegbar."},
+            request,
+            "fragments/vikunja_status.html",
+            {
+                "vikunja_connected": False,
+                "vikunja_project_count": 0,
+                "vikunja_error": "Vikunja nicht verfuegbar.",
+            },
         )
 
     effective_url = api_url.strip() or request.app.state.settings.vikunja_api_url
     if not effective_url:
         return templates.TemplateResponse(
-            request, "fragments/vikunja_status.html",
-            {"vikunja_connected": False, "vikunja_project_count": 0,
-             "vikunja_error": "Keine API-URL. Bitte URL angeben oder global konfigurieren."},
+            request,
+            "fragments/vikunja_status.html",
+            {
+                "vikunja_connected": False,
+                "vikunja_project_count": 0,
+                "vikunja_error": "Keine API-URL. Bitte URL angeben oder global konfigurieren.",
+            },
         )
 
     # SSRF protection: only allow http/https and reject private IP ranges
     from urllib.parse import urlparse
     import ipaddress
+
     try:
         parsed = urlparse(effective_url)
         if parsed.scheme not in ("http", "https"):
@@ -1501,9 +1691,13 @@ async def vikunja_connect(
                 raise
     except ValueError:
         return templates.TemplateResponse(
-            request, "fragments/vikunja_status.html",
-            {"vikunja_connected": False, "vikunja_project_count": 0,
-             "vikunja_error": "Ungueltige URL. Nur http:// und https:// erlaubt."},
+            request,
+            "fragments/vikunja_status.html",
+            {
+                "vikunja_connected": False,
+                "vikunja_project_count": 0,
+                "vikunja_error": "Ungueltige URL. Nur http:// und https:// erlaubt.",
+            },
         )
 
     # Test connection before saving
@@ -1518,9 +1712,13 @@ async def vikunja_connect(
             project_count = len(resp.json())
     except Exception:
         return templates.TemplateResponse(
-            request, "fragments/vikunja_status.html",
-            {"vikunja_connected": False, "vikunja_project_count": 0,
-             "vikunja_error": "Verbindung fehlgeschlagen: Token oder URL ungueltig."},
+            request,
+            "fragments/vikunja_status.html",
+            {
+                "vikunja_connected": False,
+                "vikunja_project_count": 0,
+                "vikunja_error": "Verbindung fehlgeschlagen: Token oder URL ungueltig.",
+            },
         )
 
     try:
@@ -1541,9 +1739,13 @@ async def vikunja_connect(
         return response
 
     return templates.TemplateResponse(
-        request, "fragments/vikunja_status.html",
-        {"vikunja_connected": True, "vikunja_project_count": project_count,
-         "vikunja_error": None},
+        request,
+        "fragments/vikunja_status.html",
+        {
+            "vikunja_connected": True,
+            "vikunja_project_count": project_count,
+            "vikunja_error": None,
+        },
     )
 
 
@@ -1562,7 +1764,7 @@ async def vikunja_disconnect(request: Request):
         await vikunja_store.delete_credentials(user["uid"])
 
     return templates.TemplateResponse(
-        request, "fragments/vikunja_status.html",
-        {"vikunja_connected": False, "vikunja_project_count": 0,
-         "vikunja_error": None},
+        request,
+        "fragments/vikunja_status.html",
+        {"vikunja_connected": False, "vikunja_project_count": 0, "vikunja_error": None},
     )

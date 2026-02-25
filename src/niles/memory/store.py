@@ -33,9 +33,7 @@ class MemoryStore:
 
     async def get(self, key: str) -> Any | None:
         """Get a value by key. Returns None if not found."""
-        row = await self.pool.fetchrow(
-            "SELECT value FROM memory WHERE key = $1", key
-        )
+        row = await self.pool.fetchrow("SELECT value FROM memory WHERE key = $1", key)
         if row is None:
             return None
         try:
@@ -59,9 +57,7 @@ class MemoryStore:
 
     async def delete(self, key: str) -> bool:
         """Delete a key. Returns True if the key existed."""
-        result = await self.pool.execute(
-            "DELETE FROM memory WHERE key = $1", key
-        )
+        result = await self.pool.execute("DELETE FROM memory WHERE key = $1", key)
         return result == "DELETE 1"
 
     async def search(self, prefix: str) -> list[dict]:

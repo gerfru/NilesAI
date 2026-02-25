@@ -21,13 +21,20 @@ _ISO_DATE_REGEX = re.compile(
 
 # Weekday name → Python weekday index (Monday=0 … Sunday=6)
 _WEEKDAY_MAP = {
-    "montag": 0, "monday": 0,
-    "dienstag": 1, "tuesday": 1,
-    "mittwoch": 2, "wednesday": 2,
-    "donnerstag": 3, "thursday": 3,
-    "freitag": 4, "friday": 4,
-    "samstag": 5, "saturday": 5,
-    "sonntag": 6, "sunday": 6,
+    "montag": 0,
+    "monday": 0,
+    "dienstag": 1,
+    "tuesday": 1,
+    "mittwoch": 2,
+    "wednesday": 2,
+    "donnerstag": 3,
+    "thursday": 3,
+    "freitag": 4,
+    "friday": 4,
+    "samstag": 5,
+    "saturday": 5,
+    "sonntag": 6,
+    "sunday": 6,
 }
 
 
@@ -118,7 +125,11 @@ class CalendarAction:
         if stripped.startswith("{") or stripped.startswith("["):
             match = _ISO_DATE_REGEX.search(stripped)
             if match:
-                logger.debug("Extracted date from malformed LLM output: %s → %s", value, match.group())
+                logger.debug(
+                    "Extracted date from malformed LLM output: %s → %s",
+                    value,
+                    match.group(),
+                )
                 value = match.group()
 
         # Handle relative date terms (small LLMs sometimes send these)
@@ -130,12 +141,16 @@ class CalendarAction:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
         if relative in ("morgen", "tomorrow"):
-            dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            dt = (now + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             if end_of_day:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
         if relative in ("übermorgen", "uebermorgen"):
-            dt = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+            dt = (now + timedelta(days=2)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             if end_of_day:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
@@ -148,7 +163,10 @@ class CalendarAction:
             if days_ahead == 0:
                 days_ahead = 7  # same weekday = next week
             dt = (now + timedelta(days=days_ahead)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
             if end_of_day:
                 dt = dt.replace(hour=23, minute=59, second=59)

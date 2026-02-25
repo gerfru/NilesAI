@@ -197,8 +197,12 @@ class TestProcessEventStream:
         events = await _collect(agent.process_event_stream(event))
 
         # Should have status event for recall, then text chunks, then done
-        assert any(e.get("type") == "status" and "recall" in e.get("text", "") for e in events)
-        assert any(e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events)
+        assert any(
+            e.get("type") == "status" and "recall" in e.get("text", "") for e in events
+        )
+        assert any(
+            e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events
+        )
         assert events[-1] == {"type": "done"}
 
         # LLM called twice (tool round + final response)
@@ -216,20 +220,24 @@ class TestProcessEventStream:
 
         # Every LLM call returns a tool call (infinite loop scenario)
         def make_tool_stream():
-            return _aiter([
-                _make_delta(
-                    tool_calls=[_make_tool_call_delta(0, tc_id="call_x", name="recall")],
-                ),
-                _make_delta(
-                    tool_calls=[_make_tool_call_delta(0, arguments='{"key": "x"}')],
-                ),
-                _make_delta(finish_reason="tool_calls"),
-            ])
+            return _aiter(
+                [
+                    _make_delta(
+                        tool_calls=[
+                            _make_tool_call_delta(0, tc_id="call_x", name="recall")
+                        ],
+                    ),
+                    _make_delta(
+                        tool_calls=[_make_tool_call_delta(0, arguments='{"key": "x"}')],
+                    ),
+                    _make_delta(finish_reason="tool_calls"),
+                ]
+            )
 
         agent.llm = AsyncMock()
-        agent.llm.chat.completions.create = AsyncMock(side_effect=[
-            make_tool_stream() for _ in range(MAX_TOOL_ROUNDS)
-        ])
+        agent.llm.chat.completions.create = AsyncMock(
+            side_effect=[make_tool_stream() for _ in range(MAX_TOOL_ROUNDS)]
+        )
         agent.memory.get = AsyncMock(return_value="val")
 
         event = {"type": "web", "from": "test-chat", "content": "loop"}
@@ -344,12 +352,18 @@ class TestTextToolCallStreamIntegration:
         events = await _collect(agent.process_event_stream(event))
 
         # JSON should NOT appear as a chunk (buffered, not streamed)
-        json_chunks_found = [e for e in events if e.get("type") == "chunk" and "{" in e.get("text", "")]
+        json_chunks_found = [
+            e for e in events if e.get("type") == "chunk" and "{" in e.get("text", "")
+        ]
         assert len(json_chunks_found) == 0
 
         # Should have status event, natural language chunk, done
-        assert any(e.get("type") == "status" and "recall" in e.get("text", "") for e in events)
-        assert any(e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events)
+        assert any(
+            e.get("type") == "status" and "recall" in e.get("text", "") for e in events
+        )
+        assert any(
+            e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events
+        )
         assert events[-1] == {"type": "done"}
 
         # LLM called twice
@@ -431,7 +445,9 @@ class TestFindEventGuard:
         agent, cal = self._make_agent_with_calendar()
         cal.find_by_query = AsyncMock(return_value=[{"summary": "Mama Geburtstag"}])
 
-        tc = self._make_tool_call({"query": "Mama", "calendar": "Geburtstage", "date_from": "2026-03-01"})
+        tc = self._make_tool_call(
+            {"query": "Mama", "calendar": "Geburtstage", "date_from": "2026-03-01"}
+        )
         result = await agent._execute_tool_call(tc)
 
         cal.find_by_query.assert_called_once_with(

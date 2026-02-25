@@ -1,0 +1,21 @@
+# .pre-commit-config.yaml
+repos:
+  # --- Secret Scanning ---
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.88.0  # Aktuelle Version prüfen: https://github.com/trufflesecurity/trufflehog/releases
+    hooks:
+      - id: trufflehog
+        name: TruffleHog Secret Scan
+        entry: trufflehog git file://. --since-commit HEAD --results=verified,unknown --fail
+        language: system
+        stages: [pre-commit]
+
+  # --- Python Linting ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6  # Aktuelle Version prüfen: https://github.com/astral-sh/ruff-pre-commit/releases
+    hooks:
+      - id: ruff
+        name: Ruff Lint
+        args: [--fix]
+      - id: ruff-format
+        name: Ruff Format
