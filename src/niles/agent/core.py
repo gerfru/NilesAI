@@ -72,10 +72,10 @@ TOOLS = [
             "description": (
                 "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
                 "Suche nach Kontaktname oder Telefonnummer. "
-                "Gibt einen formatierten Chat-Verlauf zurueck "
-                "(Transcript mit Zeitstempel, Absender und Text). "
-                "Nutze dieses Tool wenn der Benutzer fragt was ihm jemand "
-                "geschrieben hat oder die letzten Nachrichten sehen will."
+                "Gibt ein Transcript zurueck. "
+                "Nach dem Lesen: fasse die wichtigsten Punkte zusammen "
+                "(Termine, Abmachungen, offene Fragen, wichtige Infos). "
+                "Gib NICHT das rohe Transcript wieder."
             ),
             "parameters": {
                 "type": "object",
@@ -85,10 +85,6 @@ TOOLS = [
                         "description": (
                             "Kontaktname oder Telefonnummer (erforderlich)."
                         ),
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximale Anzahl (Standard: 10, Max: 50).",
                     },
                 },
                 "required": ["contact"],
@@ -548,7 +544,13 @@ class NilesAgent:
             _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
             all_tools = [t for t in all_tools if t["function"]["name"] not in _wa_tools]
         if self.mcp:
-            all_tools.extend(self.mcp.get_openai_tools())
+            mcp_tools = self.mcp.get_openai_tools()
+            all_tools.extend(mcp_tools)
+            if mcp_tools and logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "MCP tools added: %s",
+                    [t["function"]["name"] for t in mcp_tools],
+                )
         return chat_id, messages, all_tools
 
     _SOURCE_CACHE_TTL = 300  # 5 minutes
@@ -885,7 +887,6 @@ class NilesAgent:
 
         if name == "get_whatsapp_messages":
             contact = args.get("contact", "").strip().lstrip("@")
-            limit = min(int(args.get("limit", 10)), 50)
 
             # Resolve contact → phone
             phone = None
@@ -905,7 +906,7 @@ class NilesAgent:
             instance = await self._resolve_wa_instance(chat_id)
 
             messages = await self.whatsapp.fetch_messages(
-                remote_jid=jid, limit=limit, instance=instance,
+                remote_jid=jid, instance=instance,
             )
             if not messages:
                 return {
@@ -923,9 +924,33 @@ class NilesAgent:
                 who = "Du" if msg["from_me"] else contact_name
                 lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
             transcript = "\n".join(lines)
+
+            # Compute date range for LLM context
+            first_dt = datetime.fromtimestamp(
+                messages[0]["timestamp"], tz=timezone.utc,
+            )
+            last_dt = datetime.fromtimestamp(
+                messages[-1]["timestamp"], tz=timezone.utc,
+            )
+            if first_dt.date() == last_dt.date():
+                date_range = first_dt.strftime("%d.%m.%Y")
+            else:
+                date_range = (
+                    f"{first_dt.strftime('%d.%m.%Y')}"
+                    f" \u2013 "
+                    f"{last_dt.strftime('%d.%m.%Y')}"
+                )
+
             return {
                 "chat_with": contact_name,
                 "count": len(messages),
+                "date_range": date_range,
+                "hinweis": (
+                    f"{len(messages)} Nachrichten ({date_range}). "
+                    "Fasse die wichtigsten Punkte zusammen: "
+                    "Termine, Abmachungen, offene Fragen, wichtige Infos. "
+                    "Gib NICHT das rohe Transcript wieder."
+                ),
                 "transcript": transcript,
             }
 
