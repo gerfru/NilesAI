@@ -70,9 +70,7 @@ class SettingsStore:
 
     async def get_all(self) -> dict[str, Any]:
         """Load all persisted overrides."""
-        rows = await self.pool.fetch(
-            "SELECT key, value FROM settings_overrides"
-        )
+        rows = await self.pool.fetch("SELECT key, value FROM settings_overrides")
         result = {}
         for row in rows:
             try:
@@ -103,7 +101,9 @@ class SettingsStore:
                 ) from exc
 
         # Validate briefing time format (HH:MM, 00:00–23:59)
-        if key in ("briefing_daily_time", "briefing_weekly_time") and isinstance(value, str):
+        if key in ("briefing_daily_time", "briefing_weekly_time") and isinstance(
+            value, str
+        ):
             if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", value):
                 raise ValueError(
                     f"Invalid time format: '{value}' (expected HH:MM, 00:00–23:59)"
@@ -125,6 +125,4 @@ class SettingsStore:
     async def delete(self, key: str) -> None:
         """Remove a setting override (revert to env/default)."""
         _validate_key(key)
-        await self.pool.execute(
-            "DELETE FROM settings_overrides WHERE key = $1", key
-        )
+        await self.pool.execute("DELETE FROM settings_overrides WHERE key = $1", key)

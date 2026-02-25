@@ -1,90 +1,89 @@
-# Niles AI Core -- Technische Spezifikation
+# Niles AI Core -- Technical Specification
 
-> **Version:** 7.0
-> **Stand:** 2026-02-25
-> **Status:** Stage 1-7, 9-10 abgeschlossen. PR #22-26, #29 abgeschlossen. Stage 8 geplant.
+> **Version:** 7.1
+> **Updated:** 2026-02-25
 
 ---
 
-## 1. Projektuebersicht
+## 1. Project Overview
 
 ### 1.1 Vision
 
-Niles ist ein lokaler, privater AI-Butler auf einem Mac Mini M4. Er empfaengt Events aus verschiedenen Quellen (WhatsApp, Web-UI, API), verarbeitet sie mit einem lokalen LLM und fuehrt Aktionen aus.
+Niles is a local, private AI butler on a Mac Mini M4. It receives events from various sources (WhatsApp, web UI, API), processes them with a local LLM, and executes actions.
 
-### 1.2 Kernprinzipien
+### 1.2 Core Principles
 
 - **KISS** -- Keep It Simple, Stupid
-- **100% Lokal** -- Keine Cloud-Abhaengigkeiten fuer Core-Funktionen
-- **Privacy First** -- Alle Daten bleiben auf dem eigenen Server
-- **Erweiterbar** -- MCP-Protokoll fuer Community-Module
+- **100% Local** -- No cloud dependencies for core functionality
+- **Privacy First** -- All data stays on your own server
+- **Extensible** -- MCP protocol for community modules
 
-### 1.3 Infrastruktur
+### 1.3 Infrastructure
 
-| Komponente | Interner Port | Externer Zugang | Zweck |
-| ---------- | ------------- | --------------- | ----- |
-| Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM Inference (OpenAI-kompatibel) |
-| PostgreSQL | 5432 | Nicht exponiert | Datenbank (evolution_db) |
-| Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp Gateway |
-| Niles Core (FastAPI) | 8000 | `https://localhost` | Python Backend + Web-UI |
-| Vikunja | 3456 | `http://localhost:3456` | Todo/Task Management |
-| Caddy | -- | :443, :8443 | HTTPS Reverse Proxy |
+| Component | Internal Port | External Access | Purpose |
+| --------- | ------------- | --------------- | ------- |
+| Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM inference (OpenAI-compatible) |
+| PostgreSQL | 5432 | Not exposed | Database (evolution_db) |
+| Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp gateway |
+| Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
+| Vikunja | 3456 | `http://localhost:3456` | Todo/task management |
+| Caddy | -- | :443, :8443 | HTTPS reverse proxy |
 
-**Netzwerk-Architektur:** Alle Docker-Services kommunizieren intern via HTTP. Externer Zugriff ausschliesslich ueber Caddy (HTTPS, self-signed). PostgreSQL und Service-Ports sind nicht exponiert.
+**Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed.
 
-**Datenbank:** `evolution_db`, User `evolution`, Passwort via `EVOLUTION_POSTGRES_PASSWORD`. Vikunja verwendet eine eigene Datenbank `vikunja_db` (einmalig: `CREATE DATABASE vikunja_db OWNER evolution;`).
+**Database:** `evolution_db`, user `evolution`, password via `EVOLUTION_POSTGRES_PASSWORD`. Vikunja uses its own database `vikunja_db` (one-time: `CREATE DATABASE vikunja_db OWNER evolution;`).
 
 ---
 
-## 2. Architektur
+## 2. Architecture
 
-### 2.1 Systemuebersicht
+### 2.1 System Overview
 
 ```text
-Externe Clients (Browser, curl, Tailscale)
+External Clients (Browser, curl, Tailscale)
     |
     v HTTPS (self-signed)
-┌─────────────────────────────────────────┐
-│  Caddy Reverse Proxy                    │
-│  :443 -> niles_core:8000                │
-│  :8443 -> evolution_api:8080            │
-│  Security Headers, Access Logs          │
-└──────────────┬──────────────────────────┘
-               | HTTP (intern)
-               v
++---------------------------------------------+
+|  Caddy Reverse Proxy                        |
+|  :443 -> niles_core:8000                    |
+|  :8443 -> evolution_api:8080                |
+|  Security Headers, Access Logs              |
++-------------------+-------------------------+
+                    | HTTP (internal)
+                    v
 Event Sources                Niles Core (FastAPI :8000)              External
-                         ┌────────────────────────────────┐
-WhatsApp ─── Webhook ──> │  sources/whatsapp.py           │
-                         │         │                      │
-Browser ─── /ui/* ─────> │  sources/web.py (htmx/Jinja2) │
-                         │    │ Google OAuth + Sessions    │
-                         │    │                           │
-                         │         v                      │
-POST /chat  ──────────> │  agent/core.py (NilesAgent)    │──> Ollama :11434
-                         │    │  Tool-Call Loop (max 5)   │
-                         │    │                           │
-                         │    ├─ memory/store.py          │──> PostgreSQL :5432
-                         │    ├─ memory/history.py        │──> PostgreSQL :5432
-                         │    ├─ actions/contacts.py      │──> PostgreSQL :5432
-                         │    ├─ actions/whatsapp.py      │──> Evolution API :8080
-                         │    ├─ actions/calendar.py      │──> PostgreSQL :5432
-                         │    └─ actions/tasks.py         │──> Vikunja :3456
-                         │                                │
-                         │  Middleware:                    │
-                         │    SecurityHeadersMiddleware    │
-                         │    RateLimitMiddleware (60/min) │
-                         │    API Key Auth (X-API-Key)     │
-                         │                                │
-                         │  GET  /health (unauthenticated) │
-                         │  POST /chat (authenticated)    │
-                         │  POST /webhook/whatsapp (token) │
-                         │  /ui/* (Session Cookie / OAuth) │
-                         └────────────────────────────────┘
+                         +--------------------------------+
+WhatsApp --- Webhook --> |  sources/whatsapp.py           |
+                         |         |                      |
+Browser --- /ui/* -----> |  sources/web.py (htmx/Jinja2)  |
+                         |    | Google OAuth + Sessions   |
+                         |    |                           |
+                         |         v                      |
+POST /chat  ---------->  |  agent/core.py (NilesAgent)    |--> Ollama :11434
+                         |    |  Tool-Call Loop (max 5)   |
+                         |    |                           |
+                         |    +- memory/store.py          |--> PostgreSQL :5432
+                         |    +- memory/history.py        |--> PostgreSQL :5432
+                         |    +- actions/contacts.py      |--> PostgreSQL :5432
+                         |    +- actions/whatsapp.py      |--> Evolution API :8080
+                         |    +- actions/calendar.py      |--> PostgreSQL :5432
+                         |    +- actions/tasks.py         |--> Vikunja :3456
+                         |                                |
+                         |  Middleware:                   |
+                         |    SecurityHeadersMiddleware   |
+                         |    RateLimitMiddleware (60/min)|
+                         |    API Key Auth (X-API-Key)    |
+                         |                                |
+                         |  GET  /health (unauthenticated)|
+                         |  POST /chat (authenticated)    |
+                         |  POST /webhook/whatsapp (token)|
+                         |  /ui/* (Session Cookie / OAuth)|
+                         +--------------------------------+
 ```
 
-Alle Komponenten laufen in Docker-Containern im selben Netzwerk (`niles_network`). Ollama laeuft nativ auf dem Host und ist ueber `host.docker.internal:11434` erreichbar.
+All components run in Docker containers on the same network (`niles_network`). Ollama runs natively on the host and is reachable via `host.docker.internal:11434`.
 
-### 2.2 Ordnerstruktur
+### 2.2 Directory Structure
 
 ```text
 Niles/
@@ -93,40 +92,40 @@ Niles/
 │       ├── __init__.py
 │       ├── main.py                   # FastAPI + Lifespan + Middleware
 │       ├── config.py                 # Pydantic Settings + apply_overrides
-│       ├── user_store.py             # User-Verwaltung (Google OAuth)
-│       ├── settings_store.py         # Runtime Settings Overrides (PostgreSQL)
-│       ├── whatsapp_store.py        # Per-User WhatsApp Sessions (PostgreSQL)
+│       ├── user_store.py             # User management (Google OAuth)
+│       ├── settings_store.py         # Runtime settings overrides (PostgreSQL)
+│       ├── whatsapp_store.py        # Per-user WhatsApp sessions (PostgreSQL)
 │       ├── agent/
-│       │   ├── core.py               # NilesAgent, Tool-Definitionen
-│       │   └── prompts.py            # System Prompt laden/bauen
+│       │   ├── core.py               # NilesAgent, tool definitions
+│       │   └── prompts.py            # System prompt loading/building
 │       ├── memory/
-│       │   ├── store.py              # Key-Value Memory (PostgreSQL)
-│       │   └── history.py            # Konversations-Historie
+│       │   ├── store.py              # Key-value memory (PostgreSQL)
+│       │   └── history.py            # Conversation history
 │       ├── actions/
-│       │   ├── briefing.py           # BriefingGenerator (Tages-/Wochen-Uebersicht)
-│       │   ├── whatsapp.py           # WhatsApp senden (Evolution API)
-│       │   ├── contacts.py           # Kontakt-Lookup + normalize_phone
-│       │   ├── calendar.py           # Kalender-Abfragen
-│       │   └── tasks.py              # Vikunja Task Management
+│       │   ├── briefing.py           # BriefingGenerator (daily/weekly overview)
+│       │   ├── whatsapp.py           # WhatsApp send (Evolution API)
+│       │   ├── contacts.py           # Contact lookup + normalize_phone
+│       │   ├── calendar.py           # Calendar queries
+│       │   └── tasks.py              # Vikunja task management
 │       ├── jobs/
-│       │   └── briefing.py           # Scheduler-Jobs fuer Briefing
+│       │   └── briefing.py           # Scheduler jobs for briefing
 │       ├── sources/
-│       │   ├── whatsapp.py           # Webhook-Handler (Token-Auth)
-│       │   └── web.py                # Web-UI Router (OAuth, htmx, Sessions)
+│       │   ├── whatsapp.py           # Webhook handler (token auth)
+│       │   └── web.py                # Web UI router (OAuth, htmx, sessions)
 │       ├── sync/
-│       │   ├── carddav.py            # CardDAV Kontakt-Sync
-│       │   ├── caldav.py             # CalDAV Kalender-Sync
+│       │   ├── carddav.py            # CardDAV contact sync
+│       │   ├── caldav.py             # CalDAV calendar sync
 │       │   ├── google_auth.py        # Google Calendar OAuth (Bearer + Refresh)
-│       │   ├── ical_parser.py        # Shared iCalendar Parser
-│       │   └── manager.py            # CalendarSourceManager (CRUD, Sync, Migration)
+│       │   ├── ical_parser.py        # Shared iCalendar parser
+│       │   └── manager.py            # CalendarSourceManager (CRUD, sync, migration)
 │       ├── mcp/
-│       │   └── client.py             # MCP Server Manager
+│       │   └── client.py             # MCP server manager
 │       ├── templates/
 │       │   ├── base.html             # Layout (Nav, CSP, Tailwind CSS, htmx)
-│       │   ├── login.html            # Login (Google + API-Key Fallback)
-│       │   ├── chat.html             # Chat-UI mit SSE Streaming
-│       │   ├── settings.html         # Settings Dashboard
-│       │   └── fragments/            # htmx-Fragmente
+│       │   ├── login.html            # Login (Google + API key fallback)
+│       │   ├── chat.html             # Chat UI with SSE streaming
+│       │   ├── settings.html         # Settings dashboard
+│       │   └── fragments/            # htmx fragments
 │       │       ├── message.html
 │       │       ├── history.html
 │       │       ├── toast.html
@@ -134,144 +133,144 @@ Niles/
 │       │       └── calendar_sources.html
 │       └── static/
 │           ├── css/
-│           │   ├── input.css         # Tailwind Direktiven + Custom Components
-│           │   └── style.css         # Generierter Tailwind Output
-│           └── js/app.js             # SSE Streaming, Dark Mode, CSRF
+│           │   ├── input.css         # Tailwind directives + custom components
+│           │   └── style.css         # Generated Tailwind output
+│           └── js/app.js             # SSE streaming, dark mode, CSRF
 ├── tests/
-│   ├── conftest.py                   # Shared Fixtures (Env-Variablen)
-│   ├── test_config.py               # Settings-Validierung
-│   ├── test_contacts.py             # ContactsAction, normalize_phone, Multi-Phone
-│   ├── test_core.py                 # NilesAgent, Tool-Call-Pipeline
-│   ├── test_health.py               # GET /health Endpoint
+│   ├── conftest.py                   # Shared fixtures (env variables)
+│   ├── test_config.py               # Settings validation
+│   ├── test_contacts.py             # ContactsAction, normalize_phone, multi-phone
+│   ├── test_core.py                 # NilesAgent, tool-call pipeline
+│   ├── test_health.py               # GET /health endpoint
 │   ├── test_memory.py               # MemoryStore, ConversationHistory
-│   ├── test_features.py             # Feature Flags + Webhook Auth
-│   ├── test_carddav.py              # CardDAV Sync
-│   ├── test_caldav.py               # CalDAV Sync
-│   ├── test_ical_parser.py          # iCalendar Parser
-│   ├── test_rrule_expansion.py      # RRULE Expansion (Wiederkehrende Termine)
-│   ├── test_calendar_manager.py     # CalendarSourceManager (CRUD, Sync, Migration)
-│   ├── test_calendar_improvements.py # Kalender Query-Verbesserungen
-│   ├── test_google_auth.py          # Google Calendar OAuth (Token Refresh)
-│   ├── test_mcp.py                  # MCP Integration
-│   ├── test_security.py             # API Auth, Rate Limiting
-│   ├── test_settings_store.py       # Runtime Settings Store
-│   ├── test_web.py                  # Web-UI, Google OAuth, Sessions, CSRF
-│   ├── test_whatsapp_sessions.py    # Per-User WhatsApp Sessions
-│   ├── test_tasks.py                # Vikunja Task Management
-│   ├── test_self_chat.py            # WhatsApp Self-Chat Trigger
-│   └── test_briefing.py             # BriefingGenerator + Zeitparsing
+│   ├── test_features.py             # Feature flags + webhook auth
+│   ├── test_carddav.py              # CardDAV sync
+│   ├── test_caldav.py               # CalDAV sync
+│   ├── test_ical_parser.py          # iCalendar parser
+│   ├── test_rrule_expansion.py      # RRULE expansion (recurring events)
+│   ├── test_calendar_manager.py     # CalendarSourceManager (CRUD, sync, migration)
+│   ├── test_calendar_improvements.py # Calendar query improvements
+│   ├── test_google_auth.py          # Google Calendar OAuth (token refresh)
+│   ├── test_mcp.py                  # MCP integration
+│   ├── test_security.py             # API auth, rate limiting
+│   ├── test_settings_store.py       # Runtime settings store
+│   ├── test_web.py                  # Web UI, Google OAuth, sessions, CSRF
+│   ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
+│   ├── test_tasks.py                # Vikunja task management
+│   ├── test_self_chat.py            # WhatsApp self-chat trigger
+│   └── test_briefing.py             # BriefingGenerator + time parsing
 ├── config/
-│   └── soul.md                       # Agent-Persoenlichkeit
+│   └── soul.md                       # Agent personality
 ├── docker/
 │   ├── docker-compose.yml
-│   ├── Dockerfile.niles              # Non-root User (UID 1000)
-│   └── Caddyfile                     # HTTPS, Security Headers, Access Logs
+│   ├── Dockerfile.niles              # Non-root user (UID 1000)
+│   └── Caddyfile                     # HTTPS, security headers, access logs
 ├── scripts/
-│   ├── dev.sh                        # Lokaler Dev-Server
-│   ├── test.sh                       # pytest Runner
-│   ├── build.sh                      # Docker Images bauen
-│   ├── start.sh                      # Docker starten
-│   ├── stop.sh                       # Docker stoppen
-│   └── status.sh                     # Service-Status pruefen
+│   ├── dev.sh                        # Local dev server
+│   ├── test.sh                       # pytest runner
+│   ├── build.sh                      # Docker image build
+│   ├── start.sh                      # Docker start
+│   ├── stop.sh                       # Docker stop
+│   └── status.sh                     # Service status check
 ├── docs/
-├── tailwind.config.js          # Tailwind CSS Konfiguration
+├── tailwind.config.js          # Tailwind CSS configuration
 ├── pyproject.toml
 ├── .env
 └── .env.example
 ```
 
-### 2.3 Datenfluss: WhatsApp-Nachricht
+### 2.3 Data Flow: WhatsApp Message
 
 ```text
-1. Evolution API empfaengt WhatsApp-Nachricht
-2. Evolution API sendet Webhook POST an /webhook/whatsapp
-3. sources/whatsapp.py filtert auf messages.upsert
-   3a. Eigene Nachrichten (fromMe=true):
-       - "Hey Niles" Trigger → Agent verarbeitet, Antwort senden (Self-Chat)
-       - Ohne Trigger → Ignorieren (Notizen, Links etc.)
-   3b. Fremde Nachrichten → ignorieren (kein LLM-Call, kein Web-Chat, kein Auto-Reply).
-       Evolution API speichert Nachrichten intern. Agent liest via findMessages API.
-4. [Self-Chat] Extrahiert Absender (JID -> Telefonnummer) und Text
-5. Erstellt Event: {"type": "whatsapp", "from": "wa-self-{nr}", "content": "..."}
-6. Ruft agent.process_event(event) auf
-   6a. Laedt alle Memory-Eintraege -> injiziert in System Prompt
-   6b. Laedt letzte 20 Nachrichten der Konversation
-   6c. Baut Messages: [system, ...history, user]
-   6d. Speichert User-Nachricht in History
-   6e. Ruft LLM auf (OpenAI-kompatible API)
-   6f. Falls Tool-Calls: ausfuehren, Ergebnisse zurueck an LLM (max 5 Runden)
-   6g. Speichert Antwort in History
-7. Self-Chat: sources/whatsapp.py sendet Antwort via WhatsAppAction zurueck
-   Fremde: Nachricht von Evolution API gespeichert (abfragbar via get_whatsapp_messages Tool)
-8. Gibt HTTP 200 zurueck (unabhaengig vom Ergebnis)
+1. Evolution API receives WhatsApp message
+2. Evolution API sends webhook POST to /webhook/whatsapp
+3. sources/whatsapp.py filters on messages.upsert
+   3a. Own messages (fromMe=true):
+       - "Hey Niles" trigger -> Agent processes, sends response (self-chat)
+       - Without trigger -> Ignore (notes, links, etc.)
+   3b. External messages -> Ignored (no LLM call, no web chat, no auto-reply).
+       Evolution API stores messages internally. Agent reads via findMessages API.
+4. [Self-Chat] Extracts sender (JID -> phone number) and text
+5. Creates event: {"type": "whatsapp", "from": "wa-self-{nr}", "content": "..."}
+6. Calls agent.process_event(event)
+   6a. Loads all memory entries -> injects into system prompt
+   6b. Loads last 20 messages of the conversation
+   6c. Builds messages: [system, ...history, user]
+   6d. Saves user message in history
+   6e. Calls LLM (OpenAI-compatible API)
+   6f. If tool calls: execute, feed results back to LLM (max 5 rounds)
+   6g. Saves response in history
+7. Self-chat: sources/whatsapp.py sends response via WhatsAppAction
+   External: Message stored by Evolution API (queryable via get_whatsapp_messages tool)
+8. Returns HTTP 200 (regardless of result)
 ```
 
-### 2.4 Datenfluss: Web-UI Chat (SSE Streaming)
+### 2.4 Data Flow: Web UI Chat (SSE Streaming)
 
 ```text
-1. User oeffnet /ui/chat (GET)
-2. sources/web.py prueft signierte Session-Cookie (itsdangerous)
-3. Laedt per-User Chat-History (chat_id = "web-user-{uid}")
-4. Rendert chat.html mit Jinja2, setzt CSRF-Cookie
-5. User sendet Nachricht (Enter/Senden-Button)
-6. JavaScript: User-Bubble sofort anzeigen, Input leeren, "Niles denkt nach..." anzeigen
-7. fetch() POST an /ui/api/chat/stream (SSE)
-8. sources/web.py prueft Session + CSRF (Double-Submit Pattern)
-9. Erstellt Event: {"type": "web", "from": "web-user-1", "content": "..."}
-10. Ruft agent.process_event_stream(event) auf
-    10a. Tool-Calls laufen nicht-streaming (yield status updates)
-    10b. Finale Antwort wird gestreamt (yield chunks Wort fuer Wort)
-11. JavaScript: Assistant-Bubble erstellen, Text chunk-weise einfuegen
-12. Nach Stream-Ende: Markdown rendern (marked.js + DOMPurify)
+1. User opens /ui/chat (GET)
+2. sources/web.py checks signed session cookie (itsdangerous)
+3. Loads per-user chat history (chat_id = "web-user-{uid}")
+4. Renders chat.html with Jinja2, sets CSRF cookie
+5. User sends message (Enter/Send button)
+6. JavaScript: Display user bubble immediately, clear input, show "Niles is thinking..."
+7. fetch() POST to /ui/api/chat/stream (SSE)
+8. sources/web.py checks session + CSRF (Double-Submit Pattern)
+9. Creates event: {"type": "web", "from": "web-user-1", "content": "..."}
+10. Calls agent.process_event_stream(event)
+    10a. Tool calls run non-streaming (yield status updates)
+    10b. Final response is streamed (yield chunks word by word)
+11. JavaScript: Create assistant bubble, insert text chunk by chunk
+12. After stream end: Render markdown (marked.js + DOMPurify)
 ```
 
-### 2.5 Datenfluss: Google OAuth Login
+### 2.5 Data Flow: Google OAuth Login
 
 ```text
-1. User klickt "Mit Google anmelden" auf /ui/login
-2. Redirect zu Google OAuth (/ui/login/google)
-   - State-Token als Cookie gesetzt (CSRF-Schutz)
-   - Redirect URI aus BASE_URL (oder Request Headers als Fallback)
-3. Google zeigt Consent Screen (openid email profile)
-4. Google Callback an /ui/callback/google mit Auth-Code
-5. Server prueft State-Token, tauscht Code gegen Access-Token
-6. Server ruft Google Userinfo API auf (Email, Name, Avatar)
-7. Prueft email_verified und GOOGLE_ALLOWED_EMAILS Whitelist
+1. User clicks "Sign in with Google" on /ui/login
+2. Redirect to Google OAuth (/ui/login/google)
+   - State token set as cookie (CSRF protection)
+   - Redirect URI from BASE_URL (or request headers as fallback)
+3. Google shows consent screen (openid email profile)
+4. Google callback to /ui/callback/google with auth code
+5. Server checks state token, exchanges code for access token
+6. Server calls Google Userinfo API (email, name, avatar)
+7. Checks email_verified and GOOGLE_ALLOWED_EMAILS whitelist
 8. user_store.create_or_update() -> INSERT ON CONFLICT UPDATE
-9. Signierte Session-Cookie setzen (itsdangerous, 30 Tage)
-10. Redirect zu /ui/chat
+9. Set signed session cookie (itsdangerous, 30 days)
+10. Redirect to /ui/chat
 ```
 
 ---
 
-## 3. Komponenten
+## 3. Components
 
 ### 3.1 FastAPI Main (`src/niles/main.py`)
 
-Einstiegspunkt. Verwaltet den Application Lifecycle via `lifespan()`:
+Entry point. Manages the application lifecycle via `lifespan()`:
 
-1. Settings laden (ValidationError bei fehlenden Secrets -> `sys.exit(1)`)
-2. Logging konfigurieren (Level via `LOG_LEVEL` Env-Variable)
-3. NILES_API_KEY pruefen (auto-generiert wenn nicht gesetzt, Key wird nicht geloggt)
-4. asyncpg Connection Pool erstellen (min=2, max=10)
-5. MemoryStore + ConversationHistory initialisieren (CREATE TABLE IF NOT EXISTS)
-6. UserStore initialisieren (Users-Tabelle fuer Google OAuth)
-7. WhatsAppSessionStore initialisieren (Per-User WhatsApp Sessions)
-8. SettingsStore initialisieren (Runtime Overrides aus DB laden)
-9. CardDAV Sync initialisieren (+ Scheduler wenn carddav_url konfiguriert)
-10. CalDAV Sync initialisieren (Legacy, wenn caldav_url konfiguriert)
-11. CalendarSourceManager initialisieren (DB-Schema, Auto-Migration von .env CalDAV-Config, Sync-Scheduler)
-12. APScheduler starten (CardDAV 03:00, Kalenderquellen 03:20)
-13. MCP Manager starten
-14. Actions und Agent instanziieren (inkl. wa_store)
-15. Alles auf `app.state` speichern
+1. Load settings (ValidationError on missing secrets -> `sys.exit(1)`)
+2. Configure logging (level via `LOG_LEVEL` env variable)
+3. Check NILES_API_KEY (auto-generated if not set, key is not logged)
+4. Create asyncpg connection pool (min=2, max=10)
+5. Initialize MemoryStore + ConversationHistory (CREATE TABLE IF NOT EXISTS)
+6. Initialize UserStore (users table for Google OAuth)
+7. Initialize WhatsAppSessionStore (per-user WhatsApp sessions)
+8. Initialize SettingsStore (load runtime overrides from DB)
+9. Initialize CardDAV sync (+ scheduler when carddav_url configured)
+10. Initialize CalDAV sync (legacy, when caldav_url configured)
+11. Initialize CalendarSourceManager (DB schema, auto-migration from .env CalDAV config, sync scheduler)
+12. Start APScheduler (CardDAV 03:00, calendar sources 03:20)
+13. Start MCP manager
+14. Instantiate actions and agent (incl. wa_store)
+15. Save everything to `app.state`
 
 **Middleware:**
 
 - `SecurityHeadersMiddleware` (X-Content-Type-Options, X-Frame-Options, etc.)
-- `RateLimitMiddleware` (60 req/min pro IP, /health und /static exempt, max 10.000 IPs tracked)
+- `RateLimitMiddleware` (60 req/min per IP, /health and /static exempt, max 10,000 IPs tracked)
 
-**Endpoints:** siehe `docs/API.md`.
+**Endpoints:** See `docs/API.md`.
 
 ### 3.2 Config (`src/niles/config.py`)
 
@@ -292,6 +291,8 @@ class Settings(BaseSettings):
     evolution_api_url: str = "http://evolution_api:8080"
     evolution_api_key: str  # Required
     evolution_instance: str = "niles-whatsapp"
+    # Internal base URL for webhooks (Evolution API -> Niles Core, Docker-internal)
+    webhook_base_url: str = "http://niles_core:8000"
     # Auth
     niles_api_key: str      # Auto-generated via secrets.token_urlsafe(32)
     session_secret: str     # Auto-generated via secrets.token_urlsafe(64)
@@ -299,12 +300,12 @@ class Settings(BaseSettings):
     # Timezone
     timezone: str = "Europe/Vienna"
     # Features
-    feature_whatsapp_send_others: bool = True  # Darf Niles anderen WhatsApp senden?
+    feature_whatsapp_send_others: bool = True  # May Niles send WhatsApp to others?
     # CardDAV (configured via Settings UI)
     carddav_url: str = ""
     carddav_user: str = ""
     carddav_password: str = ""
-    # CalDAV (Legacy, auto-migriert in calendar_sources)
+    # CalDAV (Legacy, auto-migrated into calendar_sources)
     caldav_url: str = "https://dav.mailbox.org/caldav/"
     caldav_user: str = ""
     caldav_password: str = ""
@@ -320,25 +321,25 @@ class Settings(BaseSettings):
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
-    briefing_daily_time: str = "07:30"        # HH:MM, Mo-Fr
-    briefing_weekly_time: str = "07:15"       # HH:MM, Montag
+    briefing_daily_time: str = "07:30"        # HH:MM, Mon-Fri
+    briefing_weekly_time: str = "07:15"       # HH:MM, Monday
 ```
 
-Laedt aus `.env` und Environment-Variablen. `extra = "ignore"`.
+Loads from `.env` and environment variables. `extra = "ignore"`.
 
-`apply_overrides(settings, overrides)` gibt eine neue Settings-Instanz mit den uebergebenen Werten zurueck (via `model_copy`).
+`apply_overrides(settings, overrides)` returns a new Settings instance with the provided values (via `model_copy`).
 
-Vollstaendige Settings-Tabelle mit Defaults und Env-Variablen: siehe §6.1.
+Complete settings table with defaults and env variables: see #6.1.
 
 ### 3.3 Agent Core (`src/niles/agent/core.py`)
 
-`NilesAgent` verarbeitet Events ueber eine Tool-Call-Pipeline:
+`NilesAgent` processes events through a tool-call pipeline:
 
 ```python
 class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
                  mcp_manager, calendar, calendar_manager, wa_store,
-                 tasks=None): ...
+                 tasks=None, vikunja_store=None): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call, chat_id) -> dict: ...
@@ -346,45 +347,45 @@ class NilesAgent:
     async def _handle_phone_choice(self, chat_id, content) -> str | None: ...
 ```
 
-`process_event_stream()` ist ein Async-Generator fuer SSE Streaming. Tool-Calls laufen nicht-streaming (yield `{"type": "status"}`), die finale Antwort wird Wort fuer Wort gestreamt (yield `{"type": "chunk"}`). Am Ende yield `{"type": "done"}`.
+`process_event_stream()` is an async generator for SSE streaming. Tool calls run non-streaming (yield `{"type": "status"}`), the final response is streamed word by word (yield `{"type": "chunk"}`). At the end yield `{"type": "done"}`.
 
-**Event-Format:**
+**Event format:**
 
 ```json
 {"type": "whatsapp|chat|web", "from": "436601234...|api|web-user-1", "content": "..."}
 ```
 
-**Registrierte Tools:**
+**Registered tools:**
 
-| Tool | Parameter | Beschreibung |
-| ---- | --------- | ------------ |
-| `find_contact` | `name: str` | Kontaktsuche in PostgreSQL. Gibt `full_name`, `phone` (bevorzugte), `phones` (alle mit Typ), `email` zurueck. |
-| `send_whatsapp` | `to: str, text: str` | Nachricht senden (Nummer oder Name). Multi-Phone: fragt User bei mehreren Nummern (TTL 5 min). Per-User Instance Resolution. |
-| `get_whatsapp_messages` | `contact: str, limit?: int` | WhatsApp-Chatverlauf lesen (nach Kontaktname oder Telefonnummer). Max 50, 30-Tage-Window. Via Evolution API `findMessages`. Result enthaelt `date_range` und `hinweis` fuer LLM-Zusammenfassung. |
-| `remember` | `key: str, value: str` | Fakt im Memory speichern |
-| `recall` | `key: str` | Fakt aus Memory abrufen |
-| `find_event` | `query?, date_from?, date_to?, calendar?` | Kalender-Events suchen (max 10 Ergebnisse). Unterstuetzt Datumsfilter und Kalender-Auswahl. |
-| `create_event` | `summary: str, start: str, end?, description?, location?` | Kalender-Event auf beschreibbarer Quelle erstellen (via CalendarSourceManager). |
-| `list_tasks` | `project?, include_done?` | Offene Aufgaben aus Vikunja auflisten (max 50). Feature-Flag: `feature_vikunja`. |
-| `create_task` | `title: str, description?, due_date?, priority?, project?` | Neue Aufgabe in Vikunja erstellen. |
-| `complete_task` | `title: str` | Aufgabe als erledigt markieren (Suche nach Titel). |
+| Tool | Parameters | Description |
+| ---- | ---------- | ----------- |
+| `find_contact` | `name: str` | Contact search in PostgreSQL. Returns `full_name`, `phone` (preferred), `phones` (all with type), `email`. |
+| `send_whatsapp` | `to: str, text: str` | Send message (number or name). Multi-phone: asks user for multiple numbers (TTL 5 min). Per-user instance resolution. |
+| `get_whatsapp_messages` | `contact: str` | Read WhatsApp chat history (by contact name or phone number). 30-day window. Via Evolution API `findMessages`. Result contains `date_range` and `hinweis` for LLM summarization. Media placeholders for images, videos, voice messages, etc. |
+| `remember` | `key: str, value: str` | Store fact in memory |
+| `recall` | `key: str` | Retrieve fact from memory |
+| `find_event` | `query?, date_from?, date_to?, calendar?` | Search calendar events (max 10 results). Supports date filters and calendar selection. |
+| `create_event` | `summary: str, start: str, end?, description?, location?` | Create calendar event on writable source (via CalendarSourceManager). |
+| `list_tasks` | `project?, include_done?` | List open tasks from Vikunja (max 50). Feature flag: `feature_vikunja`. |
+| `create_task` | `title: str, description?, due_date?, priority?, project?` | Create new task in Vikunja. |
+| `complete_task` | `title: str` | Mark task as done (search by title). |
 
-**Pipeline pro Event:**
+**Pipeline per event:**
 
-1. Pending Phone-Choice pruefen (bypass LLM bei Multi-Phone-Auswahl, TTL 5 min)
-2. Alle Memory-Eintraege laden -> in System-Prompt injizieren
-3. Kalenderquellen-Namen laden (gecacht, 5 min TTL) -> in System-Prompt injizieren
-4. Letzte 20 Nachrichten der Konversation laden
-5. Messages bauen: System + History + User
-6. LLM aufrufen (max 5 Tool-Call-Runden)
-7. User- und Assistant-Nachricht zusammen in History speichern (atomar, keine orphaned Records)
-8. Response zurueckgeben
+1. Check pending phone choice (bypass LLM for multi-phone selection, TTL 5 min)
+2. Load all memory entries -> inject into system prompt
+3. Load calendar source names (cached, 5 min TTL) -> inject into system prompt
+4. Load last 20 messages of the conversation
+5. Build messages: System + History + User
+6. Call LLM (max 5 tool-call rounds)
+7. Save user and assistant message together in history (atomic, no orphaned records)
+8. Return response
 
-**Per-User WhatsApp Instance Resolution:** Bei `chat_id` mit Prefix `web-user-` wird die WhatsApp-Instance aus `whatsapp_sessions` aufgeloest. Fallback auf globale Instance (`config.evolution_instance`).
+**Per-user WhatsApp instance resolution:** For `chat_id` with prefix `web-user-`, the WhatsApp instance is resolved from `whatsapp_sessions`. Fallback to global instance (`config.evolution_instance`).
 
 ### 3.4 Memory Store (`src/niles/memory/store.py`)
 
-Key-Value Store in PostgreSQL (Tabelle `memory`).
+Key-value store in PostgreSQL (table `memory`).
 
 ```python
 class MemoryStore:
@@ -393,12 +394,12 @@ class MemoryStore:
     async def set(self, key: str, value: Any) -> None  # UPSERT
     async def delete(self, key: str) -> bool
     async def search(self, prefix: str) -> list[dict]
-    async def list_all(self) -> list[dict]   # Fuer System-Prompt
+    async def list_all(self) -> list[dict]   # For system prompt
 ```
 
 ### 3.5 Conversation History (`src/niles/memory/history.py`)
 
-Per-Chat Nachrichtenverlauf in PostgreSQL (Tabelle `conversations`).
+Per-chat message history in PostgreSQL (table `conversations`).
 
 ```python
 class ConversationHistory:
@@ -408,11 +409,11 @@ class ConversationHistory:
     async def clear(self, chat_id: str) -> int
 ```
 
-`chat_id` entspricht `event["from"]` (Telefonnummer bei WhatsApp, `"api"` bei /chat, `"web-user-{uid}"` bei Web-UI).
+`chat_id` corresponds to `event["from"]` (phone number for WhatsApp, `"api"` for /chat, `"web-user-{uid}"` for web UI).
 
 ### 3.6 User Store (`src/niles/user_store.py`)
 
-User-Verwaltung fuer Google OAuth in PostgreSQL (Tabelle `users`).
+User management for Google OAuth in PostgreSQL (table `users`).
 
 ```python
 class UserStore:
@@ -422,11 +423,11 @@ class UserStore:
     async def get_by_id(self, user_id: int) -> dict | None
 ```
 
-User werden beim ersten Google-Login automatisch erstellt (INSERT ON CONFLICT UPDATE).
+Users are automatically created on first Google login (INSERT ON CONFLICT UPDATE).
 
 ### 3.7 Settings Store (`src/niles/settings_store.py`)
 
-Runtime Setting Overrides in PostgreSQL (Tabelle `settings_overrides`).
+Runtime setting overrides in PostgreSQL (table `settings_overrides`).
 
 ```python
 EDITABLE_SETTINGS = {
@@ -435,6 +436,8 @@ EDITABLE_SETTINGS = {
     "caldav_calendars",
     "carddav_url", "carddav_user", "carddav_password",
     "feature_vikunja",
+    "feature_briefing_daily", "feature_briefing_weekly",
+    "briefing_daily_time", "briefing_weekly_time",
 }
 
 class SettingsStore:
@@ -444,23 +447,24 @@ class SettingsStore:
     async def delete(self, key: str) -> None
 ```
 
-Nur Keys in `EDITABLE_SETTINGS` koennen geaendert werden. Credentials und Infrastruktur-Settings sind gesperrt.
+Only keys in `EDITABLE_SETTINGS` can be changed. Credentials and infrastructure settings are locked.
 
 ### 3.8 WhatsApp Session Store (`src/niles/whatsapp_store.py`)
 
-Per-User WhatsApp Sessions in PostgreSQL (Tabelle `whatsapp_sessions`).
+Per-user WhatsApp sessions in PostgreSQL (table `whatsapp_sessions`).
 
 ```python
 class WhatsAppSessionStore:
     async def initialize(self) -> None
     async def get_session(self, user_id: int) -> dict | None
-    async def get_by_instance(self, instance_name: str) -> dict | None  # Webhook-Routing
+    async def get_by_instance(self, instance_name: str) -> dict | None  # Webhook routing
+    async def get_by_phone(self, phone_number: str) -> dict | None     # Self-chat user resolution
     async def upsert_session(self, user_id, instance_name, status, phone_number) -> None
     async def update_status(self, user_id, status, phone_number) -> None
     async def delete_session(self, user_id: int) -> None
 ```
 
-Jeder Web-UI User kann eine eigene WhatsApp-Instance verbinden (via QR-Code in der Web-UI). Status: `disconnected`, `connecting`, `connected`. Die Instance wird beim Webhook-Empfang zur Chat-ID-Aufloesung verwendet und beim Senden als Absender-Instance.
+Each web UI user can connect their own WhatsApp instance (via QR code in the web UI). Status: `disconnected`, `connecting`, `connected`. The instance is used for chat ID resolution on webhook receipt and as sender instance when sending.
 
 ### 3.9 System Prompts (`src/niles/agent/prompts.py`)
 
@@ -469,69 +473,72 @@ def load_system_prompt(path: str | None = None) -> str
 def build_system_prompt(base_prompt: str, memories: list[dict]) -> str
 ```
 
-`load_system_prompt` laedt `config/soul.md`. `build_system_prompt` haengt einen "Dein Gedaechtnis"-Abschnitt mit allen Memory-Eintraegen an.
+`load_system_prompt` loads `config/soul.md`. `build_system_prompt` appends a "Your Memory" section with all memory entries.
 
-### 3.10 Web-UI (`src/niles/sources/web.py`)
+### 3.10 Web UI (`src/niles/sources/web.py`)
 
-Web-Interface mit Jinja2 Templates, Tailwind CSS und htmx. Chat verwendet SSE Streaming (custom JavaScript), Settings/History/Kalender verwenden htmx:
+Web interface with Jinja2 templates, Tailwind CSS, and htmx. Chat uses SSE streaming (custom JavaScript), settings/history/calendar use htmx:
 
-**Authentifizierung (zwei parallele Systeme):**
+**Authentication (two parallel systems):**
 
-- **Google OAuth 2.0** -> Web-UI Login (signierte Session-Cookies via itsdangerous)
-- **API-Key** -> Fallback-Login (wenn Google OAuth nicht konfiguriert)
+- **Google OAuth 2.0** -> Web UI login (signed session cookies via itsdangerous)
+- **API Key** -> Fallback login (when Google OAuth is not configured)
 
-**Session Management:**
+**Session management:**
 
-- Signierte Cookies via `URLSafeTimedSerializer` (itsdangerous)
-- Separates `session_secret` (nicht `niles_api_key`)
-- CSRF Double-Submit Pattern (Cookie + X-CSRF-Token Header)
-- Per-User Chat-IDs: `web-user-{uid}`
+- Signed cookies via `URLSafeTimedSerializer` (itsdangerous)
+- Separate `session_secret` (not `niles_api_key`)
+- CSRF Double-Submit Pattern (cookie + X-CSRF-Token header)
+- Per-user chat IDs: `web-user-{uid}`
 
-**Routen:** siehe `docs/API.md`.
+**Routes:** See `docs/API.md`.
 
 ### 3.11 WhatsApp Source (`src/niles/sources/whatsapp.py`)
 
-Webhook-Handler fuer Evolution API v2.3.7:
+Webhook handler for Evolution API v2.3.7:
 
-- Token-Authentifizierung via Query-Parameter (`?token=...`, hmac.compare_digest)
-- Filtert auf `event == "messages.upsert"`
-- Extrahiert Text aus `message.conversation` oder `extendedTextMessage.text`
-- Gibt 401 fuer Auth-Fehler zurueck, 200 fuer alle anderen Faelle (verhindert Retry-Spam)
+- Token authentication via query parameter (`?token=...`, hmac.compare_digest)
+- Filters on `event == "messages.upsert"`
+- Extracts text from `message.conversation` or `extendedTextMessage.text`
+- Returns 401 for auth errors, 200 for all other cases (prevents retry spam)
 
-**Self-Chat Trigger:** Eigene Nachrichten (`fromMe: true`) werden auf Trigger-Phrasen geprueft ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles" — case-insensitive, word-boundary). Bei Trigger: Phrase entfernen, Agent verarbeitet den Rest, Antwort an eigene Nummer senden. Ohne Trigger: Ignorieren. Echo-Loop-Guard: Gesendete Message-IDs werden 10s gecacht, echote Webhooks werden uebersprungen.
+**Self-chat trigger:** Own messages (`fromMe: true`) are checked for trigger phrases ("Hey Niles", "Hi Niles", "Hallo Niles", "Niles" -- case-insensitive, word-boundary). On trigger: Remove phrase, agent processes the rest, send response to own number. Without trigger: Ignore. Echo-loop guard: Sent message IDs are cached for 10s, echoed webhooks are skipped.
 
-**Self-Chat chat_id:** `wa-self-{nummer}` — eigene Konversations-Historie, getrennt von fremden Chats und Web-UI.
+**Self-chat chat_id:** `wa-self-{number}` -- own conversation history, separate from external chats and web UI.
 
-**LID-Adressierung:** WhatsApp nutzt seit 2025 LID (Linked Identity Device) Adressen. Neue Nachrichten haben `key.remoteJid = "...@lid"` statt `"...@s.whatsapp.net"`. Die Phone-JID steht in `key.remoteJidAlt`. Der Webhook-Handler erkennt `@lid`-JIDs und verwendet stattdessen `remoteJidAlt` fuer Sender-Extraktion, chat_id und Reply-Routing.
+**LID addressing:** WhatsApp uses LID (Linked Identity Device) addresses since 2025. New messages have `key.remoteJid = "...@lid"` instead of `"...@s.whatsapp.net"`. The phone JID is in `key.remoteJidAlt`. The webhook handler detects `@lid` JIDs and uses `remoteJidAlt` instead for sender extraction, chat_id, and reply routing.
 
-**Fremde Nachrichten:** Werden von der Evolution API intern gespeichert (kein LLM-Call, kein Web-Chat, kein Auto-Reply). Der Agent liest sie per `get_whatsapp_messages`-Tool direkt via Evolution API `findMessages`-Endpoint ("Was hat mir Max geschrieben?"). Kontaktname wird per `contacts.find_by_name()` zu Telefonnummer aufgeloest, dann als JID an die API uebergeben. 30-Tage-Window, max 50 Nachrichten. Niles antwortet fremden Personen nur wenn der Benutzer ihn explizit via `send_whatsapp`-Tool dazu auffordert (gesteuert durch `feature_whatsapp_send_others`).
+**External messages:** Stored internally by the Evolution API (no LLM call, no web chat, no auto-reply). The agent reads them via the `get_whatsapp_messages` tool directly through the Evolution API `findMessages` endpoint ("What did Max write me?"). Contact name is resolved to phone number via `contacts.find_by_name()`, then passed as JID to the API. 30-day window, max 50 messages. Niles only replies to external people when the user explicitly asks via the `send_whatsapp` tool (controlled by `feature_whatsapp_send_others`).
 
-**Per-User Instance Routing:** Der Webhook identifiziert die Evolution API Instance (`payload.instance`). Fuer Self-Chat wird die Instance aus dem Webhook-Payload verwendet. Fuer `get_whatsapp_messages` wird die Instance per `_resolve_wa_instance(chat_id)` aus der `whatsapp_sessions`-Tabelle ermittelt.
+**Per-user instance routing:** The webhook identifies the Evolution API instance (`payload.instance`). For self-chat, the instance from the webhook payload is used. For `get_whatsapp_messages`, the instance is resolved via `_resolve_wa_instance(chat_id)` from the `whatsapp_sessions` table.
 
-**Hinweis:** Webhook-Token wird als Query-Parameter uebergeben, da Evolution API v2.3.x keine Custom-Header unterstuetzt (siehe [Issue #1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)).
+**Note:** Webhook token is passed as query parameter since Evolution API v2.3.x does not support custom headers (see [Issue #1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)).
 
 ### 3.12 WhatsApp Action (`src/niles/actions/whatsapp.py`)
 
 ```python
 class WhatsAppAction:
     async def send_message(self, to: str, text: str, instance: str | None = None) -> dict
-    async def fetch_messages(self, remote_jid: str, limit: int = 50, instance: str | None = None) -> list[dict]
+    async def fetch_messages(self, remote_jid: str, instance: str | None = None) -> list[dict]
     async def create_instance(self, instance_name: str, webhook_url: str) -> dict
     async def get_connection_state(self, instance_name: str) -> str
     async def get_qr_code(self, instance_name: str) -> dict
+    async def get_owner_jid(self, instance_name: str) -> str | None
     async def logout_instance(self, instance_name: str) -> dict
     async def delete_instance(self, instance_name: str) -> dict
 ```
 
-`send_message` sendet via `POST /message/sendText/{instance}` an Evolution API. Timeout 30s. Optionaler `instance`-Parameter fuer Per-User WhatsApp Sessions (Fallback: globale `evolution_instance` aus Config).
+`send_message` sends via `POST /message/sendText/{instance}` to Evolution API. Timeout 30s. Optional `instance` parameter for per-user WhatsApp sessions (fallback: global `evolution_instance` from config).
 
-`fetch_messages` fragt Nachrichten via `POST /chat/findMessages/{instance}` ab. Der Filter-Payload setzt sowohl `remoteJid` als auch `remoteJidAlt` auf die Phone-JID — Evolution API's Baileys-Override (PR #2249) kombiniert diese mit OR, sodass sowohl alte Phone-JIDs als auch neue LID-Nachrichten gefunden werden. Beide Keys muessen gesetzt sein (bei nur einem Key erzeugt der OR-Clause einen leeren Match, Prisma-Bug). Client-seitiger 30-Tage-Filter, max 50 Nachrichten, chronologisch sortiert.
+`fetch_messages` queries messages via `POST /chat/findMessages/{instance}`. The filter payload sets both `remoteJid` and `remoteJidAlt` to the phone JID -- Evolution API's Baileys override (PR #2249) combines these with OR, so both old phone JIDs and new LID messages are found. Both keys must be set (with only one key, the OR clause produces an empty match, Prisma bug). Client-side 30-day filter, chronologically sorted. Media messages without text receive placeholders ([Image], [Video], [Voice message], [Sticker], [Document], [Contact], [Location]).
 
-**Tool-Result Metadaten:** Das `get_whatsapp_messages`-Tool gibt neben dem Transcript zusaetzlich `date_range` (formatierter Zeitraum) und `hinweis` (Zusammenfassungs-Anweisung) zurueck — analog zum `hinweis`-Feld in `find_event`. Diese Felder helfen dem 8B-LLM, strukturierte Zusammenfassungen statt roher Transcript-Dumps zu produzieren.
+`get_owner_jid` retrieves the owner JID (`phone@s.whatsapp.net`) of a connected instance via `GET /instance/fetchInstances`. Used in the web UI WhatsApp flow to determine the phone number after successful pairing.
 
-Instance-Management-Methoden steuern Evolution API Instanzen fuer den Per-User WhatsApp-Flow (erstellen, QR-Code abrufen, Verbindungsstatus pruefen, trennen, loeschen).
+**Tool result metadata:** The `get_whatsapp_messages` tool returns `date_range` (formatted time period) and `hinweis` (summarization instruction) alongside the transcript -- analogous to the `hinweis` field in `find_event`. These fields help the 8B LLM produce structured summaries instead of raw transcript dumps.
 
-### 3.13 Kontakt-Lookup (`src/niles/actions/contacts.py`)
+Instance management methods control Evolution API instances for the per-user WhatsApp flow (create, fetch QR code, check connection state, determine owner JID, disconnect, delete).
+
+### 3.13 Contact Lookup (`src/niles/actions/contacts.py`)
 
 ```python
 def normalize_phone(phone: str) -> str        # +43/00/0 -> 43...
@@ -539,44 +546,44 @@ class ContactsAction:
     async def find_by_name(self, name: str) -> dict | None
 ```
 
-Suche mit Prioritaet: exakt > prefix > partial > first/last name.
-Multi-Word-Suche: Bei mehreren Woertern (z.B. "Thomas Brunner") muss jedes Wort in mindestens einem Namensfeld vorkommen (full_name, first_name, last_name).
-Telefon-Normalisierung: Oesterreich-spezifisch (fuehrende 0 -> 43).
+Search with priority: exact > prefix > partial > first/last name.
+Multi-word search: With multiple words (e.g., "Thomas Brunner"), each word must appear in at least one name field (full_name, first_name, last_name).
+Phone normalization: Austria-specific (leading 0 -> 43).
 
-**Multi-Phone Support:** Kontakte koennen mehrere Telefonnummern haben (Tabelle `contact_phones`, 1:N). `find_by_name` gibt zurueck:
+**Multi-phone support:** Contacts can have multiple phone numbers (table `contact_phones`, 1:N). `find_by_name` returns:
 
-- `phone`: bevorzugte Nummer (Prioritaet: mobile > home > work > other)
-- `phones`: alle Nummern mit Typ (`[{"type": "mobile", "number": "436601234567"}, ...]`)
-- Fallback auf Legacy-Spalten (`phone_primary`, `phone_mobile`, `phone_work`) wenn `contact_phones` leer.
+- `phone`: preferred number (priority: mobile > home > work > other)
+- `phones`: all numbers with type (`[{"type": "mobile", "number": "436601234567"}, ...]`)
+- Fallback to legacy columns (`phone_primary`, `phone_mobile`, `phone_work`) when `contact_phones` is empty.
 
 ### 3.14 CardDAV Sync (`src/niles/sync/carddav.py`)
 
-PROPFIND fuer vCard-URLs, vCard-Parsing (TEL, EMAIL, FN, N), UPSERT via UID. Unterstuetzt Multi-Phone pro Kontakt (Tabelle `contact_phones`). Phone-Migration von Legacy-Spalten automatisch.
-APScheduler fuer taeglichen Sync (03:00, wenn `carddav_url` konfiguriert). CardDAV-Credentials koennen ueber die Web-UI konfiguriert und hot-reloaded werden.
+PROPFIND for vCard URLs, vCard parsing (TEL, EMAIL, FN, N), UPSERT via UID. Supports multi-phone per contact (table `contact_phones`). Phone migration from legacy columns automatic.
+APScheduler for daily sync (03:00, when `carddav_url` configured). CardDAV credentials can be configured and hot-reloaded via the web UI.
 
-### 3.15 Kalender-Sync (`src/niles/sync/`)
+### 3.15 Calendar Sync (`src/niles/sync/`)
 
-**CalendarSourceManager** (`manager.py`) verwaltet alle Kalenderquellen (ICS, CalDAV, Google) ueber die `calendar_sources`-Tabelle. CRUD-Operationen, Sync-Orchestrierung und Auto-Migration von `.env` CalDAV-Config beim ersten Start.
+**CalendarSourceManager** (`manager.py`) manages all calendar sources (ICS, CalDAV, Google) via the `calendar_sources` table. CRUD operations, sync orchestration, and auto-migration from `.env` CalDAV config on first start.
 
-**CalDAVSync** (`caldav.py`) synchronisiert einzelne CalDAV- und Google-Quellen via PROPFIND/REPORT. Parameterisierter Constructor (URL, Auth, Timezone, source_id). Google-Quellen nutzen dieselbe CalDAV-Logik mit Bearer-Token statt Basic-Auth.
+**CalDAVSync** (`caldav.py`) synchronizes individual CalDAV and Google sources via PROPFIND/REPORT. Parameterized constructor (URL, auth, timezone, source_id). Google sources use the same CalDAV logic with Bearer token instead of Basic auth.
 
-**GoogleCalendarAuth** (`google_auth.py`) ist eine httpx.Auth-Klasse fuer Google Calendar OAuth. Haelt einen In-Memory-Cache des Access-Tokens und refresht automatisch via `refresh_token` wenn abgelaufen. Wird pro Sync-Lauf instanziiert.
+**GoogleCalendarAuth** (`google_auth.py`) is an httpx.Auth class for Google Calendar OAuth. Maintains an in-memory cache of the access token and automatically refreshes via `refresh_token` when expired. Instantiated per sync run.
 
-**iCalendar Parser** (`ical_parser.py`) ist ein Shared Parser fuer VEVENT-Daten, genutzt von CalDAV und ICS-Sync. Unterstuetzt RRULE-Expansion fuer wiederkehrende Termine (DAILY, WEEKLY, MONTHLY, YEARLY, BYDAY, BYMONTH, EXDATE, UNTIL, COUNT). Max 500 Occurrences pro Event. Abhaengigkeit: `python-dateutil`.
+**iCalendar Parser** (`ical_parser.py`) is a shared parser for VEVENT data, used by CalDAV and ICS sync. Supports RRULE expansion for recurring events (DAILY, WEEKLY, MONTHLY, YEARLY, BYDAY, BYMONTH, EXDATE, UNTIL, COUNT). Max 500 occurrences per event. Dependency: `python-dateutil`.
 
-**Google Calendar OAuth Flow** (`web.py`): `/ui/api/calendar/google/connect` leitet zu Google OAuth mit Calendar-Scope weiter. Der Callback `/ui/callback/google/calendar` tauscht den Code gegen Tokens, entdeckt alle Kalender via Google Calendar REST API und erstellt automatisch `calendar_sources`-Eintraege. Separater Flow vom Login-OAuth (anderer Scope, anderer Callback).
+**Google Calendar OAuth flow** (`web.py`): `/ui/api/calendar/google/connect` redirects to Google OAuth with calendar scope. The callback `/ui/callback/google/calendar` exchanges the code for tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries. Separate flow from login OAuth (different scope, different callback).
 
-APScheduler fuer taeglichen Sync: CardDAV 03:00 (wenn `carddav_url` konfiguriert), Kalenderquellen 03:20 (wenn Quellen vorhanden). Neue Kalenderquellen werden ueber die Web-UI verwaltet und automatisch gesynct.
+APScheduler for daily sync: CardDAV 03:00 (when `carddav_url` configured), calendar sources 03:20 (when sources exist). New calendar sources are managed via the web UI and synced automatically.
 
 ### 3.16 MCP Client (`src/niles/mcp/client.py`)
 
-MCP Server Manager fuer externe Tool-Integrationen. Konfiguration via `config/mcp_servers.yaml`.
+MCP server manager for external tool integrations. Configuration via `config/mcp_servers.yaml`.
 
-**Destructive Tool Blocking:** Bei der Tool-Entdeckung werden MCP-Tools mit destruktiven Namenspraefixen automatisch geblockt (delete, remove, drop, destroy, purge, erase, wipe, truncate, clear). Case-insensitive. Geblockte Tools werden geloggt aber nicht registriert. Dies verhindert, dass ein MCP-Server versehentlich Loesch-Faehigkeiten an das LLM exponiert.
+**Destructive tool blocking:** During tool discovery, MCP tools with destructive name prefixes are automatically blocked (delete, remove, drop, destroy, purge, erase, wipe, truncate). Case-insensitive. Blocked tools are logged but not registered. This prevents an MCP server from accidentally exposing deletion capabilities to the LLM.
 
 ### 3.17 Task Management (`src/niles/actions/tasks.py`)
 
-Interface zur Vikunja REST API. Feature-Flag-gesteuert (`feature_vikunja`). Task-Tools werden nur an das LLM gesendet wenn Vikunja konfiguriert ist.
+Interface to the Vikunja REST API. Feature-flag controlled (`feature_vikunja`). Task tools are only sent to the LLM when Vikunja is configured.
 
 ```python
 class TasksAction:
@@ -587,40 +594,40 @@ class TasksAction:
     async def complete_task(self, title: str) -> dict
 ```
 
-- `list_tasks`: GET /tasks/all, Ergebnis-Vereinfachung fuer LLM-Kontext (max 50 Aufgaben)
-- `create_task`: PUT /projects/{id}/tasks, unterstuetzt Projekt-Zuweisung, Faelligkeit und Prioritaet (0-4)
-- `complete_task`: Sucht offene Aufgaben nach Titel, markiert als erledigt (POST /tasks/{id}). Fehler bei keinem oder mehreren Treffern.
-- Default-Projekt-ID wird gecacht (erster Aufruf loest HTTP-Request aus)
+- `list_tasks`: GET /tasks/all, result simplification for LLM context (max 50 tasks)
+- `create_task`: PUT /projects/{id}/tasks, supports project assignment, due date, and priority (0-4)
+- `complete_task`: Searches open tasks by title, marks as done (POST /tasks/{id}). Error on zero or multiple matches.
+- Default project ID is cached (first call triggers HTTP request)
 
 ### 3.18 Briefing (`src/niles/actions/briefing.py`, `src/niles/jobs/briefing.py`)
 
-Automatische Tages- und Wochen-Uebersicht per WhatsApp. Kein LLM — reine DB-Abfragen + Template-Formatierung.
+Automatic daily and weekly overview via WhatsApp. No LLM -- pure DB queries + template formatting.
 
 ```python
 class BriefingGenerator:
     def __init__(self, pool, timezone, vikunja_api_url, vikunja_api_token): ...
-    async def generate_daily(self) -> str    # Mo-Fr: Termine + Tasks
-    async def generate_weekly(self) -> str   # Mo: Woche nach Tagen (Mo-Fr)
+    async def generate_daily(self) -> str    # Mon-Fri: Appointments + Tasks
+    async def generate_weekly(self) -> str   # Mon: Week by days (Mon-Fri)
 ```
 
-- **Taeglich (Mo-Fr):** Heutige Termine, ueberfaellige Tasks, heute faellige Tasks, Zusammenfassung offener Aufgaben
-- **Woechentlich (Mo):** Mo-Fr Termine nach Tagen gruppiert, offene Aufgaben kompakt
-- **Events:** SQL SELECT aus `events`-Tabelle (mit `calendar_sources` JOIN)
-- **Tasks:** Vikunja REST API (`GET /tasks/all?filter=done=false`), optional (leer wenn nicht konfiguriert)
-- **Scheduler:** APScheduler Cron-Jobs (`briefing_daily`, `briefing_weekly`), registriert wenn Feature-Flag aktiv
-- **Versand:** Via `WhatsAppAction.send_message()` an automatisch erkannte verbundene Nummer (Evolution API `get_connection_state` + `get_owner_jid`)
-- **Settings-UI:** Toggle und Uhrzeiten konfigurierbar. WhatsApp muss verbunden sein
+- **Daily (Mon-Fri):** Today's appointments, overdue tasks, tasks due today, open tasks summary
+- **Weekly (Mon):** Mon-Fri appointments grouped by day, open tasks compact
+- **Events:** SQL SELECT from `events` table (with `calendar_sources` JOIN)
+- **Tasks:** Vikunja REST API (`GET /tasks/all?filter=done=false`), optional (empty if not configured)
+- **Scheduler:** APScheduler cron jobs (`briefing_daily`, `briefing_weekly`), registered when feature flag is active
+- **Delivery:** Via `WhatsAppAction.send_message()` to automatically detected connected number. `jobs/briefing.py` queries the `whatsapp_sessions` table for a session with `status='connected'` and uses its `phone_number` + `instance_name`
+- **Settings UI:** Toggle and times configurable. WhatsApp must be connected
 
 ---
 
-## 4. Datenbankschema
+## 4. Database Schema
 
-Alle Tabellen liegen in der Datenbank `evolution_db` (User `evolution`). Tabellen werden beim Start automatisch erstellt (`CREATE TABLE IF NOT EXISTS`).
+All tables reside in database `evolution_db` (user `evolution`). Tables are automatically created on startup (`CREATE TABLE IF NOT EXISTS`).
 
 ### users
 
 ```sql
--- Erstellt durch UserStore (Google OAuth)
+-- Created by UserStore (Google OAuth)
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -634,7 +641,7 @@ CREATE TABLE IF NOT EXISTS users (
 ### whatsapp_sessions
 
 ```sql
--- Erstellt durch WhatsAppSessionStore (Per-User WhatsApp Instances)
+-- Created by WhatsAppSessionStore (per-user WhatsApp instances)
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     instance_name TEXT UNIQUE NOT NULL,
@@ -644,18 +651,34 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS whatsapp_sessions_phone_idx
+ON whatsapp_sessions (phone_number);
+```
+
+### vikunja_credentials
+
+```sql
+-- Created by VikunjaCredentialStore (per-user Vikunja tokens)
+CREATE TABLE IF NOT EXISTS vikunja_credentials (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    api_token TEXT NOT NULL,
+    api_url TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
 ### contacts
 
 ```sql
--- Erstellt/befuellt durch CardDAV-Sync
+-- Created/populated by CardDAV sync
 CREATE TABLE contacts (
     id SERIAL PRIMARY KEY,
     full_name TEXT,
     first_name TEXT,
     last_name TEXT,
-    phone_primary TEXT,   -- Legacy, wird durch contact_phones ersetzt
+    phone_primary TEXT,   -- Legacy, replaced by contact_phones
     phone_mobile TEXT,    -- Legacy
     phone_work TEXT,      -- Legacy
     email TEXT,
@@ -667,7 +690,7 @@ CREATE TABLE contacts (
 ### contact_phones
 
 ```sql
--- Multi-Phone Support (1:N pro Kontakt)
+-- Multi-phone support (1:N per contact)
 CREATE TABLE IF NOT EXISTS contact_phones (
     id SERIAL PRIMARY KEY,
     contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
@@ -709,7 +732,7 @@ ON conversations (chat_id, created_at);
 ### calendar_sources
 
 ```sql
--- Erstellt durch CalendarSourceManager (sync/manager.py)
+-- Created by CalendarSourceManager (sync/manager.py)
 CREATE TABLE IF NOT EXISTS calendar_sources (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -728,21 +751,21 @@ CREATE TABLE IF NOT EXISTS calendar_sources (
 );
 ```
 
-### events (Erweiterung)
+### events (extension)
 
 ```sql
--- source_id verknuepft Events mit ihrer Kalenderquelle (NULL = Legacy)
+-- source_id links events to their calendar source (NULL = legacy)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS
     source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id);
 ```
 
-`ON DELETE CASCADE` entfernt automatisch alle Events einer Quelle beim Loeschen.
+`ON DELETE CASCADE` automatically removes all events of a source when deleted.
 
 ### settings_overrides
 
 ```sql
--- Runtime Settings, editierbar ueber Web-UI
+-- Runtime settings, editable via web UI
 CREATE TABLE IF NOT EXISTS settings_overrides (
     key TEXT PRIMARY KEY,
     value JSONB NOT NULL,
@@ -754,141 +777,142 @@ CREATE TABLE IF NOT EXISTS settings_overrides (
 
 ## 5. Security
 
-### 5.1 Netzwerk
+### 5.1 Network
 
-- **HTTPS via Caddy:** Alle externen Zugriffe ueber self-signed TLS-Zertifikate (`tls internal`)
-- **Keine exponierten Ports:** PostgreSQL, Niles Core und Evolution API sind nur via Docker-Netzwerk erreichbar
-- **Security Headers (Caddy + Middleware):** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, Server-Header entfernt
+- **HTTPS via Caddy:** All external access through self-signed TLS certificates (`tls internal`)
+- **No exposed ports:** PostgreSQL, Niles Core, and Evolution API are only reachable via Docker network
+- **Security headers (Caddy + Middleware):** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, Server header removed
 - **CSP:** `default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'`
-- **CDN-Ressourcen** (htmx, marked.js, DOMPurify): SRI-Hashes fuer Integritaetspruefung
+- **CDN resources** (htmx, marked.js, DOMPurify): SRI hashes for integrity checking
 
-### 5.2 Authentifizierung
+### 5.2 Authentication
 
-**API (programmatisch):**
+**API (programmatic):**
 
-- **API Key:** `/chat` erfordert `X-API-Key` Header (hmac.compare_digest, max 256 Zeichen)
-- **Webhook Token:** `/webhook/whatsapp` erfordert `?token=` Query-Parameter
-- **Auto-generierter Key:** `NILES_API_KEY` wird per `secrets.token_urlsafe(32)` generiert wenn nicht gesetzt
-- **Key wird nicht geloggt:** Nur Hinweis auf `docker exec niles_core printenv NILES_API_KEY`
+- **API Key:** `/chat` requires `X-API-Key` header (hmac.compare_digest, max 256 characters)
+- **Webhook Token:** `/webhook/whatsapp` requires `?token=` query parameter
+- **Auto-generated key:** `NILES_API_KEY` is generated via `secrets.token_urlsafe(32)` if not set
+- **Key is not logged:** Only hint to `docker exec niles_core printenv NILES_API_KEY`
 
-**Web-UI:**
+**Web UI:**
 
-- **Google OAuth 2.0:** Login via Google Account (openid email profile)
-- **Email-Whitelist:** `GOOGLE_ALLOWED_EMAILS` beschraenkt Zugriff auf benannte Accounts
-- **email_verified Check:** Nur verifizierte Google-Accounts werden akzeptiert
-- **API-Key Fallback:** Wenn kein Google OAuth konfiguriert, Login mit `NILES_API_KEY`
-- **Signed Session Cookies:** `itsdangerous.URLSafeTimedSerializer` mit dediziertem `SESSION_SECRET`
-- **CSRF:** Double-Submit Pattern (Cookie + `X-CSRF-Token` Header) fuer alle POST-Endpoints
-- **OAuth State:** CSRF-Schutz fuer OAuth-Flow via State-Parameter in Cookie
-- **Logout:** POST (nicht GET) um Logout-CSRF zu verhindern
-- **Login Rate Limiting:** Max 5 Versuche pro IP in 5 Minuten (API-Key Login)
-- **base_url Config:** OAuth Redirect URI aus Config statt aus untrusted Request-Headers
+- **Google OAuth 2.0:** Login via Google account (openid email profile)
+- **Email whitelist:** `GOOGLE_ALLOWED_EMAILS` restricts access to named accounts
+- **email_verified check:** Only verified Google accounts are accepted
+- **API key fallback:** When Google OAuth is not configured, login with `NILES_API_KEY`
+- **Signed session cookies:** `itsdangerous.URLSafeTimedSerializer` with dedicated `SESSION_SECRET`
+- **CSRF:** Double-Submit Pattern (cookie + `X-CSRF-Token` header) for all POST endpoints
+- **OAuth State:** CSRF protection for OAuth flow via state parameter in cookie
+- **Logout:** POST (not GET) to prevent logout CSRF
+- **Login rate limiting:** Max 5 attempts per IP in 5 minutes (API key login)
+- **base_url config:** OAuth redirect URI from config instead of untrusted request headers
 
 ### 5.3 Rate Limiting
 
-- In-Memory Rate Limiter: 60 Requests/Minute pro Client-IP
-- `/health` und `/static` sind exempt
-- Memory Safeguard: Max 10.000 IPs tracked, aelteste werden evicted
-- HTTP 429 bei Ueberschreitung
+- In-memory rate limiter: 60 requests/minute per client IP
+- `/health` and `/static` are exempt
+- Memory safeguard: Max 10,000 IPs tracked, oldest are evicted
+- HTTP 429 when exceeded
 
 ### 5.4 Docker
 
-- Niles Core laeuft als Non-Root User (UID/GID 1000)
-- PostgreSQL-Port nicht exponiert
+- Niles Core runs as non-root user (UID/GID 1000)
+- PostgreSQL port not exposed
 
 ### 5.5 Access Logs
 
-- Caddy schreibt JSON-formatierte Access Logs pro Service
-- Log-Rotation: 10 MB pro Datei, 3 Dateien behalten
-- Dateien: `access-niles.log`, `access-evolution.log`
+- Caddy writes JSON-formatted access logs per service
+- Log rotation: 10 MB per file, 3 files kept
+- Files: `access-niles.log`, `access-evolution.log`
 
-### 5.6 Datenintegritaet (Keine Loeschungen)
+### 5.6 Data Integrity (No Deletions)
 
-Niles folgt dem Prinzip **"Lesen und Erstellen, niemals Loeschen"**:
+Niles follows the principle **"Read and create, never delete"**:
 
-- **Kein LLM-Tool hat Loesch-Faehigkeiten.** `complete_task` markiert Aufgaben als erledigt (kein Delete). `remember` ueberschreibt per UPSERT (kein Delete).
-- **`MemoryStore.delete()` existiert** aber ist NICHT als Tool exponiert — nur intern fuer Web-UI.
-- **MCP-Tools:** Destruktive Namenspraefixe werden automatisch geblockt (§3.16).
-- **Evolution API:** Niles nutzt nur `sendText` und `findMessages` — keine Delete-Endpunkte.
-- **soul.md Regel 7:** Das LLM wird explizit angewiesen, dass es keine Daten loeschen kann und bei Loesch-Anfragen auf die jeweilige App verweisen soll.
+- **No LLM tool has deletion capabilities.** `complete_task` marks tasks as done (no delete). `remember` overwrites via UPSERT (no delete).
+- **`MemoryStore.delete()` exists** but is NOT exposed as a tool -- only used internally by the web UI.
+- **MCP tools:** Destructive name prefixes are automatically blocked (#3.16).
+- **Evolution API:** Niles only uses `sendText` and `findMessages` -- no delete endpoints.
+- **soul.md Rule 7:** The LLM is explicitly instructed that it cannot delete data and should refer users to the respective app for deletion requests.
 
-| Integration | Lesen | Erstellen | Aendern | Loeschen |
-| ----------- | ----- | --------- | ------- | -------- |
-| WhatsApp (Evolution) | Ja | Ja (senden) | Nein | Nein |
-| Kalender (CalDAV/Google) | Ja | Ja | Nein | Nein |
-| Tasks (Vikunja) | Ja | Ja | Ja (complete) | Nein |
-| Kontakte (CardDAV) | Ja | Nein | Nein | Nein |
-| Memory (PostgreSQL) | Ja | Ja | Ja (update) | Nein |
+| Integration | Read | Create | Modify | Delete |
+| ----------- | ---- | ------ | ------ | ------ |
+| WhatsApp (Evolution) | Yes | Yes (send) | No | No |
+| Calendar (CalDAV/Google) | Yes | Yes | No | No |
+| Tasks (Vikunja) | Yes | Yes | Yes (complete) | No |
+| Contacts (CardDAV) | Yes | No | No | No |
+| Memory (PostgreSQL) | Yes | Yes | Yes (update) | No |
 
 ---
 
-## 6. Konfiguration
+## 6. Configuration
 
 ### 6.1 Settings
 
-Pydantic Settings (`src/niles/config.py`) laedt Werte aus `.env` und Environment-Variablen. `extra = "ignore"` verhindert Fehler bei unbekannten Variablen.
+Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environment variables. `extra = "ignore"` prevents errors on unknown variables.
 
-| Feld | Default | Env-Variable | Pflicht |
-| ---- | ------- | ------------ | ------- |
-| `log_level` | `"INFO"` | `LOG_LEVEL` | Nein |
-| `llm_base_url` | `"http://host.docker.internal:11434/v1"` | `LLM_BASE_URL` | Nein |
-| `llm_model` | `"llama3.1:8b"` | `LLM_MODEL` | Nein |
-| `postgres_host` | `"evolution_postgres"` | `POSTGRES_HOST` | Nein |
-| `postgres_port` | `5432` | `POSTGRES_PORT` | Nein |
-| `postgres_db` | `"evolution_db"` | `POSTGRES_DB` | Nein |
-| `postgres_user` | `"evolution"` | `POSTGRES_USER` | Nein |
-| `postgres_password` | -- | `EVOLUTION_POSTGRES_PASSWORD` | Ja |
-| `evolution_api_url` | `"http://evolution_api:8080"` | `EVOLUTION_API_URL` | Nein |
-| `evolution_api_key` | -- | `EVOLUTION_API_KEY` | Ja |
-| `evolution_instance` | `"niles-whatsapp"` | `EVOLUTION_INSTANCE` | Nein |
-| `niles_api_key` | auto-generiert | `NILES_API_KEY` | Nein |
-| `session_secret` | auto-generiert | `SESSION_SECRET` | Nein |
-| `base_url` | `""` | `BASE_URL` | Nein\* |
-| `timezone` | `"Europe/Vienna"` | `TIMEZONE` | Nein |
-| `feature_whatsapp_send_others` | `true` | `FEATURE_WHATSAPP_SEND_OTHERS` | Nein |
-| `carddav_url` | `""` | `CARDDAV_URL` | Nein |
-| `carddav_user` | `""` | `CARDDAV_USER` | Nein |
-| `carddav_password` | `""` | `CARDDAV_PASSWORD` | Nein |
-| `caldav_url` | `"https://dav.mailbox.org/caldav/"` | `CALDAV_URL` | Nein\* |
-| `caldav_user` | `""` | `CALDAV_USER` | Nein\* |
-| `caldav_password` | `""` | `CALDAV_PASSWORD` | Nein\* |
-| `caldav_calendars` | `""` | `CALDAV_CALENDARS` | Nein\* |
-| `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | Nein\*\* |
-| `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | Nein\*\* |
-| `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | Nein |
-| `vikunja_api_url` | `""` | `VIKUNJA_API_URL` | Nein\*\*\* |
-| `vikunja_api_token` | `""` | `VIKUNJA_API_TOKEN` | Nein\*\*\* |
-| `feature_vikunja` | `false` | `FEATURE_VIKUNJA` | Nein |
-| `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | Nein |
-| `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | Nein |
-| `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | Nein |
-| `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | Nein |
+| Field | Default | Env Variable | Required |
+| ----- | ------- | ------------ | -------- |
+| `log_level` | `"INFO"` | `LOG_LEVEL` | No |
+| `llm_base_url` | `"http://host.docker.internal:11434/v1"` | `LLM_BASE_URL` | No |
+| `llm_model` | `"llama3.1:8b"` | `LLM_MODEL` | No |
+| `postgres_host` | `"evolution_postgres"` | `POSTGRES_HOST` | No |
+| `postgres_port` | `5432` | `POSTGRES_PORT` | No |
+| `postgres_db` | `"evolution_db"` | `POSTGRES_DB` | No |
+| `postgres_user` | `"evolution"` | `POSTGRES_USER` | No |
+| `postgres_password` | -- | `EVOLUTION_POSTGRES_PASSWORD` | Yes |
+| `evolution_api_url` | `"http://evolution_api:8080"` | `EVOLUTION_API_URL` | No |
+| `evolution_api_key` | -- | `EVOLUTION_API_KEY` | Yes |
+| `evolution_instance` | `"niles-whatsapp"` | `EVOLUTION_INSTANCE` | No |
+| `webhook_base_url` | `"http://niles_core:8000"` | `WEBHOOK_BASE_URL` | No |
+| `niles_api_key` | auto-generated | `NILES_API_KEY` | No |
+| `session_secret` | auto-generated | `SESSION_SECRET` | No |
+| `base_url` | `""` | `BASE_URL` | No\* |
+| `timezone` | `"Europe/Vienna"` | `TIMEZONE` | No |
+| `feature_whatsapp_send_others` | `true` | `FEATURE_WHATSAPP_SEND_OTHERS` | No |
+| `carddav_url` | `""` | `CARDDAV_URL` | No |
+| `carddav_user` | `""` | `CARDDAV_USER` | No |
+| `carddav_password` | `""` | `CARDDAV_PASSWORD` | No |
+| `caldav_url` | `"https://dav.mailbox.org/caldav/"` | `CALDAV_URL` | No\* |
+| `caldav_user` | `""` | `CALDAV_USER` | No\* |
+| `caldav_password` | `""` | `CALDAV_PASSWORD` | No\* |
+| `caldav_calendars` | `""` | `CALDAV_CALENDARS` | No\* |
+| `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | No\*\* |
+| `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | No\*\* |
+| `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | No |
+| `vikunja_api_url` | `""` | `VIKUNJA_API_URL` | No\*\*\* |
+| `vikunja_api_token` | `""` | `VIKUNJA_API_TOKEN` | No\*\*\* |
+| `feature_vikunja` | `false` | `FEATURE_VIKUNJA` | No |
+| `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | No |
+| `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | No |
+| `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | No |
+| `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | No |
 
-\* `base_url` wird empfohlen wenn Google OAuth hinter einem Reverse Proxy laeuft (verhindert Redirect-URI aus untrusted Headers).
+\* `base_url` is recommended when Google OAuth is behind a reverse proxy (prevents redirect URI from untrusted headers).
 
-\*\* Pflicht wenn Google OAuth gewuenscht. Ohne Google OAuth wird API-Key Login verwendet.
+\*\* Required if Google OAuth is desired. Without Google OAuth, API key login is used.
 
-\*\*\* Pflicht wenn Vikunja-Integration gewuenscht. Erfordert zusaetzlich `FEATURE_VIKUNJA=true`.
+\*\*\* Required if Vikunja integration is desired. Additionally requires `FEATURE_VIKUNJA=true`.
 
-Briefing: WhatsApp-Nummer wird automatisch erkannt (verbundene Instanz). Keine manuelle Konfiguration noetig.
+Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
-\* `caldav_url/user/password` sind Legacy-Felder. Beim ersten Start werden sie automatisch in die `calendar_sources`-Tabelle migriert. Neue Kalenderquellen werden ueber die Web-UI verwaltet (Settings > Kalenderquellen).
+\* `caldav_url/user/password` are legacy fields. On first start, they are automatically migrated into the `calendar_sources` table. New calendar sources are managed via the web UI (Settings > Calendar Sources).
 
-`postgres_password` verwendet `validation_alias="EVOLUTION_POSTGRES_PASSWORD"` -- die Env-Variable heisst anders als das Python-Feld, weil die bestehende PostgreSQL-Instanz bereits diese Variable erwartet.
+`postgres_password` uses `validation_alias="EVOLUTION_POSTGRES_PASSWORD"` -- the env variable has a different name than the Python field because the existing PostgreSQL instance already expects this variable.
 
 ### 6.2 Runtime Overrides
 
-Feature-Flags und ausgewaehlte Text-Settings (siehe `EDITABLE_SETTINGS` in §3.7) koennen ueber die Web-UI geaendert werden. Aenderungen werden in der `settings_overrides`-Tabelle persistiert und beim Start geladen via `apply_overrides()`.
+Feature flags and selected text settings (see `EDITABLE_SETTINGS` in #3.7) can be changed via the web UI. Changes are persisted in the `settings_overrides` table and loaded on startup via `apply_overrides()`.
 
 ### 6.3 .env Template
 
 ```bash
-# Pflicht
-EVOLUTION_POSTGRES_PASSWORD=<passwort>
+# Required
+EVOLUTION_POSTGRES_PASSWORD=<password>
 EVOLUTION_API_KEY=<api-key>
 
-# Session (empfohlen fuer stabile Sessions ueber Container-Restarts)
-SESSION_SECRET=<zufaelliger-string>
+# Session (recommended for stable sessions across container restarts)
+SESSION_SECRET=<random-string>
 BASE_URL=https://niles.example.com
 
 # Google OAuth (optional)
@@ -904,17 +928,17 @@ FEATURE_VIKUNJA=false
 # Optional
 NILES_API_KEY=<api-key>
 CARDDAV_USER=<user>
-CARDDAV_PASSWORD=<passwort>
+CARDDAV_PASSWORD=<password>
 LOG_LEVEL=INFO
 ```
 
-### 6.4 Environment-Variablen
+### 6.4 Environment Variables
 
-**Pflicht:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
+**Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (Legacy, auto-migriert in DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker-Debugging).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging).
 
-Siehe `.env.example` fuer vollstaendige Dokumentation.
+See `.env.example` for complete documentation.
 
 ---
 
@@ -928,7 +952,7 @@ WORKDIR /app
 RUN pip install uv
 COPY pyproject.toml .
 COPY src/ ./src/
-# Download Tailwind standalone CLI (via Python, kein curl/wget in slim) und baue CSS
+# Download Tailwind standalone CLI (via Python, no curl/wget in slim) and build CSS
 COPY tailwind.config.js .
 RUN python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss')" \
     && chmod +x /usr/local/bin/tailwindcss \
@@ -945,56 +969,56 @@ ENV PYTHONPATH=/app/src
 CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-**Hinweis:** `python:3.12-slim` enthaelt weder `curl` noch `wget`. Tailwind CLI wird daher via Python `urllib.request.urlretrieve` heruntergeladen.
+**Note:** `python:3.12-slim` contains neither `curl` nor `wget`. Tailwind CLI is therefore downloaded via Python `urllib.request.urlretrieve`.
 
 ### 7.2 Docker Compose Services
 
-| Container | Image | Exponierter Port | Zweck |
-| --------- | ----- | ---------------- | ----- |
-| `niles_caddy` | `caddy:2-alpine` | 443, 8443 | HTTPS Reverse Proxy |
-| `niles_core` | Build (Dockerfile.niles) | -- (via Caddy) | Python Backend + Web-UI |
+| Container | Image | Exposed Port | Purpose |
+| --------- | ----- | ------------ | ------- |
+| `niles_caddy` | `caddy:2-alpine` | 443, 8443 | HTTPS reverse proxy |
+| `niles_core` | Build (Dockerfile.niles) | -- (via Caddy) | Python backend + web UI |
 | `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
-| `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp Gateway |
-| `vikunja` | `vikunja/vikunja:latest` | 3456 | Todo/Task Management |
+| `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
+| `vikunja` | `vikunja/vikunja:latest` | 3456 | Todo/task management |
 
-### 7.3 Netzwerk
+### 7.3 Network
 
-Alle Container im Bridge-Netzwerk `niles_network`. Container-Namen dienen als Hostnamen fuer die interne Kommunikation:
+All containers on bridge network `niles_network`. Container names serve as hostnames for internal communication:
 
 - `niles_core` -> `evolution_postgres:5432`
-- `niles_core` -> `evolution_api:8080` (nur fuer WhatsApp senden)
-- `evolution_api` -> `niles_core:8000` (Webhook)
-- `niles_core` -> `vikunja:3456` (Task Management API)
-- `niles_core` -> `host.docker.internal:11434` (Ollama auf dem Host)
+- `niles_core` -> `evolution_api:8080` (only for WhatsApp sending)
+- `evolution_api` -> `niles_core:8000` (webhook)
+- `niles_core` -> `vikunja:3456` (task management API)
+- `niles_core` -> `host.docker.internal:11434` (Ollama on host)
 
 ### 7.4 Volumes
 
-| Volume | Mount | Zweck |
-| ------ | ----- | ----- |
-| `evolution_postgres` | `/var/lib/postgresql/data` | PostgreSQL-Daten |
-| `vikunja_files` | `/app/vikunja/files` | Vikunja-Dateien |
-| `caddy_data` | `/data` | TLS-Zertifikate |
-| `caddy_config` | `/config` | Caddy-Konfiguration |
-| `~/.evolution/instances` | `/evolution/instances` | WhatsApp-Sessions |
-| `../src` | `/app/src` | Live-Reload (Dev) |
-| `../config` | `/app/config:ro` | Agent-Konfiguration |
+| Volume | Mount | Purpose |
+| ------ | ----- | ------- |
+| `evolution_postgres` | `/var/lib/postgresql/data` | PostgreSQL data |
+| `vikunja_files` | `/app/vikunja/files` | Vikunja files |
+| `caddy_data` | `/data` | TLS certificates |
+| `caddy_config` | `/config` | Caddy configuration |
+| `~/.evolution/instances` | `/evolution/instances` | WhatsApp sessions |
+| `../src` | `/app/src` | Live reload (dev) |
+| `../config` | `/app/config:ro` | Agent configuration |
 
-### 7.5 Dev-Modus
+### 7.5 Dev Mode
 
-Im `docker-compose.yml` ueberschreibt der `command` das Dockerfile-CMD:
+In `docker-compose.yml`, the `command` overrides the Dockerfile CMD:
 
 ```yaml
 command: uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei Code-Aenderungen.
+Together with the volume mount `../src:/app/src`, this enables live reload on code changes.
 
 ---
 
-## 8. Technologie-Stack & Dependencies
+## 8. Technology Stack & Dependencies
 
-| Komponente | Technologie | Version |
-| ---------- | ----------- | ------- |
+| Component | Technology | Version |
+| --------- | ---------- | ------- |
 | Runtime | Python | >= 3.11 |
 | Web Framework | FastAPI | >= 0.129.0 |
 | ASGI Server | uvicorn | >= 0.41.0 |
@@ -1004,13 +1028,13 @@ Zusammen mit dem Volume-Mount `../src:/app/src` ermoeglicht das Live-Reload bei 
 | Config | pydantic-settings | >= 2.13.0 |
 | Templates | Jinja2 | >= 3.1.0 |
 | Session Signing | itsdangerous | >= 2.0 |
-| CSS Framework | Tailwind CSS | v3.4.17 (Standalone CLI) |
+| CSS Framework | Tailwind CSS | v3.4.17 (standalone CLI) |
 | Markdown Rendering | marked.js + DOMPurify | CDN (SRI) |
-| Frontend Interaktion | htmx | 2.0.4 (CDN) |
+| Frontend Interaction | htmx | 2.0.4 (CDN) |
 | RRULE Expansion | python-dateutil | >= 2.8.0 |
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
-| LLM Inference | Ollama (nativ auf Host) | lokal |
+| LLM Inference | Ollama (native on host) | local |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 
 ### pyproject.toml Dependencies
@@ -1020,88 +1044,22 @@ fastapi>=0.129.0          # Web Framework
 uvicorn[standard]>=0.41.0 # ASGI Server
 httpx>=0.28.1             # Async HTTP Client (+ Google OAuth)
 asyncpg>=0.31.0           # PostgreSQL
-openai>=2.21.0            # LLM Client (OpenAI-kompatibel)
+openai>=2.21.0            # LLM Client (OpenAI-compatible)
 mcp>=1.26.0               # MCP SDK
 pydantic-settings>=2.13.0 # Config Management
 pyyaml>=6.0.3             # YAML Parsing
 apscheduler>=3.11.2       # Scheduling (CardDAV/CalDAV Sync)
-jinja2>=3.1.0             # HTML Templates (Web-UI)
+jinja2>=3.1.0             # HTML Templates (Web UI)
 aiofiles>=24.0.0          # Static File Serving
 itsdangerous>=2.0         # Signed Session Cookies
-python-dateutil>=2.8.0    # RRULE Expansion (Wiederkehrende Kalendertermine)
+python-dateutil>=2.8.0    # RRULE Expansion (recurring calendar events)
 ```
 
 Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
 
 ---
 
-## 9. Implementierungsstatus
-
-| Stage | Branch | PR | Status | Beschreibung |
-| ----- | ------ | -- | ------ | ------------ |
-| 1 | `stage/1-scaffold` | #1 | Abgeschlossen | FastAPI, Docker, pytest, /health |
-| 2 | `stage/2-whatsapp-loop` | #4 | Abgeschlossen | WhatsApp empfangen, LLM, antworten |
-| 3 | `stage/3-memory` | #6 | Abgeschlossen | Key-Value Memory, Chat-History, Feature Flags |
-| 4 | `stage/4-carddav-sync` | #8 | Abgeschlossen | CardDAV Kontakt-Sync |
-| 5 | `stage/5-security-hardening` | #9, #10 | Abgeschlossen | Auth, Rate Limiting, HTTPS, Security Headers |
-| 6 | `stage/6-mcp` | #11 | Abgeschlossen | MCP Integration |
-| 7 | `stage/7-caldav-calendar` | #12 | Abgeschlossen | CalDAV Kalender-Sync |
-| 8 | -- | -- | Geplant | Email als Event-Quelle |
-| 9 | `stage/9-web-gui` | #13 | Abgeschlossen | Web GUI (Chat, Settings, htmx) |
-| 10 | `stage/10-oauth-gui-v2` | #14 | Abgeschlossen | Google OAuth, Multi-User, Tailwind CSS, SSE Streaming |
-| -- | `feat/whatsapp-per-user-sessions` | #22 | Abgeschlossen | Per-User WhatsApp Sessions, Multi-Phone, RRULE, CardDAV UI |
-| -- | `feat/whatsapp-self-chat` | #25 | Abgeschlossen | WhatsApp Self-Chat ("Hey Niles" Trigger), TRANSP (busy/free), Feature-Flag-Umbau |
-| -- | `fix/calendar-filter-guard` | #26 | Abgeschlossen | Calendar-Filter-Guard, Hallucination-Guard (hinweis-Feld) |
-| -- | `feat/whatsapp-inbox` | #29 | Abgeschlossen | WhatsApp Inbox (findMessages statt lokale DB), LID-Adressierung, Zusammenfassungs-Metadaten, MCP Destructive-Tool-Blocking, No-Delete-Policy |
-
-### Roadmap
-
-**Stage 8 -- Email:**
-
-- `src/niles/sources/email.py` -- IMAP Poller (alle 5 min)
-- Neue Agent-Tools: `draft_email`
-
-**Stage 10 -- Abgeschlossen (GUI v2):**
-
-- Tailwind CSS Migration (von Pico CSS, Standalone CLI ohne Node.js)
-- SSE Streaming (Wort-fuer-Wort Antworten)
-- Sofortige User-Bubble bei Senden (kein Server-Roundtrip)
-- Message Timestamps (DD.MM. HH:MM)
-- Rollen-Badges (Du / Niles)
-- Dark Mode Toggle (class="dark" auf html, localStorage)
-- Mobile Responsiveness
-- Markdown Rendering (marked.js + DOMPurify, SRI)
-
-**PR #22 -- Abgeschlossen (WhatsApp per-user Sessions):**
-
-- Per-User WhatsApp Sessions (eigene Evolution API Instance pro Web-UI User)
-- WhatsApp verbinden/trennen ueber Web-UI (QR-Code)
-- Per-User Instance Routing bei Webhook-Empfang
-- Multi-Phone Support (contact_phones Tabelle, 1:N)
-- Multi-Phone Choice Flow (LLM-Bypass, nummerierte Liste, TTL 5 min)
-- Multi-Word Kontaktsuche
-- RRULE Expansion fuer wiederkehrende Kalendertermine
-- CardDAV UI (Verbinden/Trennen/Sync ueber Web-UI)
-- Editierbare CardDAV Credentials via Settings
-
-**PR #25 -- Abgeschlossen (WhatsApp Self-Chat + TRANSP):**
-
-- WhatsApp Self-Chat: "Hey Niles" Trigger (case-insensitive, word-boundary)
-- Trigger-Stripping, Echo-Loop-Guard (_sent_ids Cache, TTL 10s)
-- Eigene chat_id `wa-self-{nummer}` fuer separate History
-- Fremde Nachrichten: kein LLM-Call, kein Web-Chat. Agent liest via Evolution API `findMessages` (30-Tage-Window, Tool `get_whatsapp_messages`)
-- Feature-Flag-Umbau: `feature_whatsapp_auto_reply` + `feature_tool_send_whatsapp` → `feature_whatsapp_send_others`
-- TRANSP (Beschaeftigt/Verfuegbar): iCalendar TRANSP Property (RFC 5545) durch gesamte Pipeline (Parser → DB → Sync → Query → API)
-- Kalender-Events mit `status: "verfuegbar"` wenn TRANSP=TRANSPARENT
-
-**PR #26 -- Abgeschlossen (Calendar Filter Guard):**
-
-- Calendar-Filter-Guard: Droppt `calendar`-Filter wenn `query` leer ist (verhindert LLM-Fehler)
-- Hallucination-Guard: `hinweis`-Feld in find_event-Ergebnissen ("Nenne NUR diese Termine")
-
----
-
-## 10. Hinweise
+## 9. Notes
 
 ### Evolution API Webhook
 
@@ -1119,7 +1077,7 @@ Format v2.3.7 (nested):
 
 ---
 
-## 11. Weitere Dokumentation
+## 10. Further Documentation
 
-- [API Reference](API.md) -- Endpoints, Payloads, Beispiele
-- [Development Guide](Development.md) -- Setup, Testing, Konventionen
+- [API Reference](API.md) -- Endpoints, payloads, examples
+- [Development Guide](Development.md) -- Setup, testing, conventions

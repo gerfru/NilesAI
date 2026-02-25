@@ -105,7 +105,7 @@ def _parse_exdate_line(line: str) -> list[datetime]:
     """
     colon_idx = line.index(":")
     params = line[:colon_idx]
-    values_str = line[colon_idx + 1:].strip()
+    values_str = line[colon_idx + 1 :].strip()
 
     is_date = "VALUE=DATE" in params.upper()
 
@@ -128,11 +128,15 @@ def _parse_exdate_line(line: str) -> list[datetime]:
             if is_date:
                 dt = datetime.strptime(val, "%Y%m%d").replace(tzinfo=timezone.utc)
             elif val.endswith("Z"):
-                dt = datetime.strptime(val, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(val, "%Y%m%dT%H%M%SZ").replace(
+                    tzinfo=timezone.utc
+                )
             elif tzid:
                 dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(tzinfo=tzid)
             else:
-                dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(
+                    tzinfo=timezone.utc
+                )
             results.append(dt)
         except ValueError:
             logger.warning("Failed to parse EXDATE value: %s", val)
@@ -147,7 +151,7 @@ def _extract_value(line: str) -> str:
     colon_idx = line.find(":")
     if colon_idx < 0:
         return ""
-    return line[colon_idx + 1:].strip()
+    return line[colon_idx + 1 :].strip()
 
 
 def parse_icalendar(ics_text: str, url: str) -> dict | None:
@@ -270,7 +274,9 @@ def expand_recurring_event(
         rule = rrulestr(rule_value, dtstart=dtstart)
     except (ValueError, TypeError):
         logger.warning(
-            "Failed to parse RRULE for '%s': %s", event.get("summary", ""), rrule_str,
+            "Failed to parse RRULE for '%s': %s",
+            event.get("summary", ""),
+            rrule_str,
         )
         clean = {k: v for k, v in event.items() if k not in ("rrule", "exdates")}
         return [clean]
@@ -280,7 +286,9 @@ def expand_recurring_event(
     if event["all_day"]:
         exdate_dates = {d.date() for d in exdates}
     else:
-        exdate_dates = {d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates}
+        exdate_dates = {
+            d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates
+        }
 
     # Generate occurrences within window
     occurrences = rule.between(window_start, window_end, inc=True)
@@ -292,7 +300,8 @@ def expand_recurring_event(
         if len(results) >= _MAX_OCCURRENCES:
             logger.warning(
                 "Capped RRULE expansion at %d for '%s'",
-                _MAX_OCCURRENCES, event.get("summary", ""),
+                _MAX_OCCURRENCES,
+                event.get("summary", ""),
             )
             break
 
@@ -312,17 +321,19 @@ def expand_recurring_event(
         else:
             uid_suffix = occ_start.strftime("%Y%m%dT%H%M%S")
 
-        results.append({
-            "summary": event["summary"],
-            "dtstart": occ_start,
-            "dtend": occ_end,
-            "all_day": event["all_day"],
-            "description": event["description"],
-            "location": event["location"],
-            "transp": event.get("transp", "OPAQUE"),
-            "caldav_uid": f"{original_uid}@{uid_suffix}",
-            "caldav_url": event["caldav_url"],
-        })
+        results.append(
+            {
+                "summary": event["summary"],
+                "dtstart": occ_start,
+                "dtend": occ_end,
+                "all_day": event["all_day"],
+                "description": event["description"],
+                "location": event["location"],
+                "transp": event.get("transp", "OPAQUE"),
+                "caldav_uid": f"{original_uid}@{uid_suffix}",
+                "caldav_url": event["caldav_url"],
+            }
+        )
 
     if not results:
         logger.debug(

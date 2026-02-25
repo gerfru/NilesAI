@@ -43,8 +43,13 @@ def build_system_prompt(
         tz = ZoneInfo(timezone)
     now = datetime.now(tz)
     weekdays_de = [
-        "Montag", "Dienstag", "Mittwoch", "Donnerstag",
-        "Freitag", "Samstag", "Sonntag",
+        "Montag",
+        "Dienstag",
+        "Mittwoch",
+        "Donnerstag",
+        "Freitag",
+        "Samstag",
+        "Sonntag",
     ]
     weekday = weekdays_de[now.weekday()]
 
@@ -73,8 +78,7 @@ def build_system_prompt(
         memory_lines = [f"- {e['key']}: {e['value']}" for e in memories]
         prompt += (
             "\n\n## Dein Gedächtnis\n"
-            "Folgende Dinge hast du dir gemerkt:\n"
-            + "\n".join(memory_lines)
+            "Folgende Dinge hast du dir gemerkt:\n" + "\n".join(memory_lines)
         )
 
     return prompt
