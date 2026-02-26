@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-02-25
+> **Updated:** 2026-02-26
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -485,21 +485,19 @@ Set `FEATURE_BRIEFING_DAILY=false` and `FEATURE_BRIEFING_WEEKLY=false` in `.env`
 
 #### Adjust Hostnames
 
-The Caddyfile contains preconfigured hostnames:
-
-```
-https://localhost, https://192.168.1.100, https://192.168.1.100, https://niles.example.ts.net {
-    tls internal
-    reverse_proxy niles_core:8000
-}
-```
-
-**Important:** The Caddyfile contains hardcoded IPs (`192.168.1.100` = Tailscale, `192.168.1.100` = LAN). These must be adjusted for each deployment environment -- in **all three** server blocks (Niles Core :443, Evolution API :8443, Vikunja :3457).
-
-Enter your own IPs/hostnames here. After changes:
+Caddy hostnames are configured via environment variables in `.env` (not hardcoded in the Caddyfile). Three variables control the three server blocks:
 
 ```bash
-docker restart niles_caddy
+# Comma-separated list of hostnames/IPs for each service
+CADDY_HOSTS_443=https://localhost, https://192.168.1.100, https://niles.example.ts.net
+CADDY_HOSTS_8443=https://localhost:8443, https://192.168.1.100:8443, https://niles.example.ts.net:8443
+CADDY_HOSTS_3457=https://localhost:3457, https://192.168.1.100:3457, https://niles.example.ts.net:3457
+```
+
+Enter your own IPs/hostnames (Tailscale, LAN, etc.). After changes:
+
+```bash
+./scripts/start.sh
 ```
 
 #### Ports
@@ -520,7 +518,7 @@ docker restart niles_caddy
 1. [Install Tailscale](https://tailscale.com/download)
 2. Log in on the Mac Mini: `tailscale up`
 3. Note the Tailscale IP or MagicDNS name (e.g., `niles.example.ts.net`)
-4. Enter the hostname in `docker/Caddyfile` (see above)
+4. Add the hostname to `CADDY_HOSTS_*` in `.env` (see above)
 5. Set `BASE_URL` in `.env`:
 
 ```bash
@@ -572,7 +570,7 @@ Then: `./scripts/start.sh`
 ./scripts/start.sh
 ```
 
-For changes to `src/`, no rebuild is needed -- the directory is mounted via volume and the uvicorn server reloads automatically.
+All code changes to `src/` require rebuilding the Docker image (`./scripts/build.sh && ./scripts/start.sh`). For local development with auto-reload, use `./scripts/dev.sh` instead.
 
 ### Full Reset
 
@@ -661,6 +659,15 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `BASE_URL` | from request | Base URL for OAuth redirects (required behind reverse proxy) |
 | `TIMEZONE` | `Europe/Vienna` | Timezone for calendar, briefings, and prompts |
 | `LLM_MODEL` | `llama3.1:8b` | Ollama model |
+| `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+
+**Caddy (reverse proxy hostnames):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `CADDY_HOSTS_443` | `https://localhost` | Hostnames for Niles Core (:443) |
+| `CADDY_HOSTS_8443` | `https://localhost:8443` | Hostnames for Evolution API (:8443) |
+| `CADDY_HOSTS_3457` | `https://localhost:3457` | Hostnames for Vikunja (:3457) |
 
 **Google OAuth (optional):**
 

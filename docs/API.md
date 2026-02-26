@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-02-25
+> **Updated:** 2026-02-26
 
 ---
 
@@ -51,9 +51,17 @@ The web UI uses signed session cookies (itsdangerous). Login via two methods:
 
 Session cookies are signed with `SESSION_SECRET` (not `NILES_API_KEY`). All POST endpoints additionally require a CSRF token (Double-Submit Pattern: `niles_csrf` cookie + `X-CSRF-Token` header).
 
+### /metrics -- API Key
+
+Prometheus metrics endpoint. Requires `X-API-Key` header (same as `/chat`). Returns metrics in Prometheus text exposition format.
+
 ### /health -- No Auth
 
 Health check is publicly accessible. Rate limiting (60 req/min) does not apply to `/health`.
+
+### Request Tracing (X-Request-ID)
+
+Every response includes an `X-Request-ID` header for request tracing. If the client sends an `X-Request-ID` header (max 64 characters, alphanumeric/dash/underscore), it is echoed back. Otherwise, a 12-character hex ID is generated. The request ID is bound to all log entries via structlog contextvars.
 
 ### Rate Limiting
 
@@ -88,6 +96,27 @@ Health check. Returns server status and DB pool info.
   "db_pool": {"size": 2, "free": 2, "min": 2, "max": 10}
 }
 ```
+
+---
+
+### GET /metrics
+
+Prometheus metrics endpoint. Returns all application metrics in Prometheus text exposition format.
+
+**Authentication:** Requires `X-API-Key` header.
+
+**Available metrics:**
+
+| Metric | Type | Labels | Description |
+| ------ | ---- | ------ | ----------- |
+| `niles_http_requests_total` | Counter | method, endpoint, status | Total HTTP requests |
+| `niles_http_request_duration_seconds` | Histogram | method, endpoint | HTTP request duration |
+| `niles_llm_request_duration_seconds` | Histogram | -- | LLM API request duration |
+| `niles_llm_tokens_total` | Counter | type (prompt/completion) | LLM tokens consumed |
+| `niles_tool_calls_total` | Counter | tool_name, success | Tool call invocations |
+| `niles_active_sse_connections` | Gauge | -- | Currently active SSE streams |
+
+**Label cardinality:** Numeric and UUID path segments are normalized to `:id` (e.g., `/api/admin/users/42/password` becomes `/api/admin/users/:id/password`).
 
 ---
 
