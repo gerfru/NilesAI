@@ -432,6 +432,24 @@ class NilesAgent:
                 return session["instance_name"]
         return None
 
+    async def _resolve_contact_phone(
+        self, name_or_number: str
+    ) -> tuple[str | None, dict | None]:
+        """Resolve a contact name or phone number to a normalized phone string.
+
+        Returns (phone, None) on success or (None, error_dict) on failure.
+        Phone is returned without '+' prefix.
+        """
+        raw = name_or_number.strip().lstrip("@")
+        if raw.replace("+", "").replace(" ", "").isdigit():
+            clean = raw.replace(" ", "").lstrip("+")
+            return normalize_phone(clean), None
+        # Name lookup
+        contact = await self.contacts.find_by_name(raw)
+        if not contact or not contact.get("phone"):
+            return None, {"error": f"Kontakt '{name_or_number}' nicht gefunden"}
+        return contact["phone"], None
+
     async def _get_own_phone_number(self, chat_id: str) -> str | None:
         """Get the user's own WhatsApp phone number from their session.
 
@@ -1047,20 +1065,13 @@ class NilesAgent:
             )
 
         if name == "get_whatsapp_messages":
-            contact = args.get("contact", "").strip().lstrip("@")
-
-            # Resolve contact → phone
-            phone = None
-            if contact and contact.replace("+", "").replace(" ", "").isdigit():
-                phone = normalize_phone(contact)
-            elif contact:
-                resolved = await self.contacts.find_by_name(contact)
-                if not resolved or not resolved.get("phone"):
-                    return {"error": f"Kontakt '{contact}' nicht gefunden"}
-                phone = resolved["phone"]
-
-            if not phone:
+            contact_arg = args.get("contact", "").strip()
+            if not contact_arg:
                 return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
+
+            phone, err = await self._resolve_contact_phone(contact_arg)
+            if err:
+                return err
 
             # Build JID and resolve per-user instance
             jid = f"{phone}@s.whatsapp.net"
@@ -1078,8 +1089,8 @@ class NilesAgent:
 
             # Format as readable chat transcript for the LLM
             contact_name = (
-                contact
-                if not contact.replace("+", "").replace(" ", "").isdigit()
+                contact_arg
+                if not contact_arg.replace("+", "").replace(" ", "").isdigit()
                 else (messages[0].get("push_name") or phone)
             )
             local_tz = ZoneInfo(self.config.timezone)
@@ -1130,18 +1141,12 @@ class NilesAgent:
         if name == "send_signal":
             to = args["to"]
             text = args["text"]
-            resolved_number = None
 
             # 1. Contact resolution (if name instead of number)
-            if not to.replace("+", "").replace(" ", "").isdigit():
-                contact = await self.contacts.find_by_name(to)
-                if not contact:
-                    return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
-                if not contact.get("phone"):
-                    return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
-                resolved_number = f"+{contact['phone']}"
-            else:
-                resolved_number = to if to.startswith("+") else f"+{to}"
+            phone, err = await self._resolve_contact_phone(to)
+            if err:
+                return err
+            resolved_number = f"+{phone}"
 
             # 2. Self-check: own number is always allowed
             own_phone = self.config.signal_phone_number
@@ -1164,21 +1169,14 @@ class NilesAgent:
             )
 
         if name == "get_signal_messages":
-            contact_arg = args.get("contact", "").strip().lstrip("@")
-
-            # Resolve contact → phone
-            phone = None
-            if contact_arg and contact_arg.replace("+", "").replace(" ", "").isdigit():
-                raw = contact_arg.replace(" ", "")
-                phone = raw if raw.startswith("+") else f"+{normalize_phone(raw)}"
-            elif contact_arg:
-                resolved = await self.contacts.find_by_name(contact_arg)
-                if not resolved or not resolved.get("phone"):
-                    return {"error": f"Kontakt '{contact_arg}' nicht gefunden"}
-                phone = f"+{resolved['phone']}"
-
-            if not phone:
+            contact_arg = args.get("contact", "").strip()
+            if not contact_arg:
                 return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
+
+            phone, err = await self._resolve_contact_phone(contact_arg)
+            if err:
+                return err
+            phone = f"+{phone}"
 
             messages = await self.signal_store.get_messages(phone=phone)
             if not messages:

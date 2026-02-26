@@ -334,6 +334,10 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    # Close Signal HTTP client
+    if signal_action:
+        await signal_action.close()
+
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)
     await pool.close()

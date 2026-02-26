@@ -322,7 +322,7 @@ The `docker-compose.yml` includes signal-cli-rest-api which bundles signal-cli (
 
 > **Known Limitation:** Self-chat via "Note to Self" does **not work** due to an upstream signal-cli bug ([#1930](https://github.com/AsamK/signal-cli/issues/1930)). As a linked device, signal-cli cannot parse SyncMessage envelopes for Note-to-Self -- the message text is lost. This affects all signal-cli versions up to and including v0.13.24. A fix has been committed to the [Turasa/libsignal-service-java](https://github.com/AsamK/signal-cli/issues/1930) fork but is not yet included in a release. Once a fixed signal-cli version is available, update the Docker image tag in `docker-compose.yml`.
 
-Messages from **other Signal users** work normally and are stored in the local database.
+Messages from **other Signal users** are stored in the local database. Niles does **not** auto-reply to incoming Signal messages -- the agent only responds when explicitly triggered via self-chat. Stored messages can be retrieved by the agent via `get_signal_messages` when the user asks about them.
 
 ### Troubleshooting
 
