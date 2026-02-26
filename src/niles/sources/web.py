@@ -1548,7 +1548,7 @@ async def signal_status(request: Request):
     settings_store = getattr(request.app.state, "settings_store", None)
     signal_disabled = False
     if settings_store:
-        overrides = await settings_store.load_all()
+        overrides = await settings_store.get_all()
         signal_disabled = overrides.get("signal_disabled") == "true"
 
     # Check if already known
