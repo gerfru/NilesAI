@@ -75,11 +75,18 @@ class Settings(BaseSettings):
     vikunja_api_token: str = ""
     feature_vikunja: bool = False
 
+    # Signal (signal-cli-rest-api)
+    signal_api_url: str = "http://signal_api:8080"
+    signal_phone_number: str = ""  # e.g. +436601234567
+    feature_signal: bool = False
+    feature_signal_send_others: bool = False
+
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
     briefing_daily_time: str = "07:30"  # HH:MM, Mo-Fr
     briefing_weekly_time: str = "07:15"  # HH:MM, Montag
+    briefing_channel: str = "whatsapp"  # whatsapp | signal | both
 
     model_config = {
         "env_file": ".env",

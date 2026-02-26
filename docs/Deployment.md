@@ -15,14 +15,15 @@ For technical details on architecture and development, see [Development.md](Deve
 3. [Ollama (LLM Backend)](#3-ollama-llm-backend)
 4. [Google OAuth (Web UI Login)](#4-google-oauth-web-ui-login)
 5. [WhatsApp (Evolution API)](#5-whatsapp-evolution-api)
-6. [Contacts (CardDAV)](#6-contacts-carddav)
-7. [Calendar (CalDAV + Google Calendar)](#7-calendar-caldav--google-calendar)
-8. [Tasks (Vikunja)](#8-tasks-vikunja)
-9. [Briefing (Daily/Weekly)](#9-briefing-dailyweekly)
-10. [HTTPS & Remote Access (Tailscale + Caddy)](#10-https--remote-access-tailscale--caddy)
-11. [Backup & Maintenance](#11-backup--maintenance)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Reference](#13-reference)
+6. [Signal (signal-cli-rest-api)](#6-signal-signal-cli-rest-api)
+7. [Contacts (CardDAV)](#7-contacts-carddav)
+8. [Calendar (CalDAV + Google Calendar)](#8-calendar-caldav--google-calendar)
+9. [Tasks (Vikunja)](#9-tasks-vikunja)
+10. [Briefing (Daily/Weekly)](#10-briefing-dailyweekly)
+11. [HTTPS & Remote Access (Tailscale + Caddy)](#11-https--remote-access-tailscale--caddy)
+12. [Backup & Maintenance](#12-backup--maintenance)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Reference](#14-reference)
 
 ---
 
@@ -275,7 +276,67 @@ Login with the `EVOLUTION_API_KEY` from `.env`.
 
 ---
 
-## 6. Contacts (CardDAV)
+## 6. Signal (signal-cli-rest-api)
+
+> [signal-cli-rest-api documentation](https://github.com/bbernhard/signal-cli-rest-api)
+
+### How It Works
+
+- Niles uses **signal-cli-rest-api** as a Docker container for Signal integration
+- Signal runs as a **Linked Device** to your existing Signal account (like Signal Desktop)
+- Messages are received via WebSocket, sent via REST API
+- Signal is single-instance: one phone number for the entire deployment
+- Message history is stored locally in PostgreSQL (signal-cli has no message query API)
+
+### Third-Party License Notice
+
+Signal integration uses the following third-party components:
+
+- **signal-cli** (GPLv3) -- [Source code](https://github.com/AsamK/signal-cli)
+- **signal-cli-rest-api** (MIT) -- [Source code](https://github.com/bbernhard/signal-cli-rest-api)
+- **GPLv3 License** -- [Full text](https://www.gnu.org/licenses/gpl-3.0.html)
+
+The `docker-compose.yml` includes signal-cli-rest-api which bundles signal-cli (GPLv3). No modifications are made to signal-cli or signal-cli-rest-api.
+
+> **Note:** This is an unofficial integration. Signal availability is not guaranteed by an SLA.
+
+### Setup
+
+#### 1. Enable Signal in Settings UI
+
+1. Start containers: `./scripts/start.sh` (the signal_api container starts automatically)
+2. Open Settings in the web UI
+3. Toggle **Signal** to enabled
+4. Restart containers: `./scripts/start.sh`
+
+> **Note:** Enabling the feature flag requires a container restart (same as Vikunja). After restart, the Signal card appears in Settings.
+
+#### 2. Link Signal Account
+
+1. In Settings, click **Signal verbinden** (Connect Signal)
+2. Scan the QR code with your Signal app (Settings > Linked Devices > Link New Device)
+3. Status changes to "Connected" with your phone number
+4. Phone number is auto-discovered -- no manual configuration needed
+
+### Self-Chat ("Hey Niles")
+
+> **Known Limitation:** Self-chat via "Note to Self" does **not work** due to an upstream signal-cli bug ([#1930](https://github.com/AsamK/signal-cli/issues/1930)). As a linked device, signal-cli cannot parse SyncMessage envelopes for Note-to-Self -- the message text is lost. This affects all signal-cli versions up to and including v0.13.24. A fix has been committed to the [Turasa/libsignal-service-java](https://github.com/AsamK/signal-cli/issues/1930) fork but is not yet included in a release. Once a fixed signal-cli version is available, update the Docker image tag in `docker-compose.yml`.
+
+Messages from **other Signal users** are stored in the local database. Niles does **not** auto-reply to incoming Signal messages -- the agent only responds when explicitly triggered via self-chat. Stored messages can be retrieved by the agent via `get_signal_messages` when the user asks about them.
+
+### Troubleshooting
+
+| Problem | Solution |
+| ------- | -------- |
+| Signal card not visible | Enable `feature_signal` in Settings, restart container |
+| QR code not loading | Check if signal_api container is running: `docker ps` |
+| QR code disappears quickly | Normal during linking -- keep the Settings page open until status changes to "Connected" |
+| Connection lost | Re-link via Settings > Signal > Connect |
+| Messages not arriving | Check WebSocket listener in logs: `docker logs niles_core` |
+
+---
+
+## 7. Contacts (CardDAV)
 
 Contacts are synchronized via CardDAV (e.g., from mailbox.org, Nextcloud, iCloud).
 
@@ -304,7 +365,7 @@ CARDDAV_URL=https://cloud.example.com/remote.php/dav/addressbooks/users/USER/con
 
 ---
 
-## 7. Calendar (CalDAV + Google Calendar)
+## 8. Calendar (CalDAV + Google Calendar)
 
 Niles supports multiple calendar sources simultaneously. Management is done via the **web UI** (Settings > Calendar Sources).
 
@@ -334,7 +395,7 @@ The old `CALDAV_*` variables from `.env` are automatically migrated to the datab
 
 ---
 
-## 8. Tasks (Vikunja)
+## 9. Tasks (Vikunja)
 
 [Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it.
 
@@ -418,9 +479,9 @@ Set `FEATURE_VIKUNJA=false` in `.env`. Task tools will then not be sent to the L
 
 ---
 
-## 9. Briefing (Daily/Weekly)
+## 10. Briefing (Daily/Weekly)
 
-Niles can automatically send morning overviews via WhatsApp:
+Niles can automatically send morning overviews via WhatsApp, Signal, or both:
 
 - **Daily (Mon-Fri):** Today's appointments, overdue/due tasks, open tasks
 - **Weekly (Mon):** Week overview with appointments by day (Mon-Fri)
@@ -429,7 +490,7 @@ No LLM needed. Pure database queries + template formatting.
 
 ### Prerequisites
 
-1. **WhatsApp must be connected** (Settings > WhatsApp > Connect). The recipient number is automatically detected from the connected session.
+1. **Messenger must be connected** (WhatsApp and/or Signal, depending on channel setting). The recipient number is automatically detected from the connected session.
 2. **Enable feature flag** (see below)
 
 ### Configuration
@@ -443,6 +504,9 @@ FEATURE_BRIEFING_WEEKLY=true
 # Times (optional, defaults)
 BRIEFING_DAILY_TIME=07:30
 BRIEFING_WEEKLY_TIME=07:15
+
+# Briefing delivery channel (default: whatsapp)
+#BRIEFING_CHANNEL=whatsapp    # or: signal, both
 ```
 
 Alternatively via the web UI: **Settings > Briefing** (toggles + times).
@@ -467,7 +531,7 @@ On Monday both arrive: first the weekly overview, then the daily briefing. Nothi
 | Symptom | Cause | Solution |
 | ------- | ----- | -------- |
 | No briefing, no log | Feature flag not active | Set `FEATURE_BRIEFING_DAILY=true` in `.env` or Settings UI, restart |
-| "No connected WhatsApp session" | WhatsApp not connected | In web UI: Settings > WhatsApp > Connect |
+| "No connected WhatsApp session" | WhatsApp/Signal not connected | In web UI: Settings > WhatsApp/Signal > Connect |
 | Briefing without tasks | Vikunja not configured | Normal -- briefing only shows calendar appointments |
 | Wrong time | Timezone wrong | Check `TIMEZONE=Europe/Vienna` in `.env` |
 
@@ -477,7 +541,7 @@ Set `FEATURE_BRIEFING_DAILY=false` and `FEATURE_BRIEFING_WEEKLY=false` in `.env`
 
 ---
 
-## 10. HTTPS & Remote Access (Tailscale + Caddy)
+## 11. HTTPS & Remote Access (Tailscale + Caddy)
 
 ### Caddy (Reverse Proxy)
 
@@ -531,7 +595,7 @@ Niles is now accessible from any device on the Tailscale network.
 
 ---
 
-## 11. Backup & Maintenance
+## 12. Backup & Maintenance
 
 ### Create Backup
 
@@ -582,7 +646,7 @@ Deletes all containers and Docker volumes (PostgreSQL data). WhatsApp sessions (
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Service Won't Start
 
@@ -639,7 +703,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 ---
 
-## 13. Reference
+## 14. Reference
 
 ### Environment Variables
 
@@ -686,6 +750,15 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `VIKUNJA_API_TOKEN` | API token (fallback, per-user tokens via Settings UI) |
 | `VIKUNJA_JWT_SECRET` | JWT secret for the Vikunja container |
 
+**Signal (optional, configured via Settings UI):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `SIGNAL_API_URL` | `http://signal_api:8080` | signal-cli-rest-api endpoint (override only) |
+| `FEATURE_SIGNAL` | `false` | Enable Signal integration |
+| `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
+| `BRIEFING_CHANNEL` | `whatsapp` | Briefing delivery: whatsapp, signal, or both |
+
 **Briefing (optional):**
 
 | Variable | Default | Description |
@@ -700,6 +773,8 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
+| `FEATURE_SIGNAL` | `false` | Enable Signal messaging |
+| `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 
 Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
 
@@ -713,6 +788,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | 11434 | Ollama API | HTTP (local only) |
 | 8000 | Niles Core (internal) | HTTP (not directly accessible) |
 | 8080 | Evolution API (internal) | HTTP (not directly accessible) |
+| 8080 | signal-cli-rest-api (internal, profile: signal) | HTTP (not directly accessible) |
 
 ### Scripts
 

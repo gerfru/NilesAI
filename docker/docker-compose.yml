@@ -80,6 +80,20 @@ services:
       - niles_network
     restart: unless-stopped
 
+  # Signal (signal-cli-rest-api) — activate via Settings UI (feature_signal)
+  # CI build with signal-cli v0.13.24 + aarch64 native libs
+  # Note-to-Self self-chat bug NOT yet fixed (upstream signal-cli #1930)
+  signal_api:
+    container_name: niles_signal_api
+    image: bbernhard/signal-cli-rest-api:1771797934-ci
+    restart: unless-stopped
+    environment:
+      - MODE=json-rpc
+    volumes:
+      - signal_cli_config:/home/.local/share/signal-cli
+    networks:
+      - niles_network
+
   # Caddy Reverse Proxy (HTTPS termination)
   caddy:
     container_name: niles_caddy
@@ -138,6 +152,11 @@ services:
       - VIKUNJA_API_TOKEN=${VIKUNJA_API_TOKEN:-}
       - FEATURE_VIKUNJA=${FEATURE_VIKUNJA:-false}
       - FEATURE_WHATSAPP_SEND_OTHERS=${FEATURE_WHATSAPP_SEND_OTHERS:-true}
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://signal_api:8080}
+      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER:-}
+      - FEATURE_SIGNAL=${FEATURE_SIGNAL:-false}
+      - FEATURE_SIGNAL_SEND_OTHERS=${FEATURE_SIGNAL_SEND_OTHERS:-false}
+      - BRIEFING_CHANNEL=${BRIEFING_CHANNEL:-whatsapp}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ../config:/app/config:ro
@@ -152,6 +171,7 @@ volumes:
   vikunja_files:
   caddy_data:
   caddy_config:
+  signal_cli_config:
 
 networks:
   niles_network:
