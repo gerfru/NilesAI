@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import httpx
 from openai import AsyncOpenAI
 
+from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
+
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
@@ -609,6 +611,7 @@ class NilesAgent:
 
         for _ in range(MAX_TOOL_ROUNDS):
             try:
+                _llm_start = time.monotonic()
                 stream = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
@@ -617,6 +620,7 @@ class NilesAgent:
                     stream=True,
                 )
             except Exception as e:
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 yield {
                     "type": "chunk",
@@ -668,6 +672,8 @@ class NilesAgent:
                                 tool_calls_by_idx[idx]["arguments"] += (
                                     tc_delta.function.arguments
                                 )
+
+            LLM_DURATION.observe(time.monotonic() - _llm_start)
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
@@ -732,6 +738,11 @@ class NilesAgent:
                     ),
                 )
                 result = await self._execute_tool_call(tool_call, chat_id)
+                _success = "error" not in result if isinstance(result, dict) else True
+                TOOL_CALLS.labels(
+                    tool_name=tc_dict["function"]["name"],
+                    success=str(_success).lower(),
+                ).inc()
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
 
                 # choose_phone → bypass LLM, send list directly to user
@@ -782,17 +793,27 @@ class NilesAgent:
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
             try:
+                _llm_start = time.monotonic()
                 response = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools,
                     temperature=0.7,
                 )
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
             except Exception as e:
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 return "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."
 
             choice = response.choices[0]
+
+            # Record token usage if available
+            if response.usage:
+                LLM_TOKENS.labels(type="prompt").inc(response.usage.prompt_tokens)
+                LLM_TOKENS.labels(type="completion").inc(
+                    response.usage.completion_tokens
+                )
 
             # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
@@ -844,6 +865,11 @@ class NilesAgent:
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call, chat_id)
+                _success = "error" not in result if isinstance(result, dict) else True
+                TOOL_CALLS.labels(
+                    tool_name=tool_call.function.name,
+                    success=str(_success).lower(),
+                ).inc()
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
 
                 # choose_phone → bypass LLM, send list directly to user
@@ -870,6 +896,7 @@ class NilesAgent:
         try:
             args = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError:
+            TOOL_CALLS.labels(tool_name=name, success="false").inc()
             return {"error": "Invalid arguments"}
 
         logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)
