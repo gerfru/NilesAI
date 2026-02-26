@@ -5,78 +5,74 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from niles.config import Settings
-from niles.sources.whatsapp import (
-    _is_niles_trigger,
-    _record_sent,
-    _sent_ids,
-    _strip_trigger,
-)
+from niles.sources.triggers import is_niles_trigger, strip_trigger
+from niles.sources.whatsapp import _record_sent, _sent_ids
 
 
 class TestIsNilesTrigger:
     def test_hey_niles(self):
-        assert _is_niles_trigger("Hey Niles, was geht?") is True
+        assert is_niles_trigger("Hey Niles, was geht?") is True
 
     def test_hi_niles(self):
-        assert _is_niles_trigger("Hi Niles was steht an") is True
+        assert is_niles_trigger("Hi Niles was steht an") is True
 
     def test_hallo_niles(self):
-        assert _is_niles_trigger("Hallo Niles!") is True
+        assert is_niles_trigger("Hallo Niles!") is True
 
     def test_just_niles(self):
-        assert _is_niles_trigger("Niles Termin morgen") is True
+        assert is_niles_trigger("Niles Termin morgen") is True
 
     def test_case_insensitive(self):
-        assert _is_niles_trigger("HEY NILES was geht") is True
-        assert _is_niles_trigger("hey niles") is True
+        assert is_niles_trigger("HEY NILES was geht") is True
+        assert is_niles_trigger("hey niles") is True
 
     def test_with_leading_whitespace(self):
-        assert _is_niles_trigger("  Hey Niles, test") is True
+        assert is_niles_trigger("  Hey Niles, test") is True
 
     def test_no_trigger(self):
-        assert _is_niles_trigger("Einkaufsliste") is False
-        assert _is_niles_trigger("Was macht Niles?") is False
-        assert _is_niles_trigger("") is False
+        assert is_niles_trigger("Einkaufsliste") is False
+        assert is_niles_trigger("Was macht Niles?") is False
+        assert is_niles_trigger("") is False
 
     def test_niles_in_middle(self):
         """'Niles' in the middle of a sentence should NOT trigger."""
-        assert _is_niles_trigger("Ich frage Niles mal") is False
+        assert is_niles_trigger("Ich frage Niles mal") is False
 
     def test_word_boundary_nilesh(self):
         """'Nilesh' should NOT trigger (name starts with 'niles')."""
-        assert _is_niles_trigger("Nilesh, kannst du...") is False
+        assert is_niles_trigger("Nilesh, kannst du...") is False
 
     def test_word_boundary_nilesarmy(self):
         """'nilesarmy' should NOT trigger (word continues after 'niles')."""
-        assert _is_niles_trigger("nilesarmy is cool") is False
+        assert is_niles_trigger("nilesarmy is cool") is False
 
     def test_word_boundary_hey_nilesh(self):
         """'Hey Nilesh' should NOT trigger."""
-        assert _is_niles_trigger("Hey Nilesh was geht") is False
+        assert is_niles_trigger("Hey Nilesh was geht") is False
 
 
 class TestStripTrigger:
     def test_hey_niles_comma(self):
-        assert _strip_trigger("Hey Niles, was steht an?") == "was steht an?"
+        assert strip_trigger("Hey Niles, was steht an?") == "was steht an?"
 
     def test_hey_niles_space(self):
-        assert _strip_trigger("Hey Niles was steht an?") == "was steht an?"
+        assert strip_trigger("Hey Niles was steht an?") == "was steht an?"
 
     def test_niles_colon(self):
-        assert _strip_trigger("Niles: Termin morgen") == "Termin morgen"
+        assert strip_trigger("Niles: Termin morgen") == "Termin morgen"
 
     def test_hey_niles_dash(self):
-        assert _strip_trigger("Hey Niles - mach mal") == "mach mal"
+        assert strip_trigger("Hey Niles - mach mal") == "mach mal"
 
     def test_only_trigger(self):
-        assert _strip_trigger("Hey Niles") == ""
+        assert strip_trigger("Hey Niles") == ""
 
     def test_preserves_case(self):
-        result = _strip_trigger("Hey Niles, Termin mit Julia")
+        result = strip_trigger("Hey Niles, Termin mit Julia")
         assert result == "Termin mit Julia"
 
     def test_case_insensitive_strip(self):
-        result = _strip_trigger("HEY NILES was geht")
+        result = strip_trigger("HEY NILES was geht")
         assert result == "was geht"
 
 

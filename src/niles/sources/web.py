@@ -254,6 +254,7 @@ async def _resolve_channel(
     channel: str,
     wa_store,
     wa_session: dict | None = None,
+    signal_phone: str = "",
 ) -> tuple[str, bool]:
     """Resolve channel name to (chat_id, readonly).
 
@@ -269,6 +270,9 @@ async def _resolve_channel(
                 f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
             )
             return chat_id, True
+    if channel == "signal" and signal_phone:
+        phone_digits = signal_phone.lstrip("+").replace(" ", "")
+        return f"signal-self-{phone_digits}", True
     return _user_chat_id(user), False
 
 
@@ -297,6 +301,8 @@ def _safe_settings_dict(settings) -> dict:
     feature_flags = {}
     for key in [
         "feature_whatsapp_send_others",
+        "feature_signal",
+        "feature_signal_send_others",
     ]:
         feature_flags[key] = getattr(settings, key)
 
@@ -324,6 +330,7 @@ def _safe_settings_dict(settings) -> dict:
         "feature_briefing_weekly": getattr(settings, "feature_briefing_weekly", False),
         "briefing_daily_time": getattr(settings, "briefing_daily_time", "07:30"),
         "briefing_weekly_time": getattr(settings, "briefing_weekly_time", "07:15"),
+        "briefing_channel": getattr(settings, "briefing_channel", "whatsapp"),
     }
 
     return {
@@ -632,7 +639,11 @@ async def chat_page(
     if wa_store:
         wa_session = await wa_store.get_session(user["uid"])
 
-    chat_id, readonly = await _resolve_channel(user, channel, wa_store, wa_session)
+    settings = request.app.state.settings
+    signal_phone = settings.signal_phone_number if settings.feature_signal else ""
+    chat_id, readonly = await _resolve_channel(
+        user, channel, wa_store, wa_session, signal_phone=signal_phone
+    )
     history = request.app.state.history
     messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE)
     has_more = len(messages) == _CHAT_PAGE_SIZE
@@ -645,6 +656,8 @@ async def chat_page(
         and wa_session["status"] == "connected"
     ):
         available_channels.append(("whatsapp", "WhatsApp"))
+    if signal_phone:
+        available_channels.append(("signal", "Signal"))
 
     response = templates.TemplateResponse(
         request,
@@ -655,7 +668,9 @@ async def chat_page(
             "next_offset": _CHAT_PAGE_SIZE,
             "active_page": "chat",
             "user": user,
-            "channel": channel if not readonly or channel == "whatsapp" else "web",
+            "channel": channel
+            if not readonly or channel in ("whatsapp", "signal")
+            else "web",
             "readonly": readonly,
             "available_channels": available_channels,
         },
@@ -686,6 +701,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
             "user": user,
             "google_configured": _google_configured(request),
             "calendar_error": error_msg,
+            "feature_signal": request.app.state.settings.feature_signal,
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -1459,6 +1475,116 @@ async def whatsapp_disconnect(request: Request):
             "wa_phone": "",
             "wa_qr": "",
         },
+    )
+
+
+# --- Signal management ---
+
+
+async def _ensure_signal_listener(app) -> None:
+    """Start the Signal WebSocket listener if not already running."""
+    import asyncio
+
+    from .signal import signal_listener
+
+    signal_task = getattr(app.state, "signal_task", None)
+    if signal_task and not signal_task.done():
+        return  # already running
+
+    shutdown_event = getattr(app.state, "shutdown_event", None)
+    if not shutdown_event:
+        return
+
+    task = asyncio.create_task(signal_listener(app.state, shutdown_event))
+    app.state.signal_task = task
+    logger.info("Signal WebSocket listener started (auto-discovery)")
+
+
+@router.get("/api/signal/status", response_class=HTMLResponse)
+async def signal_status(request: Request):
+    """Return Signal connection status fragment.
+
+    Auto-discovers the phone number after QR-code linking via /v1/accounts
+    and starts the WebSocket listener dynamically.
+
+    Query params:
+        linking=1  Keep "connecting" state while user scans QR code.
+    """
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    settings = request.app.state.settings
+    if not settings.feature_signal:
+        return HTMLResponse(
+            '<p class="text-sm text-zinc-500 py-2">Signal nicht aktiviert.</p>'
+        )
+
+    signal_action = getattr(request.app.state, "signal_action", None)
+    if not signal_action:
+        return HTMLResponse(
+            '<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>'
+        )
+
+    linking = request.query_params.get("linking") == "1"
+    ctx = {"signal_status": "disconnected", "signal_phone": ""}
+
+    # Check if already known
+    if settings.signal_phone_number:
+        ctx["signal_status"] = "connected"
+        ctx["signal_phone"] = settings.signal_phone_number
+    else:
+        # Auto-discover: check linked accounts via signal-cli-rest-api
+        accounts = await signal_action.get_accounts()
+        if accounts:
+            phone = accounts[0]
+            logger.info("Signal phone auto-discovered: %s", phone)
+            # Persist to settings (runtime + DB)
+            settings.signal_phone_number = phone
+            signal_action.phone = phone
+            settings_store = getattr(request.app.state, "settings_store", None)
+            if settings_store:
+                await settings_store.set("signal_phone_number", phone)
+            # Start WebSocket listener if not running
+            await _ensure_signal_listener(request.app)
+            ctx["signal_status"] = "connected"
+            ctx["signal_phone"] = phone
+        elif linking:
+            # QR code displayed, waiting for user to scan
+            ctx["signal_status"] = "connecting"
+
+    return templates.TemplateResponse(request, "fragments/signal_status.html", ctx)
+
+
+@router.get("/api/signal/qrcode")
+async def signal_qrcode(request: Request):
+    """Proxy QR code PNG from signal-cli-rest-api."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401)
+
+    signal_action = getattr(request.app.state, "signal_action", None)
+    if not signal_action:
+        return Response(status_code=404)
+
+    png_bytes = await signal_action.get_qr_link(device_name="niles")
+    if not png_bytes:
+        return Response(status_code=502, content=b"QR code not available")
+
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.post("/api/signal/link", response_class=HTMLResponse)
+async def signal_link(request: Request):
+    """Start linking process (show QR code)."""
+    user, error = await _require_admin(request)
+    if error:
+        return error
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/signal_status.html",
+        {"signal_status": "connecting", "signal_phone": ""},
     )
 
 
