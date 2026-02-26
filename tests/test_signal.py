@@ -91,6 +91,62 @@ class TestSignalAction:
 
         assert result == b"\x89PNG..."
 
+    @pytest.mark.asyncio
+    async def test_unlink_success(self):
+        action = self._make_action()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+
+        action._client = AsyncMock()
+        action._client.delete = AsyncMock(return_value=mock_response)
+        action.phone = "+4366012345678"
+
+        result = await action.unlink()
+
+        assert result is True
+        action._client.delete.assert_called_once()
+        call_args = action._client.delete.call_args
+        assert "+4366012345678" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_unlink_no_phone(self):
+        action = self._make_action()
+        action.phone = ""
+
+        result = await action.unlink()
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_unlink_404_treated_as_success(self):
+        """404 is expected for linked/secondary devices — should return True."""
+        action = self._make_action()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        action._client = AsyncMock()
+        action._client.delete = AsyncMock(return_value=mock_response)
+        action.phone = "+4366012345678"
+
+        result = await action.unlink()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_unlink_error(self):
+        action = self._make_action()
+        import httpx
+
+        action._client = AsyncMock()
+        action._client.delete = AsyncMock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+        action.phone = "+4366012345678"
+
+        result = await action.unlink()
+
+        assert result is False
+
 
 # --- Echo-loop guard tests ---
 
