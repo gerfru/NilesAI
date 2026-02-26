@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-02-25
+> **Updated:** 2026-02-26
 
 ---
 
@@ -99,7 +99,7 @@ Starts uvicorn with auto-reload on `http://127.0.0.1:8000`. Requires PostgreSQL 
 ./scripts/start.sh
 ```
 
-Starts all containers (PostgreSQL, Evolution API, Niles Core, Caddy). Niles Core runs with volume mount and `--reload` for live reload on code changes.
+Starts all containers (PostgreSQL, Evolution API, Niles Core, Caddy). For live code reload during development, use `./scripts/dev.sh` (Option A) instead -- the Docker setup runs without `--reload` and requires a rebuild for code changes.
 
 **HTTPS:** Caddy terminates TLS with self-signed certificates. For local testing, use `--insecure` with curl:
 
@@ -177,7 +177,8 @@ tests/
 ├── test_web.py                  # Web UI, Google OAuth, sessions, CSRF
 ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 ├── test_tasks.py                # Vikunja task management
-└── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
+├── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
+└── test_logging.py              # Structured logging + Prometheus metrics
 ```
 
 ### Conventions
@@ -212,11 +213,13 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 ### Restart After Changes
 
-Changes to `src/` do not require a restart (volume mount + `--reload`). Changes to `pyproject.toml` (new dependencies) require rebuilding the container:
+All code changes require rebuilding the container:
 
 ```bash
 docker compose -f docker/docker-compose.yml --env-file .env up -d --build niles_core
 ```
+
+For faster iteration, use `./scripts/dev.sh` (local uvicorn with `--reload`).
 
 ---
 
@@ -282,9 +285,11 @@ Note: LLM parameters are sometimes delivered as strings instead of the correct t
 
 ### Logging
 
-- `logging.getLogger(__name__)` in every module
+- `logging.getLogger(__name__)` in every module (stdlib loggers are routed through structlog)
+- Structured JSON output to stdout via `structlog` (`src/niles/logging_config.py`)
 - Level configurable via `LOG_LEVEL` environment variable
-- Format: `%(asctime)s %(levelname)s %(name)s: %(message)s`
+- Request tracing: `request_id` is automatically bound to all log entries via `structlog.contextvars`
+- Noisy loggers (`httpx`, `httpcore`) are set to WARNING
 
 ### Security: No Deletions
 
