@@ -1,0 +1,88 @@
+"""Signal message storage backed by PostgreSQL.
+
+signal-cli-rest-api has no message history API (unlike Evolution API's findMessages),
+so incoming and outgoing messages are stored locally.
+"""
+
+import logging
+from datetime import datetime, timedelta, timezone
+
+import asyncpg
+
+logger = logging.getLogger(__name__)
+
+_MAX_AGE_DAYS = 30
+
+
+class SignalMessageStore:
+    """Store and retrieve Signal messages in PostgreSQL."""
+
+    def __init__(self, pool: asyncpg.Pool):
+        self.pool = pool
+
+    async def initialize(self) -> None:
+        """Create signal_messages table if it doesn't exist."""
+        await self.pool.execute("""
+            CREATE TABLE IF NOT EXISTS signal_messages (
+                id SERIAL PRIMARY KEY,
+                phone TEXT NOT NULL,
+                text TEXT NOT NULL,
+                from_me BOOLEAN NOT NULL DEFAULT FALSE,
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                chat_id TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        await self.pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_signal_messages_phone_ts
+            ON signal_messages (phone, timestamp DESC)
+        """)
+        logger.info("Signal message store initialized")
+
+    async def store(
+        self,
+        phone: str,
+        text: str,
+        from_me: bool,
+        chat_id: str = "",
+    ) -> None:
+        """Store a single message."""
+        await self.pool.execute(
+            "INSERT INTO signal_messages (phone, text, from_me, timestamp, chat_id) "
+            "VALUES ($1, $2, $3, NOW(), $4)",
+            phone,
+            text,
+            from_me,
+            chat_id,
+        )
+
+    async def get_messages(
+        self,
+        phone: str,
+        days: int = _MAX_AGE_DAYS,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Fetch messages for a phone number (last N days).
+
+        Returns list of dicts with keys: from_me, text, timestamp, phone.
+        Sorted by timestamp ascending (oldest first).
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = await self.pool.fetch(
+            "SELECT phone, text, from_me, timestamp "
+            "FROM signal_messages "
+            "WHERE phone = $1 AND timestamp >= $2 "
+            "ORDER BY timestamp ASC "
+            "LIMIT $3",
+            phone,
+            cutoff,
+            limit,
+        )
+        return [
+            {
+                "from_me": r["from_me"],
+                "text": r["text"],
+                "timestamp": int(r["timestamp"].timestamp()),
+                "phone": r["phone"],
+            }
+            for r in rows
+        ]

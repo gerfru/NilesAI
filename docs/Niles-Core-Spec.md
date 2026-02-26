@@ -1,6 +1,6 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 7.2
+> **Version:** 7.3
 > **Updated:** 2026-02-26
 
 ---
@@ -27,11 +27,12 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp gateway |
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
 | Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
+| signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
 | Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
-**Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed.
+**Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
 
-**Database:** `evolution_db`, user `evolution`, password via `EVOLUTION_POSTGRES_PASSWORD`. Vikunja uses its own database `vikunja_db` (one-time: `CREATE DATABASE vikunja_db OWNER evolution;`).
+**Database:** `evolution_db`, user `evolution`, password via `EVOLUTION_POSTGRES_PASSWORD`. Vikunja uses its own database `vikunja_db` (one-time: `CREATE DATABASE vikunja_db OWNER evolution;`). Signal messages are stored in `signal_messages` table (same database).
 
 ---
 
@@ -54,6 +55,8 @@ External Clients (Browser, curl, Tailscale)
 Event Sources                Niles Core (FastAPI :8000)              External
                          +--------------------------------+
 WhatsApp --- Webhook --> |  sources/whatsapp.py           |
+                         |                                |
+Signal --- WebSocket --> |  sources/signal.py             |
                          |         |                      |
 Browser --- /ui/* -----> |  sources/web.py (htmx/Jinja2)  |
                          |    | Google OAuth + Sessions   |
@@ -66,6 +69,7 @@ POST /chat  ---------->  |  agent/core.py (NilesAgent)    |--> Ollama :11434
                          |    +- memory/history.py        |--> PostgreSQL :5432
                          |    +- actions/contacts.py      |--> PostgreSQL :5432
                          |    +- actions/whatsapp.py      |--> Evolution API :8080
+                         |    +- actions/signal.py        |--> signal-cli-rest-api :8080
                          |    +- actions/calendar.py      |--> PostgreSQL :5432
                          |    +- actions/tasks.py         |--> Vikunja :3456
                          |                                |
@@ -99,6 +103,7 @@ Niles/
 │       ├── user_store.py             # User management (Google OAuth)
 │       ├── settings_store.py         # Runtime settings overrides (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-user WhatsApp sessions (PostgreSQL)
+│       ├── signal_store.py          # Signal message store (PostgreSQL)
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, tool definitions
 │       │   └── prompts.py            # System prompt loading/building
@@ -108,6 +113,7 @@ Niles/
 │       ├── actions/
 │       │   ├── briefing.py           # BriefingGenerator (daily/weekly overview)
 │       │   ├── whatsapp.py           # WhatsApp send (Evolution API)
+│       │   ├── signal.py             # Signal send + status (signal-cli-rest-api)
 │       │   ├── contacts.py           # Contact lookup + normalize_phone
 │       │   ├── calendar.py           # Calendar queries
 │       │   └── tasks.py              # Vikunja task management
@@ -115,6 +121,8 @@ Niles/
 │       │   └── briefing.py           # Scheduler jobs for briefing
 │       ├── sources/
 │       │   ├── whatsapp.py           # Webhook handler (token auth)
+│       │   ├── signal.py             # WebSocket listener (background task)
+│       │   ├── triggers.py           # Shared trigger detection (Hey Niles)
 │       │   └── web.py                # Web UI router (OAuth, htmx, sessions)
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV contact sync
@@ -134,7 +142,8 @@ Niles/
 │       │       ├── history.html
 │       │       ├── toast.html
 │       │       ├── calendars.html
-│       │       └── calendar_sources.html
+│       │       ├── calendar_sources.html
+│       │       └── signal_status.html
 │       └── static/
 │           ├── css/
 │           │   ├── input.css         # Tailwind directives + custom components
@@ -162,7 +171,8 @@ Niles/
 │   ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 │   ├── test_tasks.py                # Vikunja task management
 │   ├── test_self_chat.py            # WhatsApp self-chat trigger
-│   ├── test_briefing.py              # BriefingGenerator + time parsing
+│   ├── test_signal.py               # Signal action, listener, echo guard, triggers
+│   ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
 │   └── test_logging.py              # Structured logging + Prometheus metrics
 ├── config/
 │   └── soul.md                       # Agent personality
@@ -267,8 +277,9 @@ Entry point. Manages the application lifecycle via `lifespan()`:
 11. Initialize CalendarSourceManager (DB schema, auto-migration from .env CalDAV config, sync scheduler)
 12. Start APScheduler (CardDAV 03:00, calendar sources 03:20)
 13. Start MCP manager
-14. Instantiate actions and agent (incl. wa_store)
-15. Save everything to `app.state`
+14. Initialize Signal (when `feature_signal=true`): SignalAction, SignalMessageStore, WebSocket listener task
+15. Instantiate actions and agent (incl. wa_store, signal, signal_store)
+16. Save everything to `app.state`
 
 **Middleware** (execution order, outermost first):
 
@@ -325,7 +336,13 @@ class Settings(BaseSettings):
     vikunja_api_url: str = ""
     vikunja_api_token: str = ""
     feature_vikunja: bool = False
+    # Signal (optional)
+    signal_api_url: str = "http://signal_api:8080"
+    signal_phone_number: str = ""
+    feature_signal: bool = False
+    feature_signal_send_others: bool = False
     # Briefing / Digest
+    briefing_channel: str = "whatsapp"        # whatsapp | signal | both
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
     briefing_daily_time: str = "07:30"        # HH:MM, Mon-Fri
@@ -346,7 +363,8 @@ Complete settings table with defaults and env variables: see #6.1.
 class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
                  mcp_manager, calendar, calendar_manager, wa_store,
-                 tasks=None, vikunja_store=None): ...
+                 tasks=None, vikunja_store=None,
+                 signal=None, signal_store=None): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call, chat_id) -> dict: ...
@@ -359,7 +377,7 @@ class NilesAgent:
 **Event format:**
 
 ```json
-{"type": "whatsapp|chat|web", "from": "436601234...|api|web-user-1", "content": "..."}
+{"type": "whatsapp|signal|chat|web", "from": "436601234...|signal-self-{nr}|api|web-user-1", "content": "..."}
 ```
 
 **Registered tools:**
@@ -369,6 +387,8 @@ class NilesAgent:
 | `find_contact` | `name: str` | Contact search in PostgreSQL. Returns `full_name`, `phone` (preferred), `phones` (all with type), `email`. |
 | `send_whatsapp` | `to: str, text: str` | Send message (number or name). Multi-phone: asks user for multiple numbers (TTL 5 min). Per-user instance resolution. |
 | `get_whatsapp_messages` | `contact: str` | Read WhatsApp chat history (by contact name or phone number). 30-day window. Via Evolution API `findMessages`. Result contains `date_range` and `hinweis` for LLM summarization. Media placeholders for images, videos, voice messages, etc. |
+| `send_signal` | `to: str, text: str` | Send Signal message (name or phone number). Feature flag: `feature_signal_send_others` for non-self messages. |
+| `get_signal_messages` | `contact: str` | Read Signal message history (by contact name or phone number). 30-day window. From local PostgreSQL store. |
 | `remember` | `key: str, value: str` | Store fact in memory |
 | `recall` | `key: str` | Retrieve fact from memory |
 | `find_event` | `query?, date_from?, date_to?, calendar?` | Search calendar events (max 10 results). Supports date filters and calendar selection. |
@@ -445,6 +465,8 @@ EDITABLE_SETTINGS = {
     "feature_vikunja",
     "feature_briefing_daily", "feature_briefing_weekly",
     "briefing_daily_time", "briefing_weekly_time",
+    "feature_signal", "feature_signal_send_others",
+    "signal_phone_number", "briefing_channel",
 }
 
 class SettingsStore:
@@ -545,7 +567,63 @@ class WhatsAppAction:
 
 Instance management methods control Evolution API instances for the per-user WhatsApp flow (create, fetch QR code, check connection state, determine owner JID, disconnect, delete).
 
-### 3.13 Contact Lookup (`src/niles/actions/contacts.py`)
+### 3.13 Signal Source (`src/niles/sources/signal.py`)
+
+WebSocket-based background listener for signal-cli-rest-api:
+
+```python
+async def signal_listener(app_state, shutdown_event: asyncio.Event): ...
+async def _handle_envelope(app_state, data: dict): ...
+```
+
+**Connection:** Maintains a persistent WebSocket connection to `ws://signal_api:8080/v1/receive/{number}?timeout=3600`. The `timeout` parameter keeps the server-side connection alive (signal-cli defaults to 1s without it). Reconnects with exponential backoff (5s, 10s, 20s, max 60s). Checks `shutdown_event` before each reconnect.
+
+**Message handling (`_handle_envelope`):**
+
+- `dataMessage` (incoming from others): Store in `signal_messages`, no trigger check, no auto-reply
+- `syncMessage.sentMessage` (self-chat): Store, check echo guard, check trigger, agent call + reply
+- Empty envelopes: Ignored
+
+**Echo-loop guard:** Text-based (truncated to 200 chars as key, monotonic timestamp, 10s TTL). Different from WhatsApp's message-ID-based guard because signal-cli-rest-api does not provide message IDs for sent messages.
+
+**Self-chat trigger:** Shared with WhatsApp via `sources/triggers.py`. Trigger phrases: "Hey Niles", "Hi Niles", "Hallo Niles", "Niles" (case-insensitive, word-boundary). Self-chat `chat_id`: `signal-self-{number}`.
+
+> **Known Limitation:** Self-chat via "Note to Self" does not work due to an upstream signal-cli bug ([#1930](https://github.com/AsamK/signal-cli/issues/1930)). As a linked device, signal-cli cannot parse SyncMessage envelopes -- the message text is lost (`syncMessage: {}` or `InvalidMessageStructureException`). Affects all versions up to v0.13.24. The self-chat code path is implemented and tested but cannot be exercised until a fixed signal-cli release is available.
+
+**Dynamic start:** The listener can be started dynamically after QR-code linking via `_ensure_signal_listener()` in `web.py`, without requiring a container restart.
+
+### 3.14 Signal Action (`src/niles/actions/signal.py`)
+
+```python
+class SignalAction:
+    def __init__(self, config: Settings): ...
+    async def send_message(self, to: str, text: str) -> dict
+    async def get_status(self) -> dict
+    async def get_accounts(self) -> list[str]
+    async def get_qr_link(self, device_name: str = "niles") -> bytes | None
+```
+
+- `send_message`: `POST /v2/send` to signal-cli-rest-api. Timeout 30s. No API key needed (signal-cli-rest-api has no auth).
+- `get_status`: `GET /v1/about` -- registration status.
+- `get_accounts`: `GET /v1/accounts` -- lists registered/linked phone numbers. Used for auto-discovery after QR linking.
+- `get_qr_link`: `GET /v1/qrcodelink` -- returns QR code PNG for device linking.
+
+Phone format: `+43660...` (international with `+` prefix, Signal convention).
+
+### 3.15 Signal Message Store (`src/niles/signal_store.py`)
+
+Local message store needed because signal-cli-rest-api has no `findMessages` equivalent (unlike Evolution API).
+
+```python
+class SignalMessageStore:
+    async def initialize(self) -> None      # CREATE TABLE + INDEX
+    async def store(self, phone, text, from_me, chat_id="") -> None
+    async def get_messages(self, phone, days=30, limit=200) -> list[dict]
+```
+
+Table: `signal_messages` (see #4 Database Schema).
+
+### 3.16 Contact Lookup (`src/niles/actions/contacts.py`)
 
 ```python
 def normalize_phone(phone: str) -> str        # +43/00/0 -> 43...
@@ -563,12 +641,12 @@ Phone normalization: Austria-specific (leading 0 -> 43).
 - `phones`: all numbers with type (`[{"type": "mobile", "number": "436601234567"}, ...]`)
 - Fallback to legacy columns (`phone_primary`, `phone_mobile`, `phone_work`) when `contact_phones` is empty.
 
-### 3.14 CardDAV Sync (`src/niles/sync/carddav.py`)
+### 3.17 CardDAV Sync (`src/niles/sync/carddav.py`)
 
 PROPFIND for vCard URLs, vCard parsing (TEL, EMAIL, FN, N), UPSERT via UID. Supports multi-phone per contact (table `contact_phones`). Phone migration from legacy columns automatic.
 APScheduler for daily sync (03:00, when `carddav_url` configured). CardDAV credentials can be configured and hot-reloaded via the web UI.
 
-### 3.15 Calendar Sync (`src/niles/sync/`)
+### 3.18 Calendar Sync (`src/niles/sync/`)
 
 **CalendarSourceManager** (`manager.py`) manages all calendar sources (ICS, CalDAV, Google) via the `calendar_sources` table. CRUD operations, sync orchestration, and auto-migration from `.env` CalDAV config on first start.
 
@@ -582,13 +660,13 @@ APScheduler for daily sync (03:00, when `carddav_url` configured). CardDAV crede
 
 APScheduler for daily sync: CardDAV 03:00 (when `carddav_url` configured), calendar sources 03:20 (when sources exist). New calendar sources are managed via the web UI and synced automatically.
 
-### 3.16 MCP Client (`src/niles/mcp/client.py`)
+### 3.19 MCP Client (`src/niles/mcp/client.py`)
 
 MCP server manager for external tool integrations. Configuration via `config/mcp_servers.yaml`.
 
 **Destructive tool blocking:** During tool discovery, MCP tools with destructive name prefixes are automatically blocked (delete, remove, drop, destroy, purge, erase, wipe, truncate). Case-insensitive. Blocked tools are logged but not registered. This prevents an MCP server from accidentally exposing deletion capabilities to the LLM.
 
-### 3.17 Task Management (`src/niles/actions/tasks.py`)
+### 3.20 Task Management (`src/niles/actions/tasks.py`)
 
 Interface to the Vikunja REST API. Feature-flag controlled (`feature_vikunja`). Task tools are only sent to the LLM when Vikunja is configured.
 
@@ -606,7 +684,7 @@ class TasksAction:
 - `complete_task`: Searches open tasks by title, marks as done (POST /tasks/{id}). Error on zero or multiple matches.
 - Default project ID is cached (first call triggers HTTP request)
 
-### 3.18 Briefing (`src/niles/actions/briefing.py`, `src/niles/jobs/briefing.py`)
+### 3.21 Briefing (`src/niles/actions/briefing.py`, `src/niles/jobs/briefing.py`)
 
 Automatic daily and weekly overview via WhatsApp. No LLM -- pure DB queries + template formatting.
 
@@ -622,8 +700,11 @@ class BriefingGenerator:
 - **Events:** SQL SELECT from `events` table (with `calendar_sources` JOIN)
 - **Tasks:** Vikunja REST API (`GET /tasks/all?filter=done=false`), optional (empty if not configured)
 - **Scheduler:** APScheduler cron jobs (`briefing_daily`, `briefing_weekly`), registered when feature flag is active
-- **Delivery:** Via `WhatsAppAction.send_message()` to automatically detected connected number. `jobs/briefing.py` queries the `whatsapp_sessions` table for a session with `status='connected'` and uses its `phone_number` + `instance_name`
-- **Settings UI:** Toggle and times configurable. WhatsApp must be connected
+- **Delivery:** Configurable via `briefing_channel` setting (`whatsapp` | `signal` | `both`). Default: `whatsapp`.
+  - `whatsapp`: Via `WhatsAppAction.send_message()` to connected WhatsApp number (from `whatsapp_sessions`)
+  - `signal`: Via `SignalAction.send_message()` to own Signal number (from `signal_phone_number`)
+  - `both`: Send via both channels (failure on one does not block the other)
+- **Settings UI:** Toggle, times, and channel configurable. At least one messenger must be connected
 
 ---
 
@@ -705,6 +786,23 @@ CREATE TABLE IF NOT EXISTS contact_phones (
     number TEXT NOT NULL,
     UNIQUE (contact_id, type, number)
 );
+```
+
+### signal_messages
+
+```sql
+-- Created by SignalMessageStore (signal_store.py)
+CREATE TABLE IF NOT EXISTS signal_messages (
+    id SERIAL PRIMARY KEY,
+    phone TEXT NOT NULL,
+    text TEXT NOT NULL,
+    from_me BOOLEAN NOT NULL DEFAULT FALSE,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    chat_id TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_messages_phone
+ON signal_messages (phone, timestamp DESC);
 ```
 
 ### memory
@@ -838,7 +936,7 @@ Niles follows the principle **"Read and create, never delete"**:
 
 - **No LLM tool has deletion capabilities.** `complete_task` marks tasks as done (no delete). `remember` overwrites via UPSERT (no delete).
 - **`MemoryStore.delete()` exists** but is NOT exposed as a tool -- only used internally by the web UI.
-- **MCP tools:** Destructive name prefixes are automatically blocked (#3.16).
+- **MCP tools:** Destructive name prefixes are automatically blocked (#3.19).
 - **Evolution API:** Niles only uses `sendText` and `findMessages` -- no delete endpoints.
 - **soul.md Rule 7:** The LLM is explicitly instructed that it cannot delete data and should refer users to the respective app for deletion requests.
 
@@ -847,6 +945,7 @@ Niles follows the principle **"Read and create, never delete"**:
 | WhatsApp (Evolution) | Yes | Yes (send) | No | No |
 | Calendar (CalDAV/Google) | Yes | Yes | No | No |
 | Tasks (Vikunja) | Yes | Yes | Yes (complete) | No |
+| Signal (signal-cli-rest-api) | Yes | Yes (send) | No | No |
 | Contacts (CardDAV) | Yes | No | No | No |
 | Memory (PostgreSQL) | Yes | Yes | Yes (update) | No |
 
@@ -890,6 +989,11 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `vikunja_api_url` | `""` | `VIKUNJA_API_URL` | No\*\*\* |
 | `vikunja_api_token` | `""` | `VIKUNJA_API_TOKEN` | No\*\*\* |
 | `feature_vikunja` | `false` | `FEATURE_VIKUNJA` | No |
+| `signal_api_url` | `"http://signal_api:8080"` | `SIGNAL_API_URL` | No\*\*\*\* |
+| `signal_phone_number` | `""` | `SIGNAL_PHONE_NUMBER` | No |
+| `feature_signal` | `false` | `FEATURE_SIGNAL` | No |
+| `feature_signal_send_others` | `false` | `FEATURE_SIGNAL_SEND_OTHERS` | No |
+| `briefing_channel` | `"whatsapp"` | `BRIEFING_CHANNEL` | No |
 | `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | No |
 | `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | No |
 | `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | No |
@@ -900,6 +1004,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 \*\* Required if Google OAuth is desired. Without Google OAuth, API key login is used.
 
 \*\*\* Required if Vikunja integration is desired. Additionally requires `FEATURE_VIKUNJA=true`.
+
+\*\*\*\* Required if Signal integration is desired. Additionally requires `FEATURE_SIGNAL=true`. Phone number is auto-discovered after QR linking.
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
@@ -932,6 +1038,10 @@ VIKUNJA_API_URL=http://vikunja:3456/api/v1
 VIKUNJA_API_TOKEN=<api-token>
 FEATURE_VIKUNJA=false
 
+# Signal (optional)
+SIGNAL_API_URL=http://signal_api:8080
+FEATURE_SIGNAL=false
+
 # Optional
 NILES_API_KEY=<api-key>
 CARDDAV_USER=<user>
@@ -943,7 +1053,7 @@ LOG_LEVEL=INFO
 
 **Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
 
 See `.env.example` for complete documentation.
 
@@ -987,6 +1097,7 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
 | `vikunja` | `vikunja/vikunja:1.1.0` | 3456 | Todo/task management |
+| `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | -- | Signal gateway (signal-cli v0.13.24) |
 
 ### 7.3 Network
 
@@ -996,6 +1107,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 - `niles_core` -> `evolution_api:8080` (only for WhatsApp sending)
 - `evolution_api` -> `niles_core:8000` (webhook)
 - `niles_core` -> `vikunja:3456` (task management API)
+- `niles_core` -> `signal_api:8080` (Signal messaging, optional)
 - `niles_core` -> `host.docker.internal:11434` (Ollama on host)
 
 ### 7.4 Volumes
@@ -1007,6 +1119,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 | `caddy_data` | `/data` | TLS certificates |
 | `caddy_config` | `/config` | Caddy configuration |
 | `~/.evolution/instances` | `/evolution/instances` | WhatsApp sessions |
+| `signal_cli_config` | `/home/.local/share/signal-cli` | Signal account data |
 | `../config` | `/app/config:ro` | Agent configuration |
 
 ---
@@ -1033,7 +1146,9 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
 | LLM Inference | Ollama (native on host) | local |
+| WebSocket Client | websockets | >= 14.0 |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
+| Signal Gateway | signal-cli-rest-api | 1771797934-ci (signal-cli v0.13.24) |
 
 ### pyproject.toml Dependencies
 
@@ -1053,6 +1168,7 @@ itsdangerous>=2.0         # Signed Session Cookies
 python-dateutil>=2.8.0    # RRULE Expansion (recurring calendar events)
 structlog>=24.1.0         # Structured JSON Logging
 prometheus-client>=0.21.0 # Prometheus Metrics
+websockets>=14.0          # Signal WebSocket listener
 ```
 
 Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
