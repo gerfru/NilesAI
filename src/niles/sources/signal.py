@@ -3,42 +3,18 @@
 import asyncio
 import json
 import logging
-import time
 
 import structlog
 import websockets
 
+from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Echo-loop guard: cache of recently sent message texts.
-# signal-cli-rest-api echoes outgoing messages back as syncMessage.sentMessage.
-# Unlike Evolution API, there is no unique message ID in the send response,
-# so we track the text content (truncated) with a TTL.
-# ---------------------------------------------------------------------------
-_sent_texts: dict[str, float] = {}  # text_hash → monotonic timestamp
-_SENT_TTL = 10.0  # seconds
-
-
-def _record_sent(text: str) -> None:
-    """Record text we just sent (with TTL-based pruning)."""
-    now = time.monotonic()
-    key = text[:200]
-    _sent_texts[key] = now
-    expired = [k for k, v in _sent_texts.items() if now - v > _SENT_TTL]
-    for k in expired:
-        del _sent_texts[k]
-
-
-def _was_echo(text: str) -> bool:
-    """Check if text matches something we recently sent."""
-    key = text[:200]
-    ts = _sent_texts.get(key)
-    if ts is None:
-        return False
-    return (time.monotonic() - ts) <= _SENT_TTL
+# Echo-loop guard: signal-cli echoes outgoing messages back as
+# syncMessage.sentMessage. Keyed by text prefix (no message IDs available).
+_echo_guard = EchoGuard(ttl=10.0)
 
 
 async def signal_listener(
@@ -51,9 +27,10 @@ async def signal_listener(
     """
     phone = app_state.settings.signal_phone_number
     api_url = app_state.settings.signal_api_url
-    # Build ws:// URL from http:// URL
+    # Build WebSocket URL from HTTP URL (wss:// for https://, ws:// for http://)
+    ws_scheme = "wss" if api_url.startswith("https://") else "ws"
     ws_host = api_url.replace("http://", "").replace("https://", "").rstrip("/")
-    ws_url = f"ws://{ws_host}/v1/receive/{phone}?timeout=3600"
+    ws_url = f"{ws_scheme}://{ws_host}/v1/receive/{phone}?timeout=3600"
 
     backoff = 5
     max_backoff = 60
@@ -108,6 +85,10 @@ async def _handle_envelope(app_state, data: dict) -> None:
     own_phone = app_state.settings.signal_phone_number
 
     # --- Incoming message from someone else ---
+    # Store only — no auto-reply. The agent reads stored messages via
+    # get_signal_messages when the user asks. This matches the design
+    # decision that Niles only responds when explicitly triggered
+    # (self-chat with "Hey Niles" trigger phrase).
     if data_msg and data_msg.get("message"):
         text = data_msg["message"]
         await signal_store.store(phone=source, text=text, from_me=False)
@@ -131,7 +112,7 @@ async def _handle_envelope(app_state, data: dict) -> None:
     await signal_store.store(phone=dest, text=text, from_me=True)
 
     # Echo-loop guard: skip if we just sent this via the agent
-    if _was_echo(text):
+    if _echo_guard.is_echo(text[:200]):
         return
 
     # Trigger check — only process self-chat with trigger phrase
@@ -158,7 +139,7 @@ async def _handle_envelope(app_state, data: dict) -> None:
         agent = app_state.agent
         response = await agent.process_event(event)
         if response:
-            _record_sent(response)
+            _echo_guard.record(response[:200])
             await signal_action.send_message(to=own_phone, text=response)
     except Exception:
         logger.exception("Failed to process Signal self-chat")

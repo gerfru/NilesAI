@@ -48,12 +48,13 @@ async def _send_via_whatsapp(app_state, message: str) -> bool:
 async def _send_via_signal(app_state, message: str) -> bool:
     """Send briefing message via Signal. Returns True on success."""
     signal_action = getattr(app_state, "signal_action", None)
-    settings = getattr(app_state, "settings", None)
-    if not signal_action or not settings or not settings.signal_phone_number:
+    if not signal_action or not app_state.settings.signal_phone_number:
         logger.info("Briefing: Signal nicht konfiguriert")
         return False
     try:
-        await signal_action.send_message(to=settings.signal_phone_number, text=message)
+        await signal_action.send_message(
+            to=app_state.settings.signal_phone_number, text=message
+        )
         logger.info("Briefing sent via Signal")
         return True
     except Exception:

@@ -1482,9 +1482,11 @@ async def whatsapp_disconnect(request: Request):
 
 
 async def _ensure_signal_listener(app) -> None:
-    """Start the Signal WebSocket listener if not already running."""
-    import asyncio
+    """Start the Signal WebSocket listener if not already running.
 
+    Guards against concurrent callers (e.g. overlapping HTMX polls) by
+    setting a sentinel Future before the first await point.
+    """
     from .signal import signal_listener
 
     signal_task = getattr(app.state, "signal_task", None)
@@ -1494,6 +1496,11 @@ async def _ensure_signal_listener(app) -> None:
     shutdown_event = getattr(app.state, "shutdown_event", None)
     if not shutdown_event:
         return
+
+    # Set sentinel immediately to prevent a second caller from racing past
+    # the done() check before create_task completes.
+    sentinel = asyncio.get_event_loop().create_future()
+    app.state.signal_task = sentinel
 
     task = asyncio.create_task(signal_listener(app.state, shutdown_event))
     app.state.signal_task = task
@@ -1510,9 +1517,9 @@ async def signal_status(request: Request):
     Query params:
         linking=1  Keep "connecting" state while user scans QR code.
     """
-    user = _get_session_user(request)
-    if user is None:
-        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+    user, error = await _require_admin_page(request)
+    if error:
+        return error
 
     settings = request.app.state.settings
     if not settings.feature_signal:
@@ -1539,7 +1546,8 @@ async def signal_status(request: Request):
         if accounts:
             phone = accounts[0]
             logger.info("Signal phone auto-discovered: %s", phone)
-            # Persist to settings (runtime + DB)
+            # Persist to settings (runtime + DB).
+            # Mutates shared Settings object — safe in single-process deployment.
             settings.signal_phone_number = phone
             signal_action.phone = phone
             settings_store = getattr(request.app.state, "settings_store", None)
@@ -1558,10 +1566,10 @@ async def signal_status(request: Request):
 
 @router.get("/api/signal/qrcode")
 async def signal_qrcode(request: Request):
-    """Proxy QR code PNG from signal-cli-rest-api."""
-    user = _get_session_user(request)
-    if user is None:
-        return Response(status_code=401)
+    """Proxy QR code PNG from signal-cli-rest-api (admin only)."""
+    user, error = await _require_admin_page(request)
+    if error:
+        return error
 
     signal_action = getattr(request.app.state, "signal_action", None)
     if not signal_action:

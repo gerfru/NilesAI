@@ -6,7 +6,7 @@ import pytest
 
 from niles.config import Settings
 from niles.sources.triggers import is_niles_trigger, strip_trigger
-from niles.sources.whatsapp import _record_sent, _sent_ids
+from niles.sources.whatsapp import _echo_guard
 
 
 class TestIsNilesTrigger:
@@ -191,11 +191,11 @@ class TestSelfChatWebhook:
         mock_app.state.whatsapp_action.send_message.assert_not_called()
 
     async def test_echo_of_own_reply_is_ignored(self, mock_app):
-        """A message ID recorded via _record_sent must be skipped."""
+        """A message ID recorded via echo guard must be skipped."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         # Simulate: agent previously sent a message with this ID
-        _record_sent("ABCDEF123")
+        _echo_guard.record("ABCDEF123")
 
         request = AsyncMock()
         request.app = mock_app
@@ -220,13 +220,13 @@ class TestSelfChatWebhook:
         mock_app.state.agent.process_event.assert_not_called()
 
         # Cleanup
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
 
     async def test_reply_records_sent_id(self, mock_app):
         """After sending a self-chat reply, the message ID is recorded."""
         from niles.sources.whatsapp import whatsapp_webhook
 
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
         mock_app.state.agent.process_event.return_value = "Antwort"
         mock_app.state.whatsapp_action.send_message.return_value = {
             "key": {"id": "SENT999"},
@@ -238,7 +238,7 @@ class TestSelfChatWebhook:
 
         await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
-        assert "SENT999" in _sent_ids
+        assert _echo_guard.is_echo("SENT999")
 
         # Cleanup
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
