@@ -33,10 +33,15 @@ EDITABLE_SETTINGS = {
     "carddav_user",
     "carddav_password",
     "feature_vikunja",
+    "feature_signal",
+    "feature_signal_send_others",
+    "signal_api_url",
+    "signal_phone_number",
     "feature_briefing_daily",
     "feature_briefing_weekly",
     "briefing_daily_time",
     "briefing_weekly_time",
+    "briefing_channel",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")

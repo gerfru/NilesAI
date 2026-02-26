@@ -29,48 +29,87 @@ async def _get_connected_number(app_state) -> tuple[str | None, str | None]:
     return row["phone_number"], row["instance_name"]
 
 
-async def send_daily_briefing(app_state) -> bool:
-    """Generate and send the daily briefing via WhatsApp.
-
-    Called by APScheduler. Uses the connected WhatsApp session from DB.
-    Returns True if the briefing was sent, False if no session was available.
-    """
+async def _send_via_whatsapp(app_state, message: str) -> bool:
+    """Send briefing message via WhatsApp. Returns True on success."""
     number, instance = await _get_connected_number(app_state)
     if not number:
         return False
-
-    briefing = app_state.briefing_generator
-    whatsapp = app_state.whatsapp_action
-
     try:
-        message = await briefing.generate_daily()
-        await whatsapp.send_message(to=number, text=message, instance=instance)
-        logger.info("Daily briefing sent to %s", number)
+        await app_state.whatsapp_action.send_message(
+            to=number, text=message, instance=instance
+        )
+        logger.info("Briefing sent via WhatsApp to %s", number)
         return True
     except Exception:
-        logger.exception("Failed to send daily briefing")
+        logger.exception("Failed to send briefing via WhatsApp")
         return False
+
+
+async def _send_via_signal(app_state, message: str) -> bool:
+    """Send briefing message via Signal. Returns True on success."""
+    signal_action = getattr(app_state, "signal_action", None)
+    if not signal_action or not app_state.settings.signal_phone_number:
+        logger.info("Briefing: Signal nicht konfiguriert")
+        return False
+    try:
+        await signal_action.send_message(
+            to=app_state.settings.signal_phone_number, text=message
+        )
+        logger.info("Briefing sent via Signal")
+        return True
+    except Exception:
+        logger.exception("Failed to send briefing via Signal")
+        return False
+
+
+async def _send_briefing(app_state, message: str) -> bool:
+    """Send a briefing message via the configured channel(s).
+
+    Respects settings.briefing_channel: whatsapp | signal | both.
+    Returns True if at least one channel succeeded.
+    """
+    channel = getattr(app_state.settings, "briefing_channel", "whatsapp")
+    sent_any = False
+
+    if channel in ("whatsapp", "both"):
+        if await _send_via_whatsapp(app_state, message):
+            sent_any = True
+
+    if channel in ("signal", "both"):
+        if await _send_via_signal(app_state, message):
+            sent_any = True
+
+    return sent_any
+
+
+async def send_daily_briefing(app_state) -> bool:
+    """Generate and send the daily briefing.
+
+    Called by APScheduler. Sends via the configured briefing channel.
+    Returns True if the briefing was sent, False if no channel was available.
+    """
+    briefing = app_state.briefing_generator
+    try:
+        message = await briefing.generate_daily()
+    except Exception:
+        logger.exception("Failed to generate daily briefing")
+        return False
+
+    return await _send_briefing(app_state, message)
 
 
 async def send_weekly_briefing(app_state) -> bool:
-    """Generate and send the weekly briefing via WhatsApp.
+    """Generate and send the weekly briefing.
 
     Called by APScheduler on Mondays, before the daily briefing.
-    Uses the connected WhatsApp session from DB.
-    Returns True if the briefing was sent, False if no session was available.
+    Sends via the configured briefing channel.
+    Returns True if the briefing was sent, False if no channel was available.
     """
-    number, instance = await _get_connected_number(app_state)
-    if not number:
-        return False
-
     briefing = app_state.briefing_generator
-    whatsapp = app_state.whatsapp_action
-
     try:
         message = await briefing.generate_weekly()
-        await whatsapp.send_message(to=number, text=message, instance=instance)
-        logger.info("Weekly briefing sent to %s", number)
-        return True
     except Exception:
-        logger.exception("Failed to send weekly briefing")
+        logger.exception("Failed to generate weekly briefing")
         return False
+
+    return await _send_briefing(app_state, message)

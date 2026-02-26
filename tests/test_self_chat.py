@@ -5,78 +5,74 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from niles.config import Settings
-from niles.sources.whatsapp import (
-    _is_niles_trigger,
-    _record_sent,
-    _sent_ids,
-    _strip_trigger,
-)
+from niles.sources.triggers import is_niles_trigger, strip_trigger
+from niles.sources.whatsapp import _echo_guard
 
 
 class TestIsNilesTrigger:
     def test_hey_niles(self):
-        assert _is_niles_trigger("Hey Niles, was geht?") is True
+        assert is_niles_trigger("Hey Niles, was geht?") is True
 
     def test_hi_niles(self):
-        assert _is_niles_trigger("Hi Niles was steht an") is True
+        assert is_niles_trigger("Hi Niles was steht an") is True
 
     def test_hallo_niles(self):
-        assert _is_niles_trigger("Hallo Niles!") is True
+        assert is_niles_trigger("Hallo Niles!") is True
 
     def test_just_niles(self):
-        assert _is_niles_trigger("Niles Termin morgen") is True
+        assert is_niles_trigger("Niles Termin morgen") is True
 
     def test_case_insensitive(self):
-        assert _is_niles_trigger("HEY NILES was geht") is True
-        assert _is_niles_trigger("hey niles") is True
+        assert is_niles_trigger("HEY NILES was geht") is True
+        assert is_niles_trigger("hey niles") is True
 
     def test_with_leading_whitespace(self):
-        assert _is_niles_trigger("  Hey Niles, test") is True
+        assert is_niles_trigger("  Hey Niles, test") is True
 
     def test_no_trigger(self):
-        assert _is_niles_trigger("Einkaufsliste") is False
-        assert _is_niles_trigger("Was macht Niles?") is False
-        assert _is_niles_trigger("") is False
+        assert is_niles_trigger("Einkaufsliste") is False
+        assert is_niles_trigger("Was macht Niles?") is False
+        assert is_niles_trigger("") is False
 
     def test_niles_in_middle(self):
         """'Niles' in the middle of a sentence should NOT trigger."""
-        assert _is_niles_trigger("Ich frage Niles mal") is False
+        assert is_niles_trigger("Ich frage Niles mal") is False
 
     def test_word_boundary_nilesh(self):
         """'Nilesh' should NOT trigger (name starts with 'niles')."""
-        assert _is_niles_trigger("Nilesh, kannst du...") is False
+        assert is_niles_trigger("Nilesh, kannst du...") is False
 
     def test_word_boundary_nilesarmy(self):
         """'nilesarmy' should NOT trigger (word continues after 'niles')."""
-        assert _is_niles_trigger("nilesarmy is cool") is False
+        assert is_niles_trigger("nilesarmy is cool") is False
 
     def test_word_boundary_hey_nilesh(self):
         """'Hey Nilesh' should NOT trigger."""
-        assert _is_niles_trigger("Hey Nilesh was geht") is False
+        assert is_niles_trigger("Hey Nilesh was geht") is False
 
 
 class TestStripTrigger:
     def test_hey_niles_comma(self):
-        assert _strip_trigger("Hey Niles, was steht an?") == "was steht an?"
+        assert strip_trigger("Hey Niles, was steht an?") == "was steht an?"
 
     def test_hey_niles_space(self):
-        assert _strip_trigger("Hey Niles was steht an?") == "was steht an?"
+        assert strip_trigger("Hey Niles was steht an?") == "was steht an?"
 
     def test_niles_colon(self):
-        assert _strip_trigger("Niles: Termin morgen") == "Termin morgen"
+        assert strip_trigger("Niles: Termin morgen") == "Termin morgen"
 
     def test_hey_niles_dash(self):
-        assert _strip_trigger("Hey Niles - mach mal") == "mach mal"
+        assert strip_trigger("Hey Niles - mach mal") == "mach mal"
 
     def test_only_trigger(self):
-        assert _strip_trigger("Hey Niles") == ""
+        assert strip_trigger("Hey Niles") == ""
 
     def test_preserves_case(self):
-        result = _strip_trigger("Hey Niles, Termin mit Julia")
+        result = strip_trigger("Hey Niles, Termin mit Julia")
         assert result == "Termin mit Julia"
 
     def test_case_insensitive_strip(self):
-        result = _strip_trigger("HEY NILES was geht")
+        result = strip_trigger("HEY NILES was geht")
         assert result == "was geht"
 
 
@@ -195,11 +191,11 @@ class TestSelfChatWebhook:
         mock_app.state.whatsapp_action.send_message.assert_not_called()
 
     async def test_echo_of_own_reply_is_ignored(self, mock_app):
-        """A message ID recorded via _record_sent must be skipped."""
+        """A message ID recorded via echo guard must be skipped."""
         from niles.sources.whatsapp import whatsapp_webhook
 
         # Simulate: agent previously sent a message with this ID
-        _record_sent("ABCDEF123")
+        _echo_guard.record("ABCDEF123")
 
         request = AsyncMock()
         request.app = mock_app
@@ -224,13 +220,13 @@ class TestSelfChatWebhook:
         mock_app.state.agent.process_event.assert_not_called()
 
         # Cleanup
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
 
     async def test_reply_records_sent_id(self, mock_app):
         """After sending a self-chat reply, the message ID is recorded."""
         from niles.sources.whatsapp import whatsapp_webhook
 
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
         mock_app.state.agent.process_event.return_value = "Antwort"
         mock_app.state.whatsapp_action.send_message.return_value = {
             "key": {"id": "SENT999"},
@@ -242,7 +238,7 @@ class TestSelfChatWebhook:
 
         await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
-        assert "SENT999" in _sent_ids
+        assert _echo_guard.is_echo("SENT999")
 
         # Cleanup
-        _sent_ids.clear()
+        _echo_guard._cache.clear()
