@@ -364,6 +364,9 @@ class TestOverdueTodayDeduplication:
 class TestSendBriefingReturnValue:
     """Test that send_daily/weekly_briefing return bool correctly."""
 
+    def _make_settings(self, channel="whatsapp"):
+        return SimpleNamespace(briefing_channel=channel, signal_phone_number="")
+
     @pytest.mark.asyncio
     async def test_daily_returns_false_no_session(self):
         """send_daily_briefing returns False when no WhatsApp session exists."""
@@ -371,7 +374,14 @@ class TestSendBriefingReturnValue:
 
         pool = AsyncMock()
         pool.fetchrow = AsyncMock(return_value=None)
-        app_state = SimpleNamespace(pool=pool)
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_daily = AsyncMock(return_value="Test")
+        app_state = SimpleNamespace(
+            pool=pool,
+            briefing_generator=briefing_gen,
+            whatsapp_action=AsyncMock(),
+            settings=self._make_settings("whatsapp"),
+        )
 
         result = await send_daily_briefing(app_state)
         assert result is False
@@ -383,7 +393,14 @@ class TestSendBriefingReturnValue:
 
         pool = AsyncMock()
         pool.fetchrow = AsyncMock(return_value=None)
-        app_state = SimpleNamespace(pool=pool)
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_weekly = AsyncMock(return_value="Test")
+        app_state = SimpleNamespace(
+            pool=pool,
+            briefing_generator=briefing_gen,
+            whatsapp_action=AsyncMock(),
+            settings=self._make_settings("whatsapp"),
+        )
 
         result = await send_weekly_briefing(app_state)
         assert result is False
@@ -407,6 +424,7 @@ class TestSendBriefingReturnValue:
             pool=pool,
             briefing_generator=briefing_gen,
             whatsapp_action=whatsapp,
+            settings=self._make_settings("whatsapp"),
         )
 
         result = await send_daily_briefing(app_state)
@@ -419,7 +437,50 @@ class TestSendBriefingReturnValue:
 
     @pytest.mark.asyncio
     async def test_daily_returns_false_on_exception(self):
-        """send_daily_briefing returns False when sending fails."""
+        """send_daily_briefing returns False when generation fails."""
+        from niles.jobs.briefing import send_daily_briefing
+
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_daily = AsyncMock(side_effect=RuntimeError("boom"))
+        app_state = SimpleNamespace(
+            pool=AsyncMock(),
+            briefing_generator=briefing_gen,
+            whatsapp_action=AsyncMock(),
+            settings=self._make_settings("whatsapp"),
+        )
+
+        result = await send_daily_briefing(app_state)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_signal_channel(self):
+        """send_daily_briefing sends via Signal when channel is signal."""
+        from niles.jobs.briefing import send_daily_briefing
+
+        briefing_gen = AsyncMock()
+        briefing_gen.generate_daily = AsyncMock(return_value="Signal briefing")
+        signal_action = AsyncMock()
+        settings = SimpleNamespace(
+            briefing_channel="signal",
+            signal_phone_number="+436601234567",
+        )
+        app_state = SimpleNamespace(
+            pool=AsyncMock(),
+            briefing_generator=briefing_gen,
+            whatsapp_action=AsyncMock(),
+            signal_action=signal_action,
+            settings=settings,
+        )
+
+        result = await send_daily_briefing(app_state)
+        assert result is True
+        signal_action.send_message.assert_called_once_with(
+            to="+436601234567", text="Signal briefing"
+        )
+
+    @pytest.mark.asyncio
+    async def test_both_channels(self):
+        """send_daily_briefing sends via both channels when configured."""
         from niles.jobs.briefing import send_daily_briefing
 
         pool = AsyncMock()
@@ -430,12 +491,22 @@ class TestSendBriefingReturnValue:
             }
         )
         briefing_gen = AsyncMock()
-        briefing_gen.generate_daily = AsyncMock(side_effect=RuntimeError("boom"))
+        briefing_gen.generate_daily = AsyncMock(return_value="Both briefing")
+        whatsapp = AsyncMock()
+        signal_action = AsyncMock()
+        settings = SimpleNamespace(
+            briefing_channel="both",
+            signal_phone_number="+436601234567",
+        )
         app_state = SimpleNamespace(
             pool=pool,
             briefing_generator=briefing_gen,
-            whatsapp_action=AsyncMock(),
+            whatsapp_action=whatsapp,
+            signal_action=signal_action,
+            settings=settings,
         )
 
         result = await send_daily_briefing(app_state)
-        assert result is False
+        assert result is True
+        whatsapp.send_message.assert_called_once()
+        signal_action.send_message.assert_called_once()

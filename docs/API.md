@@ -308,6 +308,18 @@ Creates a new Evolution API instance for the current user and returns the QR cod
 
 Disconnects the current user's WhatsApp connection. Performs logout and deletion of the Evolution API instance and removes the session from the DB.
 
+### GET /ui/api/signal/status
+
+Returns the Signal connection status as an HTML fragment. Shows connected phone number, QR code (when connecting), or connect button. Auto-discovers the phone number after QR linking via `GET /v1/accounts` on signal-cli-rest-api.
+
+### GET /ui/api/signal/qrcode
+
+Proxies the QR code PNG from signal-cli-rest-api (`GET /v1/qrcodelink?device_name=niles`). Returns `image/png` or HTTP 502 if unavailable.
+
+### POST /ui/api/signal/link
+
+Starts the Signal linking process. Returns the signal_status HTML fragment in "connecting" state, which shows the QR code and polls for status changes.
+
 ### GET /ui/api/contacts/status
 
 Returns the CardDAV connection status as an HTML fragment. Shows number of synced contacts and last sync time.
@@ -424,6 +436,63 @@ Reads a contact's WhatsApp chat history. Uses the Evolution API (`POST /chat/fin
 - **30-day window:** Only messages from the last 30 days
 - **Per-user instance:** Uses the requesting user's instance
 - Non-text messages (images, audio, etc.) receive placeholders ([Image], [Video], [Voice message], [Sticker], [Document], [Contact], [Location])
+
+---
+
+### send_signal
+
+Sends a Signal message. Accepts phone numbers or contact names (resolved automatically). Only available when `feature_signal` is active.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `to` | string | Yes | Phone number (e.g., `"+436601234567"`) or contact name |
+| `text` | string | Yes | Message text |
+
+**Return (success):**
+
+```json
+{"status": "sent", "to": "+436601234567"}
+```
+
+**Notes:**
+
+- If `to` is not a number, `find_contact` is executed first
+- Phone numbers use `+` prefix (Signal convention, e.g., `+436601234567`)
+- Sending to contacts other than self requires `feature_signal_send_others=true`
+- Timeout: 30 seconds
+
+---
+
+### get_signal_messages
+
+Reads a contact's Signal message history from the local PostgreSQL store.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `contact` | string | Yes | Contact name or phone number |
+
+**Return (success):**
+
+```json
+{"messages": [{"from_me": false, "text": "Hello!", "timestamp": "2026-02-25T14:00:00+01:00"}], "count": 1}
+```
+
+**Return (error):**
+
+```json
+{"error": "Contact 'Nobody' not found"}
+```
+
+**Notes:**
+
+- Contact name is resolved to phone number via `find_contact`
+- Messages are stored locally in PostgreSQL (signal-cli-rest-api has no findMessages API)
+- **30-day window:** Only messages from the last 30 days
+- Only available when `feature_signal` is active
 
 ---
 
@@ -606,17 +675,21 @@ Marks a task as done. Searches by title among open tasks. Only available when `f
 
 ## Automated Briefings (Scheduled)
 
-Niles automatically sends daily and weekly overviews via WhatsApp. These are not triggered through the API but run as APScheduler cron jobs.
+Niles automatically sends daily and weekly overviews via the configured channel (WhatsApp, Signal, or both). These are not triggered through the API but run as APScheduler cron jobs.
 
 | Briefing | Schedule | Feature Flag |
 | -------- | -------- | ------------ |
 | Daily | Mon-Fri, configurable (default: 07:30) | `FEATURE_BRIEFING_DAILY` |
 | Weekly | Monday, configurable (default: 07:15) | `FEATURE_BRIEFING_WEEKLY` |
 
+| Setting | Values | Default | Description |
+| ------- | ------ | ------- | ----------- |
+| `BRIEFING_CHANNEL` | `whatsapp` \| `signal` \| `both` | `whatsapp` | Delivery channel for automated briefings |
+
 **Prerequisites:**
 
 - Feature flag enabled (`true` in `.env` or Settings UI)
-- WhatsApp connected in the web UI (recipient number is automatically detected from `whatsapp_sessions`)
+- At least one messenger connected (WhatsApp or Signal, depending on `BRIEFING_CHANNEL` setting)
 
 **No LLM call.** Pure database queries (calendar events from PostgreSQL) + Vikunja API (open tasks) + template formatting.
 
@@ -663,6 +736,7 @@ curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
 | Webhook: invalid JSON | Warning logged, HTTP 200 |
 | Webhook: agent error | Exception logged, HTTP 200 (no retry) |
 | WhatsApp send failed | Error logged, `{"error": "..."}` returned to LLM |
+| Signal send failed | Error logged, `{"error": "..."}` returned to LLM |
 | Web UI: invalid session | Redirect to /ui/login |
 | Web UI: invalid CSRF | 403, redirect to /ui/login (via HX-Redirect) |
 | Web UI: agent error | Error message displayed in chat fragment |

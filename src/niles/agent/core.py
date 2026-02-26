@@ -16,12 +16,14 @@ from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
+from ..actions.signal import SignalAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
 from ..sync.manager import CalendarSourceManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
+from ..signal_store import SignalMessageStore
 from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
@@ -77,6 +79,54 @@ TOOLS = [
             # 3/3: hinweis field in get_whatsapp_messages result below
             "description": (
                 "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
+                "Suche nach Kontaktname oder Telefonnummer. "
+                "Gibt ein Transcript zurueck. "
+                "Nach dem Lesen: fasse die wichtigsten Punkte zusammen "
+                "(Termine, Abmachungen, offene Fragen, wichtige Infos). "
+                "Gib NICHT das rohe Transcript wieder."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {
+                        "type": "string",
+                        "description": (
+                            "Kontaktname oder Telefonnummer (erforderlich)."
+                        ),
+                    },
+                },
+                "required": ["contact"],
+            },
+        },
+    },
+    # --- Signal Tools ---
+    {
+        "type": "function",
+        "function": {
+            "name": "send_signal",
+            "description": "Sendet eine Signal-Nachricht an eine Telefonnummer oder einen Kontaktnamen.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Telefonnummer (z.B. '+436601234567') oder Kontaktname",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Nachrichtentext",
+                    },
+                },
+                "required": ["to", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_signal_messages",
+            "description": (
+                "Liest Signal-Nachrichten aus einem Chat (max. 30 Tage). "
                 "Suche nach Kontaktname oder Telefonnummer. "
                 "Gibt ein Transcript zurueck. "
                 "Nach dem Lesen: fasse die wichtigsten Punkte zusammen "
@@ -326,6 +376,8 @@ class NilesAgent:
         wa_store: WhatsAppSessionStore | None = None,
         tasks: TasksAction | None = None,
         vikunja_store: VikunjaCredentialStore | None = None,
+        signal: SignalAction | None = None,
+        signal_store: SignalMessageStore | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -343,6 +395,8 @@ class NilesAgent:
         self.wa_store = wa_store
         self.tasks = tasks
         self.vikunja_store = vikunja_store
+        self.signal = signal
+        self.signal_store = signal_store
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -555,6 +609,12 @@ class NilesAgent:
         if not self.whatsapp:
             _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
             all_tools = [t for t in all_tools if t["function"]["name"] not in _wa_tools]
+        # Remove Signal tools when feature_signal is disabled
+        if not self.config.feature_signal:
+            _signal_tools = {"send_signal", "get_signal_messages"}
+            all_tools = [
+                t for t in all_tools if t["function"]["name"] not in _signal_tools
+            ]
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
             all_tools.extend(mcp_tools)
@@ -1058,6 +1118,110 @@ class NilesAgent:
                 # Summarization instruction (3/3) — keep in sync with:
                 # 1/3: config/soul.md "Nachrichten lesen"
                 # 2/3: tool description above
+                "hinweis": (
+                    f"{len(messages)} Nachrichten ({date_range}). "
+                    "Fasse die wichtigsten Punkte zusammen: "
+                    "Termine, Abmachungen, offene Fragen, wichtige Infos. "
+                    "Gib NICHT das rohe Transcript wieder."
+                ),
+                "transcript": transcript,
+            }
+
+        if name == "send_signal":
+            to = args["to"]
+            text = args["text"]
+            resolved_number = None
+
+            # 1. Contact resolution (if name instead of number)
+            if not to.replace("+", "").replace(" ", "").isdigit():
+                contact = await self.contacts.find_by_name(to)
+                if not contact:
+                    return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
+                if not contact.get("phone"):
+                    return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
+                resolved_number = f"+{contact['phone']}"
+            else:
+                resolved_number = to if to.startswith("+") else f"+{to}"
+
+            # 2. Self-check: own number is always allowed
+            own_phone = self.config.signal_phone_number
+            is_self = resolved_number == own_phone
+
+            # 3. Sending to others: only if feature flag is active
+            if not is_self and not self.config.feature_signal_send_others:
+                logger.info("send_signal to others disabled via feature flag")
+                return {
+                    "error": "Das Senden an andere Personen ist deaktiviert. "
+                    "Du kannst diese Funktion in den Einstellungen aktivieren."
+                }
+
+            # 4. Send message
+            result = await self.signal.send_message(to=resolved_number, text=text)
+            return (
+                {"status": "sent", "to": resolved_number}
+                if "error" not in result
+                else result
+            )
+
+        if name == "get_signal_messages":
+            contact_arg = args.get("contact", "").strip().lstrip("@")
+
+            # Resolve contact → phone
+            phone = None
+            if contact_arg and contact_arg.replace("+", "").replace(" ", "").isdigit():
+                raw = contact_arg.replace(" ", "")
+                phone = raw if raw.startswith("+") else f"+{normalize_phone(raw)}"
+            elif contact_arg:
+                resolved = await self.contacts.find_by_name(contact_arg)
+                if not resolved or not resolved.get("phone"):
+                    return {"error": f"Kontakt '{contact_arg}' nicht gefunden"}
+                phone = f"+{resolved['phone']}"
+
+            if not phone:
+                return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
+
+            messages = await self.signal_store.get_messages(phone=phone)
+            if not messages:
+                return {
+                    "error": "Keine Signal-Nachrichten gefunden",
+                    "hint": "Es werden nur Nachrichten der letzten 30 Tage angezeigt.",
+                }
+
+            # Format as readable chat transcript for the LLM
+            contact_name = (
+                contact_arg
+                if not contact_arg.replace("+", "").replace(" ", "").isdigit()
+                else phone
+            )
+            local_tz = ZoneInfo(self.config.timezone)
+            lines = []
+            for msg in messages:
+                ts = datetime.fromtimestamp(
+                    msg["timestamp"], tz=timezone.utc
+                ).astimezone(local_tz)
+                who = "Du" if msg["from_me"] else contact_name
+                lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
+            transcript = "\n".join(lines)
+
+            first_dt = datetime.fromtimestamp(
+                messages[0]["timestamp"], tz=timezone.utc
+            ).astimezone(local_tz)
+            last_dt = datetime.fromtimestamp(
+                messages[-1]["timestamp"], tz=timezone.utc
+            ).astimezone(local_tz)
+            if first_dt.date() == last_dt.date():
+                date_range = first_dt.strftime("%d.%m.%Y")
+            else:
+                date_range = (
+                    f"{first_dt.strftime('%d.%m.%Y')}"
+                    f" \u2013 "
+                    f"{last_dt.strftime('%d.%m.%Y')}"
+                )
+
+            return {
+                "chat_with": contact_name,
+                "count": len(messages),
+                "date_range": date_range,
                 "hinweis": (
                     f"{len(messages)} Nachrichten ({date_range}). "
                     "Fasse die wichtigsten Punkte zusammen: "

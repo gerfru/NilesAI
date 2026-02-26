@@ -28,6 +28,7 @@ from .actions.briefing import BriefingGenerator
 from .actions.calendar import CalendarAction
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
+from .actions.signal import SignalAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
 from .config import Settings, apply_overrides
@@ -37,6 +38,8 @@ from .memory.store import MemoryStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
+from .signal_store import SignalMessageStore
+from .sources.signal import signal_listener
 from .vikunja_store import VikunjaCredentialStore
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
@@ -243,6 +246,16 @@ async def lifespan(app: FastAPI):
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings)
 
+    # Signal (signal-cli-rest-api)
+    signal_action = None
+    signal_store = None
+    signal_task = None
+    if settings.feature_signal and settings.signal_api_url:
+        signal_action = SignalAction(settings)
+        signal_store = SignalMessageStore(pool)
+        await signal_store.initialize()
+        logger.info("Signal integration enabled (%s)", settings.signal_phone_number)
+
     # Vikunja (Todo/Task Management)
     tasks_action = None
     if settings.feature_vikunja and settings.vikunja_api_url:
@@ -267,6 +280,8 @@ async def lifespan(app: FastAPI):
         wa_store=wa_store,
         tasks=tasks_action,
         vikunja_store=vikunja_store,
+        signal=signal_action,
+        signal_store=signal_store,
     )
 
     # Store on app state for access in route handlers
@@ -284,10 +299,21 @@ async def lifespan(app: FastAPI):
     app.state.vikunja_store = vikunja_store
     app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
+    app.state.signal_action = signal_action
+    app.state.signal_store = signal_store
 
     # Shutdown event for SSE drain
     shutdown_event = asyncio.Event()
     app.state.shutdown_event = shutdown_event
+
+    # Start Signal WebSocket listener if phone number is already known
+    # (from env var or previous auto-discovery stored in settings_store).
+    # If no phone number yet, the listener starts dynamically after QR linking
+    # via the signal_status endpoint in web.py.
+    if signal_action and settings.signal_phone_number:
+        signal_task = asyncio.create_task(signal_listener(app.state, shutdown_event))
+        logger.info("Signal WebSocket listener started")
+    app.state.signal_task = signal_task
 
     yield
 
@@ -298,6 +324,15 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown initiated, draining SSE connections...")
     shutdown_event.set()
     await asyncio.sleep(0.5)
+
+    # Stop Signal WebSocket listener (may have been started dynamically)
+    sig_task = getattr(app.state, "signal_task", None)
+    if sig_task and not sig_task.done():
+        sig_task.cancel()
+        try:
+            await sig_task
+        except asyncio.CancelledError:
+            pass
 
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)

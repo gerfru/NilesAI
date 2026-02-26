@@ -46,6 +46,9 @@ dependencies = [
 
     # Prometheus metrics
     "prometheus-client>=0.21.0",
+
+    # WebSocket client (Signal integration)
+    "websockets>=14.0",
 ]
 
 [project.optional-dependencies]
