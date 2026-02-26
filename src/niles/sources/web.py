@@ -16,6 +16,7 @@ from pathlib import Path
 
 import asyncpg
 import httpx
+import structlog
 from fastapi import APIRouter, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -26,6 +27,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
 from ..config import apply_overrides
+from ..metrics import ACTIVE_SSE
 from ..sync.google_auth import GOOGLE_TOKEN_URL
 
 _ph = PasswordHasher()
@@ -735,6 +737,7 @@ async def chat_send(request: Request, message: str = Form(...)):
         )
 
     chat_id = _user_chat_id(user)
+    structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
     agent = request.app.state.agent
     # ISO timestamp for client-side local-time formatting
     now = datetime.now(timezone.utc).isoformat()
@@ -784,6 +787,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
         )
 
     chat_id = _user_chat_id(user)
+    structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
     agent = request.app.state.agent
     event = {
         "type": "web",
@@ -793,8 +797,16 @@ async def chat_stream(request: Request, message: str = Form(...)):
     }
 
     async def event_generator():
+        shutdown_event = getattr(request.app.state, "shutdown_event", None)
+        ACTIVE_SSE.inc()
         try:
             async for item in agent.process_event_stream(event):
+                # Best-effort drain: checked between LLM responses.
+                # During active inference (10-30s with local models) the
+                # connection stays open until the current chunk completes.
+                if shutdown_event and shutdown_event.is_set():
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
                 data = json.dumps(item, ensure_ascii=False)
                 yield f"data: {data}\n\n"
         except Exception:
@@ -804,6 +816,8 @@ async def chat_stream(request: Request, message: str = Form(...)):
             )
             yield f"data: {err}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        finally:
+            ACTIVE_SSE.dec()
 
     return StreamingResponse(
         event_generator(),

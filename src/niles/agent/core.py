@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import httpx
 from openai import AsyncOpenAI
 
+from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
+
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
@@ -609,14 +611,17 @@ class NilesAgent:
 
         for _ in range(MAX_TOOL_ROUNDS):
             try:
+                _llm_start = time.monotonic()
                 stream = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools,
                     temperature=0.7,
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
             except Exception as e:
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 yield {
                     "type": "chunk",
@@ -633,41 +638,57 @@ class NilesAgent:
             # streaming them — avoids showing raw JSON to the user.
             _buffering = False
 
-            async for chunk in stream:
-                choice = chunk.choices[0]
-                finish_reason = choice.finish_reason or finish_reason
+            try:
+                async for chunk in stream:
+                    # Final chunk with usage data has empty choices
+                    if not chunk.choices:
+                        if chunk.usage:
+                            LLM_TOKENS.labels(type="prompt").inc(
+                                chunk.usage.prompt_tokens
+                            )
+                            LLM_TOKENS.labels(type="completion").inc(
+                                chunk.usage.completion_tokens
+                            )
+                        continue
+                    choice = chunk.choices[0]
+                    finish_reason = choice.finish_reason or finish_reason
 
-                if choice.delta.content:
-                    full_content += choice.delta.content
-                    # If the first content looks like JSON or a code-fenced
-                    # tool call, buffer it.  Single backticks (inline code) are
-                    # NOT buffered — only triple-backtick fences or bare '{'.
-                    stripped = full_content.lstrip()
-                    if not _buffering and (
-                        stripped.startswith("{") or stripped.startswith("```")
-                    ):
-                        _buffering = True
-                    if not _buffering:
-                        yield {"type": "chunk", "text": choice.delta.content}
+                    if choice.delta.content:
+                        full_content += choice.delta.content
+                        # If the first content looks like JSON or a code-fenced
+                        # tool call, buffer it.  Single backticks (inline code)
+                        # are NOT buffered — only triple-backtick fences or
+                        # bare '{'.
+                        stripped = full_content.lstrip()
+                        if not _buffering and (
+                            stripped.startswith("{") or stripped.startswith("```")
+                        ):
+                            _buffering = True
+                        if not _buffering:
+                            yield {"type": "chunk", "text": choice.delta.content}
 
-                if choice.delta.tool_calls:
-                    for tc_delta in choice.delta.tool_calls:
-                        idx = tc_delta.index
-                        if idx not in tool_calls_by_idx:
-                            tool_calls_by_idx[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
-                            }
-                        if tc_delta.id:
-                            tool_calls_by_idx[idx]["id"] = tc_delta.id
-                        if tc_delta.function:
-                            if tc_delta.function.name:
-                                tool_calls_by_idx[idx]["name"] += tc_delta.function.name
-                            if tc_delta.function.arguments:
-                                tool_calls_by_idx[idx]["arguments"] += (
-                                    tc_delta.function.arguments
-                                )
+                    if choice.delta.tool_calls:
+                        for tc_delta in choice.delta.tool_calls:
+                            idx = tc_delta.index
+                            if idx not in tool_calls_by_idx:
+                                tool_calls_by_idx[idx] = {
+                                    "id": "",
+                                    "name": "",
+                                    "arguments": "",
+                                }
+                            if tc_delta.id:
+                                tool_calls_by_idx[idx]["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    tool_calls_by_idx[idx]["name"] += (
+                                        tc_delta.function.name
+                                    )
+                                if tc_delta.function.arguments:
+                                    tool_calls_by_idx[idx]["arguments"] += (
+                                        tc_delta.function.arguments
+                                    )
+            finally:
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
@@ -732,6 +753,13 @@ class NilesAgent:
                     ),
                 )
                 result = await self._execute_tool_call(tool_call, chat_id)
+                _success = (
+                    result.get("error") is None if isinstance(result, dict) else True
+                )
+                TOOL_CALLS.labels(
+                    tool_name=tc_dict["function"]["name"],
+                    success=str(_success).lower(),
+                ).inc()
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
 
                 # choose_phone → bypass LLM, send list directly to user
@@ -782,17 +810,27 @@ class NilesAgent:
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
             try:
+                _llm_start = time.monotonic()
                 response = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools,
                     temperature=0.7,
                 )
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
             except Exception as e:
+                LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 return "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."
 
             choice = response.choices[0]
+
+            # Record token usage if available
+            if response.usage:
+                LLM_TOKENS.labels(type="prompt").inc(response.usage.prompt_tokens)
+                LLM_TOKENS.labels(type="completion").inc(
+                    response.usage.completion_tokens
+                )
 
             # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
@@ -844,6 +882,13 @@ class NilesAgent:
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call, chat_id)
+                _success = (
+                    result.get("error") is None if isinstance(result, dict) else True
+                )
+                TOOL_CALLS.labels(
+                    tool_name=tool_call.function.name,
+                    success=str(_success).lower(),
+                ).inc()
                 logger.info("Tool result [%s]: %s", tool_call.id, result)
 
                 # choose_phone → bypass LLM, send list directly to user
@@ -870,6 +915,7 @@ class NilesAgent:
         try:
             args = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError:
+            TOOL_CALLS.labels(tool_name=name, success="false").inc()
             return {"error": "Invalid arguments"}
 
         logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)

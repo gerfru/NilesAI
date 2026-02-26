@@ -56,7 +56,7 @@ services:
 
   # Vikunja (Todo/Task Management)
   vikunja:
-    image: vikunja/vikunja:latest
+    image: vikunja/vikunja:1.1.0
     container_name: vikunja
     # Root required: upstream vikunja image writes to /app/vikunja/files as root;
     # non-root user causes permission errors on the named volume.
@@ -89,6 +89,10 @@ services:
       - "443:443"
       - "8443:8443"
       - "3457:3457"
+    environment:
+      - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
+      - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
+      - CADDY_HOSTS_3457=${CADDY_HOSTS_3457:-https://localhost:3457}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -103,6 +107,7 @@ services:
   # Niles AI Core
   niles_core:
     container_name: niles_core
+    image: niles-core:${NILES_VERSION:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile.niles
@@ -133,14 +138,9 @@ services:
       - VIKUNJA_API_TOKEN=${VIKUNJA_API_TOKEN:-}
       - FEATURE_VIKUNJA=${FEATURE_VIKUNJA:-false}
       - FEATURE_WHATSAPP_SEND_OTHERS=${FEATURE_WHATSAPP_SEND_OTHERS:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ../src:/app/src
       - ../config:/app/config:ro
-    command: >-
-      sh -c "set -e && tailwindcss --minify
-      -i src/niles/static/css/input.css
-      -o src/niles/static/css/style.css
-      && exec uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload"
     networks:
       - niles_network
     depends_on:
