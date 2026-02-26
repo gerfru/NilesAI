@@ -5,6 +5,7 @@ UI language: German (de) -- intentional design choice for the target user.
 
 import asyncio
 import hmac
+import html as _html
 import json
 import logging
 import secrets
@@ -1507,11 +1508,15 @@ async def _ensure_signal_listener(app) -> None:
 
     # Set sentinel immediately to prevent a second caller from racing past
     # the done() check before create_task completes.
-    sentinel = asyncio.get_event_loop().create_future()
+    sentinel = asyncio.get_running_loop().create_future()
     app.state.signal_task = sentinel
 
-    task = asyncio.create_task(signal_listener(app.state, shutdown_event))
-    app.state.signal_task = task
+    try:
+        task = asyncio.create_task(signal_listener(app.state, shutdown_event))
+        app.state.signal_task = task
+    except Exception:
+        app.state.signal_task = None
+        raise
     logger.info("Signal WebSocket listener started (auto-discovery)")
 
 
@@ -1544,26 +1549,25 @@ async def signal_status(request: Request):
     linking = request.query_params.get("linking") == "1"
     ctx = {"signal_status": "disconnected", "signal_phone": ""}
 
-    # Check if user intentionally disconnected (suppress auto-discovery)
-    settings_store = getattr(request.app.state, "settings_store", None)
-    signal_disabled = False
-    if settings_store:
-        overrides = await settings_store.get_all()
-        signal_disabled = overrides.get("signal_disabled") == "true"
+    # Check if user intentionally disconnected (suppress auto-discovery).
+    # Cached in app.state to avoid DB query on every 3s HTMX poll.
+    signal_disabled = getattr(request.app.state, "signal_disabled", False)
 
     # Check if already known
     if settings.signal_phone_number:
         ctx["signal_status"] = "connected"
         ctx["signal_phone"] = settings.signal_phone_number
     elif not signal_disabled:
-        # Auto-discover: check linked accounts via signal-cli-rest-api
+        # Auto-discover: check linked accounts via signal-cli-rest-api.
+        # Note: concurrent HTMX polls may both reach this point, but
+        # the duplicate DB write is harmless (same value).
         accounts = await signal_action.get_accounts()
         if accounts:
             phone = accounts[0]
             logger.info("Signal phone auto-discovered: %s", phone)
-            # Persist to settings (runtime + DB).
-            # Mutates shared Settings object — safe in single-process deployment.
-            settings.signal_phone_number = phone
+            # Update via apply_overrides for consistency with other settings
+            new_settings = apply_overrides(settings, {"signal_phone_number": phone})
+            request.app.state.settings = new_settings
             signal_action.phone = phone
             settings_store = getattr(request.app.state, "settings_store", None)
             if settings_store:
@@ -1605,6 +1609,7 @@ async def signal_link(request: Request):
         return error
 
     # Clear the disabled flag so auto-discovery works again
+    request.app.state.signal_disabled = False
     settings_store = getattr(request.app.state, "settings_store", None)
     if settings_store:
         await settings_store.delete("signal_disabled")
@@ -1641,9 +1646,11 @@ async def signal_disconnect(request: Request):
         await signal_action.unlink(settings.signal_phone_number)
 
     # Clear phone number and mark as intentionally disabled (runtime + DB)
-    settings.signal_phone_number = ""
+    new_settings = apply_overrides(settings, {"signal_phone_number": ""})
+    request.app.state.settings = new_settings
     if signal_action:
         signal_action.phone = ""
+    request.app.state.signal_disabled = True
     settings_store = getattr(request.app.state, "settings_store", None)
     if settings_store:
         await settings_store.delete("signal_phone_number")
@@ -1704,14 +1711,17 @@ async def weather_location_search(
         lat = r.get("latitude", "")
         lon = r.get("longitude", "")
         label = ", ".join(filter(None, [name, admin1, country]))
+        label_esc = _html.escape(label)
+        lat_esc = _html.escape(str(lat))
+        lon_esc = _html.escape(str(lon))
         items.append(
             f'<button type="button" '
             f'class="block w-full text-left px-3 py-2 text-sm text-zinc-700 '
             f"dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-zinc-700 "
             f'cursor-pointer rounded" '
             f"data-weather-select "
-            f'data-lat="{lat}" data-lon="{lon}" data-label="{label}">'
-            f"{label}</button>"
+            f'data-lat="{lat_esc}" data-lon="{lon_esc}" data-label="{label_esc}">'
+            f"{label_esc}</button>"
         )
     return HTMLResponse("\n".join(items))
 

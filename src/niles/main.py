@@ -238,7 +238,11 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
 
-    # MCP Servers — inject settings as env vars before starting subprocesses
+    # MCP Servers — inject settings as env vars before starting subprocesses.
+    # NOTE: These env vars are read once at subprocess startup. Changing the
+    # weather location via the Settings UI updates the DB and Settings object,
+    # but the running MCP subprocess keeps its original env vars. A container
+    # restart is required for location changes to take effect.
     if settings.weather_latitude:
         os.environ["WEATHER_LATITUDE"] = settings.weather_latitude
     if settings.weather_longitude:
@@ -307,6 +311,10 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     app.state.signal_action = signal_action
     app.state.signal_store = signal_store
+
+    # Cache signal_disabled flag from DB overrides (avoids DB query on
+    # every 3s HTMX poll in signal_status endpoint).
+    app.state.signal_disabled = overrides.get("signal_disabled") == "true"
 
     # Shutdown event for SSE drain
     shutdown_event = asyncio.Event()

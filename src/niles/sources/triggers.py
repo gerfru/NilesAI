@@ -22,6 +22,9 @@ def is_niles_trigger(text: str) -> bool:
 def strip_trigger(text: str) -> str:
     """Remove the trigger phrase from the beginning of the message.
 
+    Assumes ``is_niles_trigger(text)`` returned True. If called on text
+    without a trigger phrase, returns the original text unchanged.
+
     Returns the remaining text after the trigger, stripped of leading
     whitespace, commas, and colons.
 
