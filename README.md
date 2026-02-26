@@ -83,7 +83,7 @@ src/niles/                     Python Backend
   mcp/                         MCP Server Manager
   templates/                   Jinja2 Templates (Tailwind CSS)
   static/                      CSS, JavaScript
-tests/                         438 tests (pytest + pytest-asyncio)
+tests/                         455 tests (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
 docker/                        Dockerfile, docker-compose.yml, Caddyfile
 scripts/                       start, stop, status, dev, test, backup
@@ -99,8 +99,10 @@ docs/                          Technical Documentation
 | LLM           | Ollama (local, llama3.1:8b)        |
 | Database      | PostgreSQL 15                      |
 | WhatsApp      | Evolution API v2.3.7               |
-| Tasks         | Vikunja                            |
+| Tasks         | Vikunja 1.1.0                      |
 | Reverse Proxy | Caddy 2 (self-signed TLS)          |
+| Logging       | structlog (JSON to stdout)         |
+| Metrics       | Prometheus (prometheus-client)     |
 | Scheduling    | APScheduler                        |
 | Extensions    | MCP (Model Context Protocol)       |
 
