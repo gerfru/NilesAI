@@ -17,13 +17,22 @@ if ! docker info &>/dev/null; then
     exit 1
 fi
 
+# Extract version from pyproject.toml
+VERSION=$(python3 -c "
+import tomllib
+print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])
+" 2>/dev/null || echo "dev")
+
+export NILES_VERSION="$VERSION"
+echo "Building Niles AI v${VERSION}..."
+
 if [ "${1:-}" = "--clean" ]; then
     echo "Clean rebuild (no cache)..."
     docker compose -f docker/docker-compose.yml --env-file .env build --no-cache
 else
-    echo "Building Niles AI images..."
     docker compose -f docker/docker-compose.yml --env-file .env build
 fi
 
 echo ""
-echo "Build complete. Run ./scripts/start.sh to start."
+echo "Build complete: niles-core:${VERSION}"
+echo "Run ./scripts/start.sh to start."
