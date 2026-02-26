@@ -181,6 +181,14 @@
 
 {% if user and user.is_admin %}
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Wetter</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Standort fuer Wetterdaten (Open-Meteo). Aenderungen werden nach Neustart wirksam.</p>
+    <div id="weather-location-container">
+        {% include "fragments/weather_location.html" %}
+    </div>
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
     {% for key, current_value in text_settings.items() %}
@@ -205,7 +213,7 @@
         <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
         <div class="flex gap-2">
             <input type="text" name="value" value="{{ general.timezone }}"
-                   maxlength="64" pattern="[A-Za-z/_\-]+" required
+                   maxlength="64" pattern="[A-Za-z/_-]+" required
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
                     class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
