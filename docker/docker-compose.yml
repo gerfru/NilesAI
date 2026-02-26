@@ -138,6 +138,7 @@ services:
       - VIKUNJA_API_TOKEN=${VIKUNJA_API_TOKEN:-}
       - FEATURE_VIKUNJA=${FEATURE_VIKUNJA:-false}
       - FEATURE_WHATSAPP_SEND_OTHERS=${FEATURE_WHATSAPP_SEND_OTHERS:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ../config:/app/config:ro
     networks:
