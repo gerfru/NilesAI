@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import logging
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -290,8 +291,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown — signal SSE streams to close gracefully
-    logger.info("Shutdown initiated, draining connections...")
+    # Shutdown — signal SSE streams to close gracefully.
+    # The drain window is best-effort: active LLM inference may exceed it.
+    # SSE generators check the event between yielded items, so streams that
+    # are idle or between tool calls will close within this window.
+    logger.info("Shutdown initiated, draining SSE connections...")
     shutdown_event.set()
     await asyncio.sleep(0.5)
 
@@ -365,7 +369,16 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a unique request_id to every request via structlog contextvars."""
 
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or generate_request_id()
+        incoming = request.headers.get("X-Request-ID", "")
+        # Accept only short alphanumeric/dash/underscore IDs to prevent abuse
+        if (
+            incoming
+            and len(incoming) <= 64
+            and incoming.replace("-", "").replace("_", "").isalnum()
+        ):
+            request_id = incoming
+        else:
+            request_id = generate_request_id()
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
         response = await call_next(request)
@@ -376,12 +389,23 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Record HTTP request count and duration for Prometheus."""
 
+    _NUM_RE = re.compile(r"/\d+")
+
+    @staticmethod
+    def _normalize_path(path: str) -> str:
+        """Replace numeric path segments to prevent label cardinality explosion.
+
+        /api/admin/users/42/password → /api/admin/users/:id/password
+        /api/calendar/sources/7/sync → /api/calendar/sources/:id/sync
+        """
+        return MetricsMiddleware._NUM_RE.sub("/:id", path)
+
     async def dispatch(self, request: Request, call_next):
         if request.url.path in ("/metrics", "/health") or request.url.path.startswith(
             "/static"
         ):
             return await call_next(request)
-        endpoint = request.url.path
+        endpoint = self._normalize_path(request.url.path)
         with HTTP_DURATION.labels(method=request.method, endpoint=endpoint).time():
             response = await call_next(request)
         HTTP_REQUESTS.labels(
@@ -391,10 +415,16 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
-app.add_middleware(RequestIdMiddleware)
+# Middleware execution order (outermost first):
+# 1. RequestIdMiddleware — every response gets X-Request-ID, even 429s
+# 2. RateLimitMiddleware — reject abusive clients early
+# 3. SecurityHeadersMiddleware — defence-in-depth headers
+# 4. MetricsMiddleware — record timing (skips /metrics, /health, /static)
+# Starlette applies middleware in reverse add_middleware order.
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(RequestIdMiddleware)
 app.include_router(whatsapp_router)
 app.include_router(web_router)
 
@@ -423,8 +453,8 @@ async def root():
 
 
 @app.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint."""
+async def metrics(_key: str = Depends(require_api_key)):
+    """Prometheus metrics endpoint (API-key protected)."""
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     return Response(

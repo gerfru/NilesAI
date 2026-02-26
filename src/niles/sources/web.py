@@ -801,6 +801,9 @@ async def chat_stream(request: Request, message: str = Form(...)):
         ACTIVE_SSE.inc()
         try:
             async for item in agent.process_event_stream(event):
+                # Best-effort drain: checked between LLM responses.
+                # During active inference (10-30s with local models) the
+                # connection stays open until the current chunk completes.
                 if shutdown_event and shutdown_event.is_set():
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
