@@ -103,12 +103,15 @@ class MCPManager:
         args = config.get("args", [])
         env_config = config.get("env", {})
 
-        # Expand environment variables in env config
-        env = (
-            {k: _expand_env(str(v)) for k, v in env_config.items()}
-            if env_config
-            else None
-        )
+        # Expand environment variables in env config.
+        # Merge with current process env so subprocess inherits PYTHONPATH etc.
+        if env_config:
+            env = {
+                **os.environ,
+                **{k: _expand_env(str(v)) for k, v in env_config.items()},
+            }
+        else:
+            env = None
 
         params = StdioServerParameters(command=command, args=args, env=env)
 

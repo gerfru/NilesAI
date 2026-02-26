@@ -5,6 +5,7 @@ UI language: German (de) -- intentional design choice for the target user.
 
 import asyncio
 import hmac
+import html as _html
 import json
 import logging
 import secrets
@@ -333,12 +334,19 @@ def _safe_settings_dict(settings) -> dict:
         "briefing_channel": getattr(settings, "briefing_channel", "whatsapp"),
     }
 
+    weather = {
+        "weather_latitude": getattr(settings, "weather_latitude", ""),
+        "weather_longitude": getattr(settings, "weather_longitude", ""),
+        "weather_location_name": getattr(settings, "weather_location_name", ""),
+    }
+
     return {
         "feature_flags": feature_flags,
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
         "briefing": briefing,
+        "weather": weather,
     }
 
 
@@ -697,6 +705,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
         "settings.html",
         {
             **safe,
+            **safe.get("weather", {}),
             "active_page": "settings",
             "user": user,
             "google_configured": _google_configured(request),
@@ -1499,11 +1508,15 @@ async def _ensure_signal_listener(app) -> None:
 
     # Set sentinel immediately to prevent a second caller from racing past
     # the done() check before create_task completes.
-    sentinel = asyncio.get_event_loop().create_future()
+    sentinel = asyncio.get_running_loop().create_future()
     app.state.signal_task = sentinel
 
-    task = asyncio.create_task(signal_listener(app.state, shutdown_event))
-    app.state.signal_task = task
+    try:
+        task = asyncio.create_task(signal_listener(app.state, shutdown_event))
+        app.state.signal_task = task
+    except Exception:
+        app.state.signal_task = None
+        raise
     logger.info("Signal WebSocket listener started (auto-discovery)")
 
 
@@ -1536,19 +1549,25 @@ async def signal_status(request: Request):
     linking = request.query_params.get("linking") == "1"
     ctx = {"signal_status": "disconnected", "signal_phone": ""}
 
+    # Check if user intentionally disconnected (suppress auto-discovery).
+    # Cached in app.state to avoid DB query on every 3s HTMX poll.
+    signal_disabled = getattr(request.app.state, "signal_disabled", False)
+
     # Check if already known
     if settings.signal_phone_number:
         ctx["signal_status"] = "connected"
         ctx["signal_phone"] = settings.signal_phone_number
-    else:
-        # Auto-discover: check linked accounts via signal-cli-rest-api
+    elif not signal_disabled:
+        # Auto-discover: check linked accounts via signal-cli-rest-api.
+        # Note: concurrent HTMX polls may both reach this point, but
+        # the duplicate DB write is harmless (same value).
         accounts = await signal_action.get_accounts()
         if accounts:
             phone = accounts[0]
             logger.info("Signal phone auto-discovered: %s", phone)
-            # Persist to settings (runtime + DB).
-            # Mutates shared Settings object — safe in single-process deployment.
-            settings.signal_phone_number = phone
+            # Update via apply_overrides for consistency with other settings
+            new_settings = apply_overrides(settings, {"signal_phone_number": phone})
+            request.app.state.settings = new_settings
             signal_action.phone = phone
             settings_store = getattr(request.app.state, "settings_store", None)
             if settings_store:
@@ -1589,10 +1608,202 @@ async def signal_link(request: Request):
     if error:
         return error
 
+    # Clear the disabled flag so auto-discovery works again
+    request.app.state.signal_disabled = False
+    settings_store = getattr(request.app.state, "settings_store", None)
+    if settings_store:
+        await settings_store.delete("signal_disabled")
+
     return templates.TemplateResponse(
         request,
         "fragments/signal_status.html",
         {"signal_status": "connecting", "signal_phone": ""},
+    )
+
+
+@router.post("/api/signal/disconnect", response_class=HTMLResponse)
+async def signal_disconnect(request: Request):
+    """Unlink Signal device, stop listener, clear phone number."""
+    _user, error = await _require_admin(request)
+    if error:
+        return error
+
+    settings = request.app.state.settings
+    signal_action = getattr(request.app.state, "signal_action", None)
+
+    # Stop WebSocket listener
+    sig_task = getattr(request.app.state, "signal_task", None)
+    if sig_task and not sig_task.done():
+        sig_task.cancel()
+        try:
+            await sig_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    request.app.state.signal_task = None
+
+    # Unlink device via signal-cli-rest-api
+    if signal_action and settings.signal_phone_number:
+        await signal_action.unlink(settings.signal_phone_number)
+
+    # Clear phone number and mark as intentionally disabled (runtime + DB)
+    new_settings = apply_overrides(settings, {"signal_phone_number": ""})
+    request.app.state.settings = new_settings
+    if signal_action:
+        signal_action.phone = ""
+    request.app.state.signal_disabled = True
+    settings_store = getattr(request.app.state, "settings_store", None)
+    if settings_store:
+        await settings_store.delete("signal_phone_number")
+        await settings_store.set("signal_disabled", "true")
+
+    logger.info("Signal disconnected")
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/signal_status.html",
+        {"signal_status": "disconnected", "signal_phone": ""},
+    )
+
+
+# --- Weather location search ---
+
+_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+
+
+@router.get("/api/weather/location-search", response_class=HTMLResponse)
+async def weather_location_search(
+    request: Request,
+    q: str = Query(default="", min_length=2, max_length=100),
+):
+    """Proxy location search via Open-Meteo Geocoding API, return HTMX fragment."""
+    user = _get_session_user(request)
+    if user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
+
+    if len(q.strip()) < 2:
+        return HTMLResponse("")
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                _GEOCODING_URL,
+                params={"name": q.strip(), "count": 5, "language": "de"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError:
+        return HTMLResponse(
+            '<p class="text-sm text-red-500 py-1">Suche fehlgeschlagen.</p>'
+        )
+
+    results = data.get("results", [])
+    if not results:
+        return HTMLResponse(
+            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-1">'
+            "Kein Ergebnis gefunden.</p>"
+        )
+
+    items = []
+    for r in results:
+        name = r.get("name", "")
+        admin1 = r.get("admin1", "")
+        country = r.get("country", "")
+        lat = r.get("latitude", "")
+        lon = r.get("longitude", "")
+        label = ", ".join(filter(None, [name, admin1, country]))
+        label_esc = _html.escape(label)
+        lat_esc = _html.escape(str(lat))
+        lon_esc = _html.escape(str(lon))
+        items.append(
+            f'<button type="button" '
+            f'class="block w-full text-left px-3 py-2 text-sm text-zinc-700 '
+            f"dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-zinc-700 "
+            f'cursor-pointer rounded" '
+            f"data-weather-select "
+            f'data-lat="{lat_esc}" data-lon="{lon_esc}" data-label="{label_esc}">'
+            f"{label_esc}</button>"
+        )
+    return HTMLResponse("\n".join(items))
+
+
+@router.post("/api/weather/location", response_class=HTMLResponse)
+async def weather_location_set(
+    request: Request,
+    latitude: str = Form(...),
+    longitude: str = Form(...),
+    location_name: str = Form(""),
+):
+    """Save weather location (latitude, longitude, display name)."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    settings_store = request.app.state.settings_store
+    settings = request.app.state.settings
+
+    try:
+        await settings_store.set("weather_latitude", latitude.strip())
+        await settings_store.set("weather_longitude", longitude.strip())
+        await settings_store.set("weather_location_name", location_name.strip())
+        new_settings = apply_overrides(
+            settings,
+            {
+                "weather_latitude": latitude.strip(),
+                "weather_longitude": longitude.strip(),
+                "weather_location_name": location_name.strip(),
+            },
+        )
+        request.app.state.settings = new_settings
+    except ValueError as e:
+        return templates.TemplateResponse(
+            request,
+            "fragments/toast.html",
+            {"message": str(e), "toast_type": "error"},
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/weather_location.html",
+        {
+            "weather_location_name": location_name.strip(),
+            "weather_latitude": latitude.strip(),
+            "weather_longitude": longitude.strip(),
+            "weather_just_saved": True,
+        },
+    )
+
+
+@router.post("/api/weather/location/remove", response_class=HTMLResponse)
+async def weather_location_remove(request: Request):
+    """Remove weather location configuration."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    settings_store = request.app.state.settings_store
+    settings = request.app.state.settings
+
+    for key in ("weather_latitude", "weather_longitude", "weather_location_name"):
+        await settings_store.delete(key)
+
+    new_settings = apply_overrides(
+        settings,
+        {
+            "weather_latitude": "",
+            "weather_longitude": "",
+            "weather_location_name": "",
+        },
+    )
+    request.app.state.settings = new_settings
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/weather_location.html",
+        {
+            "weather_location_name": "",
+            "weather_latitude": "",
+            "weather_longitude": "",
+        },
     )
 
 
