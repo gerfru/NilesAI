@@ -2,47 +2,21 @@
 
 import hmac
 import logging
-import time
 
 import structlog
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
+from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
-# ---------------------------------------------------------------------------
-# Echo-loop guard: cache of message IDs sent by the agent.
-# When the agent sends a self-chat reply, Evolution API echoes the outbound
-# message back as a MESSAGES_UPSERT with fromMe=True.  If the reply text
-# happens to start with a trigger phrase (e.g. "Niles hier: ..."), the
-# webhook would fire again — causing an infinite loop.
-# NOTE: This cache is per-process.  With multiple uvicorn workers (--workers N)
-# each worker maintains its own _sent_ids, so an echo could slip through if a
-# different worker handles it.  Single-worker (the default) is fully safe.
-# ---------------------------------------------------------------------------
-_sent_ids: dict[str, float] = {}  # msg_id → monotonic timestamp
-_SENT_TTL = 10.0  # seconds
-
-
-def _record_sent(msg_id: str) -> None:
-    """Record a message ID we just sent (with TTL-based pruning)."""
-    now = time.monotonic()
-    _sent_ids[msg_id] = now
-    expired = [k for k, v in _sent_ids.items() if now - v > _SENT_TTL]
-    for k in expired:
-        del _sent_ids[k]
-
-
-def _was_echo(msg_id: str) -> bool:
-    """Check if a message ID is one we recently sent."""
-    ts = _sent_ids.get(msg_id)
-    if ts is None:
-        return False
-    return (time.monotonic() - ts) <= _SENT_TTL
+# Echo-loop guard: Evolution API echoes outbound messages back as
+# MESSAGES_UPSERT with fromMe=True. Keyed by message ID.
+_echo_guard = EchoGuard(ttl=10.0)
 
 
 @router.post("/whatsapp")
@@ -82,7 +56,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     message = data.get("message", {})
 
     # Skip echoed messages that the agent itself sent (prevents reply loops)
-    if is_from_me and msg_id and _was_echo(msg_id):
+    if is_from_me and msg_id and _echo_guard.is_echo(msg_id):
         return {"status": "ignored", "reason": "echo of own reply"}
 
     # Extract text from different message types
@@ -146,7 +120,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
                     else None
                 )
                 if sent_id:
-                    _record_sent(sent_id)
+                    _echo_guard.record(sent_id)
                     logger.info("Self-chat reply sent to %s", remote_jid)
                 else:
                     logger.warning(
