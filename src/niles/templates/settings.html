@@ -13,6 +13,8 @@
 {% if user and user.is_admin %}
 {% set flag_labels = {
     "feature_whatsapp_send_others": "WhatsApp: Nachrichten an andere senden",
+    "feature_signal": "Signal Integration",
+    "feature_signal_send_others": "Signal: Nachrichten an andere senden",
     "feature_vikunja": "Aufgabenverwaltung (Vikunja)",
     "feature_briefing_daily": "Taegliches Briefing (Mo-Fr)",
     "feature_briefing_weekly": "Woechentliche Uebersicht (Montag)",
@@ -55,6 +57,25 @@
     </div>
 </div>
 
+{% if user and user.is_admin and feature_signal %}
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Signal</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Verknuepfe Signal mit Niles (Linked Device).</p>
+    <div id="signal-container"
+         hx-get="/ui/api/signal/status"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 text-sm">
+            <svg class="animate-spin h-4 w-4" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Status wird geladen...
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Aufgaben (Vikunja)</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Verknuepfe deinen Vikunja-Account fuer persoenliche Aufgabenverwaltung.</p>
@@ -74,9 +95,25 @@
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Briefing</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Automatische Morgen-Uebersicht via WhatsApp. Aenderungen werden nach Neustart wirksam.</p>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Automatische Morgen-Uebersicht via Messenger. Aenderungen werden nach Neustart wirksam.</p>
 
     <div class="space-y-4">
+        <form hx-post="/ui/api/settings/briefing_channel" hx-target="#toast-container" hx-swap="innerHTML"
+              class="flex items-center justify-between">
+            <div>
+                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Kanal</span>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400">Ueber welchen Messenger wird das Briefing gesendet?</p>
+            </div>
+            <div class="flex gap-2">
+                <select name="value"
+                        class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <option value="whatsapp" {% if briefing.briefing_channel == "whatsapp" %}selected{% endif %}>WhatsApp</option>
+                    <option value="signal" {% if briefing.briefing_channel == "signal" %}selected{% endif %}>Signal</option>
+                    <option value="both" {% if briefing.briefing_channel == "both" %}selected{% endif %}>Beide</option>
+                </select>
+                <button type="submit" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Speichern</button>
+            </div>
+        </form>
         <form hx-post="/ui/api/settings/feature_briefing_daily"
               hx-target="#toast-container" hx-swap="innerHTML"
               class="flex items-center justify-between">
@@ -138,7 +175,7 @@
                 <button type="submit" class="px-3 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Wochenbriefing testen</button>
             </form>
         </div>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">Briefing wird an die verbundene WhatsApp-Nummer gesendet. WhatsApp muss verbunden sein.</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">Briefing wird ueber den gewaehlten Kanal gesendet. Der jeweilige Messenger muss verbunden sein.</p>
     </div>
 </div>
 

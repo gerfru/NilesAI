@@ -1,0 +1,36 @@
+{% if signal_status == "connected" %}
+<div class="flex items-center gap-3 py-2">
+    <span class="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+        Verbunden{% if signal_phone %} ({{ signal_phone }}){% endif %}
+    </span>
+</div>
+
+{% elif signal_status == "connecting" %}
+<div class="flex items-center gap-2 py-2 text-sm text-amber-600 dark:text-amber-400 font-medium">
+    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 animate-pulse"></span>
+    Warte auf QR-Code Scan...
+</div>
+<div class="mt-3 flex justify-center">
+    <img src="/ui/api/signal/qrcode" alt="Signal QR-Code" class="rounded-lg border border-zinc-200 dark:border-zinc-600" width="256" height="256">
+</div>
+<p class="text-xs text-zinc-500 dark:text-zinc-400 text-center mt-2">Oeffne Signal &gt; Einstellungen &gt; Verknuepfte Geraete &gt; Neues Geraet hinzufuegen</p>
+<div hx-get="/ui/api/signal/status?linking=1"
+     hx-target="#signal-container"
+     hx-swap="innerHTML"
+     hx-trigger="every 3s">
+</div>
+
+{% else %}
+<div class="flex items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+    <span class="w-2.5 h-2.5 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0"></span>
+    Nicht verbunden
+</div>
+<form hx-post="/ui/api/signal/link"
+      hx-target="#signal-container"
+      hx-swap="innerHTML"
+      class="mt-2">
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg cursor-pointer transition-colors duration-150">Signal verbinden</button>
+</form>
+{% endif %}

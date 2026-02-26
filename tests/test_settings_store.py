@@ -19,10 +19,15 @@ class TestEditableWhitelist:
             "carddav_user",
             "carddav_password",
             "feature_vikunja",
+            "feature_signal",
+            "feature_signal_send_others",
+            "signal_api_url",
+            "signal_phone_number",
             "feature_briefing_daily",
             "feature_briefing_weekly",
             "briefing_daily_time",
             "briefing_weekly_time",
+            "briefing_channel",
         }
         assert EDITABLE_SETTINGS == expected
 
