@@ -10,6 +10,16 @@ repos:
         language: system
         stages: [pre-commit]
 
+  # --- PII / IP Address Scanning ---
+  - repo: local
+    hooks:
+      - id: check-pii
+        name: PII Check (IPs, Hostnames)
+        entry: scripts/check-pii.sh
+        language: system
+        stages: [pre-commit]
+        pass_filenames: false
+
   # --- Python Linting ---
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.6  # Check latest version: https://github.com/astral-sh/ruff-pre-commit/releases
