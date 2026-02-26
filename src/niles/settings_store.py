@@ -37,6 +37,9 @@ EDITABLE_SETTINGS = {
     "feature_signal_send_others",
     "signal_api_url",
     "signal_phone_number",
+    # signal_disabled is a runtime-only flag (not a field on the Settings
+    # model). It suppresses Signal auto-discovery after intentional disconnect
+    # and is persisted here so the flag survives container restarts.
     "signal_disabled",
     "feature_briefing_daily",
     "feature_briefing_weekly",
