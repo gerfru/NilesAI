@@ -26,8 +26,8 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | PostgreSQL | 5432 | Not exposed | Database (evolution_db) |
 | Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp gateway |
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
-| Vikunja | 3456 | `http://localhost:3456` | Todo/task management |
-| Caddy | -- | :443, :8443 | HTTPS reverse proxy |
+| Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
+| Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
 **Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed.
 
@@ -162,8 +162,8 @@ Niles/
 │   ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 │   ├── test_tasks.py                # Vikunja task management
 │   ├── test_self_chat.py            # WhatsApp self-chat trigger
-│   ├── test_briefing.py             # BriefingGenerator + time parsing
-│   └── test_logging.py             # Structured logging + Prometheus metrics
+│   ├── test_briefing.py              # BriefingGenerator + time parsing
+│   └── test_logging.py              # Structured logging + Prometheus metrics
 ├── config/
 │   └── soul.md                       # Agent personality
 ├── docker/
