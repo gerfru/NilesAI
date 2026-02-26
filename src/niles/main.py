@@ -389,16 +389,20 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Record HTTP request count and duration for Prometheus."""
 
-    _NUM_RE = re.compile(r"/\d+")
+    _ID_RE = re.compile(
+        r"/(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?=/|$)",
+        re.IGNORECASE,
+    )
 
     @staticmethod
     def _normalize_path(path: str) -> str:
-        """Replace numeric path segments to prevent label cardinality explosion.
+        """Replace numeric/UUID path segments to prevent label cardinality explosion.
 
         /api/admin/users/42/password → /api/admin/users/:id/password
         /api/calendar/sources/7/sync → /api/calendar/sources/:id/sync
+        /items/550e8400-e29b-41d4-a716-446655440000 → /items/:id
         """
-        return MetricsMiddleware._NUM_RE.sub("/:id", path)
+        return MetricsMiddleware._ID_RE.sub("/:id", path)
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in ("/metrics", "/health") or request.url.path.startswith(
