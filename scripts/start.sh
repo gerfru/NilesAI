@@ -72,6 +72,7 @@ if [ "${FEATURE_VIKUNJA:-}" = "true" ] && [ -z "${VIKUNJA_TOKEN:-}" ]; then
     echo ""
 fi
 
-echo "Hint: Ollama must be running for chat to work."
+echo "Hint: Ollama must be running externally for chat to work (ollama serve)."
+echo "MCP tools (e.g. weather) start automatically with Niles Core."
 echo ""
 echo "Niles AI is ready."

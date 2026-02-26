@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Timezone (used by CalDAV sync and calendar actions)
     timezone: str = "Europe/Vienna"
 
+    # Weather (configured via Settings UI, stored as strings for env-var pass-through)
+    weather_latitude: str = ""
+    weather_longitude: str = ""
+    weather_location_name: str = ""
+
     # Features
     feature_whatsapp_send_others: bool = True
 
