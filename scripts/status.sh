@@ -78,6 +78,25 @@ else
     echo "  Not reachable"
 fi
 
+# Check Signal API
+echo ""
+echo "Signal API:"
+FEATURE_SIGNAL=$(grep -s '^FEATURE_SIGNAL=' .env | cut -d= -f2-)
+if [ "${FEATURE_SIGNAL:-}" = "true" ]; then
+    if RESPONSE=$(curl -s http://localhost:8080/v1/about 2>&1); then
+        echo "  Running"
+    else
+        # Signal API is internal only (no port exposed), check via Docker
+        if docker exec niles_signal_api curl -s http://localhost:8080/v1/about >/dev/null 2>&1; then
+            echo "  Running (internal network only)"
+        else
+            echo "  Not reachable"
+        fi
+    fi
+else
+    echo "  Disabled (FEATURE_SIGNAL=false)"
+fi
+
 # Check Ollama (simple port check)
 echo ""
 echo "Ollama:"
