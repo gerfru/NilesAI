@@ -238,7 +238,13 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
 
-    # MCP Servers
+    # MCP Servers — inject settings as env vars before starting subprocesses
+    if settings.weather_latitude:
+        os.environ["WEATHER_LATITUDE"] = settings.weather_latitude
+    if settings.weather_longitude:
+        os.environ["WEATHER_LONGITUDE"] = settings.weather_longitude
+    os.environ["WEATHER_TIMEZONE"] = settings.timezone
+
     mcp_manager = MCPManager()
     await mcp_manager.start_all()
 
