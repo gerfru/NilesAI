@@ -70,6 +70,34 @@ class SignalAction:
             logger.error("Failed to get Signal accounts: %s", e)
             return []
 
+    async def unlink(self, phone: str = "") -> bool:
+        """Unlink this device from Signal.
+
+        Calls DELETE /v1/accounts/{number} on signal-cli-rest-api.
+        Returns True on success (including 404, which is expected for
+        linked/secondary devices where the endpoint may not apply).
+        """
+        number = phone or self.phone
+        if not number:
+            logger.warning("Cannot unlink Signal: no phone number")
+            return False
+        url = f"{self.api_url}/v1/accounts/{number}"
+        try:
+            response = await self._client.delete(url, timeout=30)
+            if response.status_code == 404:
+                logger.info(
+                    "Signal account %s: DELETE returned 404 "
+                    "(normal for linked devices)",
+                    number,
+                )
+                return True
+            response.raise_for_status()
+            logger.info("Signal account %s unlinked", number)
+            return True
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error("Failed to unlink Signal account %s: %s", number, e)
+            return False
+
     async def get_qr_link(self, device_name: str = "niles") -> bytes | None:
         """Get QR code PNG for linking as a new device.
 

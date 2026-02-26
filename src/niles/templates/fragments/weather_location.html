@@ -1,0 +1,59 @@
+{% if weather_location_name %}
+{% if weather_just_saved %}
+<div role="alert"
+     class="px-4 py-3 rounded-lg mb-3 text-sm font-medium animate-fadeout bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+    Standort gespeichert
+</div>
+{% endif %}
+<div class="flex items-center justify-between py-2">
+    <div class="flex items-center gap-2">
+        <span class="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shrink-0"></span>
+            {{ weather_location_name }}
+        </span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">({{ weather_latitude }}, {{ weather_longitude }})</span>
+    </div>
+    <form hx-post="/ui/api/weather/location/remove"
+          hx-target="#weather-location-container"
+          hx-swap="innerHTML">
+        <button type="submit"
+                class="px-3 py-1.5 text-xs text-red-500 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-zinc-700 cursor-pointer">Entfernen</button>
+    </form>
+</div>
+<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Aenderungen werden nach Neustart wirksam.</p>
+{% else %}
+<div class="relative">
+    <input type="search" name="q" id="weather-search-input"
+           placeholder="Ort suchen, z.B. Wien, Berlin, Zuerich..."
+           autocomplete="nope" role="combobox" aria-autocomplete="list" aria-expanded="false"
+           data-1p-ignore data-lpignore="true" data-form-type="other"
+           hx-get="/ui/api/weather/location-search"
+           hx-trigger="input changed delay:300ms"
+           hx-target="#weather-search-results"
+           hx-swap="innerHTML"
+           class="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+    <div id="weather-search-results"
+         class="mt-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg empty:hidden overflow-hidden">
+    </div>
+</div>
+<div id="weather-selected" class="hidden mt-3 flex items-center justify-between p-3 rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-zinc-700">
+    <div>
+        <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100" id="weather-selected-label"></span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400 ml-1" id="weather-selected-coords"></span>
+    </div>
+    <div class="flex gap-2">
+        <button type="button" id="weather-cancel-btn"
+                class="px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer">Abbrechen</button>
+        <button type="button" id="weather-save-btn"
+                class="px-3 py-1.5 text-xs text-white bg-blue-500 hover:bg-blue-600 rounded-lg cursor-pointer">Speichern</button>
+    </div>
+</div>
+<form id="weather-location-form"
+      hx-post="/ui/api/weather/location"
+      hx-target="#weather-location-container"
+      hx-swap="innerHTML">
+    <input type="hidden" name="latitude" id="weather-lat">
+    <input type="hidden" name="longitude" id="weather-lon">
+    <input type="hidden" name="location_name" id="weather-label">
+</form>
+{% endif %}

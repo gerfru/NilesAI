@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from urllib.parse import urlparse
 
 import structlog
 import websockets
@@ -28,9 +29,9 @@ async def signal_listener(
     phone = app_state.settings.signal_phone_number
     api_url = app_state.settings.signal_api_url
     # Build WebSocket URL from HTTP URL (wss:// for https://, ws:// for http://)
-    ws_scheme = "wss" if api_url.startswith("https://") else "ws"
-    ws_host = api_url.replace("http://", "").replace("https://", "").rstrip("/")
-    ws_url = f"{ws_scheme}://{ws_host}/v1/receive/{phone}?timeout=3600"
+    parsed = urlparse(api_url)
+    ws_scheme = "wss" if parsed.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{parsed.netloc}/v1/receive/{phone}?timeout=3600"
 
     backoff = 5
     max_backoff = 60

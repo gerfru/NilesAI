@@ -10,11 +10,17 @@
 #       env:                          # optional
 #         KEY: "${ENV_VAR}"           # ${VAR} expands from environment
 
-servers: {}
+servers:
+  weather:
+    command: python
+    args: ["-m", "niles.mcp.weather"]
+    env:
+      WEATHER_LATITUDE: "${WEATHER_LATITUDE}"
+      WEATHER_LONGITUDE: "${WEATHER_LONGITUDE}"
+      WEATHER_TIMEZONE: "${WEATHER_TIMEZONE}"
 
-# Beispiele:
+# Weitere Beispiele:
 #
-# servers:
 #   filesystem:
 #     command: npx
 #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]

@@ -55,13 +55,7 @@ echo ""
 echo "Backing up Docker volumes..."
 
 # Evolution PostgreSQL
-if docker volume inspect docker_evolution_postgres > /dev/null 2>&1; then
-    docker run --rm \
-        -v docker_evolution_postgres:/data \
-        -v "$BACKUP_PATH":/backup \
-        alpine tar czf /backup/evolution-postgres.tar.gz -C /data .
-    echo -e "${GREEN}PostgreSQL data backed up${NC}"
-elif docker volume inspect evolution_postgres > /dev/null 2>&1; then
+if docker volume inspect evolution_postgres > /dev/null 2>&1; then
     docker run --rm \
         -v evolution_postgres:/data \
         -v "$BACKUP_PATH":/backup \
@@ -131,7 +125,7 @@ echo ""
 echo "Next steps:"
 echo "  1. cd ~/Documents/Niles"
 echo "  2. ./scripts/start.sh"
-echo "  3. Open LM Studio and start server"
+echo "  3. Start Ollama (ollama serve)"
 RESTORE_EOF
 
 chmod +x "$BACKUP_PATH/restore.sh"
@@ -204,7 +198,7 @@ echo "   2. Extract: tar -xzf niles-backup-$TIMESTAMP.tar.gz"
 echo "   3. Run: cd $TIMESTAMP && ./restore.sh"
 echo ""
 echo "Manual steps after restore:"
-echo "   - LM Studio: Re-download model"
+echo "   - Ollama: Install and pull model (ollama pull llama3.1:8b)"
 echo ""
 echo "No QR code scan needed (WhatsApp sessions included)."
 echo ""
