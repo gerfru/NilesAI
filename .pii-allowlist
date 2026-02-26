@@ -1,0 +1,15 @@
+# PII Allowlist — patterns that are safe to commit
+# One regex per line. Matched against detected IPs/hostnames.
+
+# Example/placeholder IPs used in documentation
+192\.168\.1\.100
+10\.0\.0\.1
+
+# Localhost / Docker
+127\.0\.0\.1
+0\.0\.0\.0
+172\.17\.0\.
+
+# Docker-internal hostnames (not real Tailscale)
+example\.ts\.net
+# test: 192.168.5.99
