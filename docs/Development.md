@@ -164,6 +164,7 @@ tests/
 ├── test_memory.py               # MemoryStore, ConversationHistory
 ├── test_features.py             # Feature flags (send_others, self-check) + webhook auth
 ├── test_self_chat.py            # WhatsApp self-chat (trigger, strip, webhook integration)
+├── test_signal.py               # Signal action, listener, echo guard, triggers
 ├── test_carddav.py              # CardDAV sync
 ├── test_caldav.py               # CalDAV sync
 ├── test_ical_parser.py          # iCalendar parser
@@ -178,6 +179,7 @@ tests/
 ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 ├── test_tasks.py                # Vikunja task management
 ├── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
+├── test_briefing.py             # BriefingGenerator + time parsing + channel routing
 └── test_logging.py              # Structured logging + Prometheus metrics
 ```
 
@@ -244,6 +246,8 @@ For faster iteration, use `./scripts/dev.sh` (local uvicorn with `--reload`).
 2. FastAPI router with webhook endpoint
 3. Create event dict and pass to `agent.process_event()`
 4. Include router in `main.py`: `app.include_router(router)`
+
+**Alternative: WebSocket listener pattern.** Signal uses a background `asyncio.Task` that maintains a persistent WebSocket connection to `signal-cli-rest-api` instead of receiving webhook callbacks. The listener task is started during `lifespan()` and cancelled on shutdown. Use this pattern when the external service provides a push-based WebSocket stream rather than calling back to a webhook endpoint.
 
 ---
 
