@@ -1,5 +1,6 @@
 # Niles AI - Caddy Reverse Proxy
 # Self-signed TLS certificates (tls internal)
+# Hostnames/IPs are configured via environment variables (see .env.example)
 
 {
 	default_sni localhost
@@ -16,14 +17,11 @@
 }
 
 # Niles Core API (:443)
-https://localhost, https://100.85.159.70, https://192.168.0.248, https://niles.tail1d4a0f.ts.net {
+{$CADDY_HOSTS_443:https://localhost} {
 	tls internal
 	import security_headers
 	log {
-		output file /data/access-niles.log {
-			roll_size 10mb
-			roll_keep 3
-		}
+		output stdout
 		format json
 		level INFO
 	}
@@ -31,14 +29,11 @@ https://localhost, https://100.85.159.70, https://192.168.0.248, https://niles.t
 }
 
 # Evolution API (:8443)
-https://localhost:8443, https://100.85.159.70:8443, https://192.168.0.248:8443, https://niles.tail1d4a0f.ts.net:8443 {
+{$CADDY_HOSTS_8443:https://localhost:8443} {
 	tls internal
 	import security_headers
 	log {
-		output file /data/access-evolution.log {
-			roll_size 10mb
-			roll_keep 3
-		}
+		output stdout
 		format json
 		level INFO
 	}
@@ -46,14 +41,11 @@ https://localhost:8443, https://100.85.159.70:8443, https://192.168.0.248:8443, 
 }
 
 # Vikunja (Todos) (:3457)
-https://localhost:3457, https://100.85.159.70:3457, https://192.168.0.248:3457, https://niles.tail1d4a0f.ts.net:3457 {
+{$CADDY_HOSTS_3457:https://localhost:3457} {
 	tls internal
 	import security_headers
 	log {
-		output file /data/access-vikunja.log {
-			roll_size 10mb
-			roll_keep 3
-		}
+		output stdout
 		format json
 		level INFO
 	}

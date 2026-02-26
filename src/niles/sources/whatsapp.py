@@ -4,6 +4,7 @@ import hmac
 import logging
 import time
 
+import structlog
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -148,6 +149,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
         # Self-Chat uses its own chat_id for separate history
         chat_id = f"wa-self-{sender}"
+        structlog.contextvars.bind_contextvars(chat_id=chat_id, source="whatsapp")
 
         # Resolve per-user instance (for multi-user setups)
         instance_name = payload.get("instance")

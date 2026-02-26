@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     carddav_password: str = ""
 
     # CalDAV (mailbox.org)
-    caldav_url: str = "https://dav.mailbox.org/caldav/"
+    caldav_url: str = ""
     caldav_user: str = ""
     caldav_password: str = ""
     caldav_calendars: str = ""  # Comma-separated collection hrefs, empty = all
