@@ -618,6 +618,7 @@ class NilesAgent:
                     tools=all_tools,
                     temperature=0.7,
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
             except Exception as e:
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
@@ -638,6 +639,14 @@ class NilesAgent:
             _buffering = False
 
             async for chunk in stream:
+                # Final chunk with usage data has empty choices
+                if not chunk.choices:
+                    if chunk.usage:
+                        LLM_TOKENS.labels(type="prompt").inc(chunk.usage.prompt_tokens)
+                        LLM_TOKENS.labels(type="completion").inc(
+                            chunk.usage.completion_tokens
+                        )
+                    continue
                 choice = chunk.choices[0]
                 finish_reason = choice.finish_reason or finish_reason
 
@@ -738,7 +747,9 @@ class NilesAgent:
                     ),
                 )
                 result = await self._execute_tool_call(tool_call, chat_id)
-                _success = "error" not in result if isinstance(result, dict) else True
+                _success = (
+                    result.get("error") is None if isinstance(result, dict) else True
+                )
                 TOOL_CALLS.labels(
                     tool_name=tc_dict["function"]["name"],
                     success=str(_success).lower(),
@@ -865,7 +876,9 @@ class NilesAgent:
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call, chat_id)
-                _success = "error" not in result if isinstance(result, dict) else True
+                _success = (
+                    result.get("error") is None if isinstance(result, dict) else True
+                )
                 TOOL_CALLS.labels(
                     tool_name=tool_call.function.name,
                     success=str(_success).lower(),
