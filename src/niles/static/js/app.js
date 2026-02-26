@@ -355,6 +355,49 @@ document.body.addEventListener("click", function(evt) {
     }
 });
 
+/* Weather location search -- select a result, show preview with save button */
+document.body.addEventListener("click", function(evt) {
+    var btn = evt.target.closest("[data-weather-select]");
+    if (!btn) return;
+
+    /* Populate hidden form */
+    document.getElementById("weather-lat").value = btn.dataset.lat;
+    document.getElementById("weather-lon").value = btn.dataset.lon;
+    document.getElementById("weather-label").value = btn.dataset.label;
+
+    /* Show selected preview, hide search */
+    var selected = document.getElementById("weather-selected");
+    var searchInput = document.getElementById("weather-search-input");
+    var searchResults = document.getElementById("weather-search-results");
+    if (selected) {
+        document.getElementById("weather-selected-label").textContent = btn.dataset.label;
+        document.getElementById("weather-selected-coords").textContent =
+            "(" + btn.dataset.lat + ", " + btn.dataset.lon + ")";
+        selected.classList.remove("hidden");
+    }
+    if (searchInput) searchInput.classList.add("hidden");
+    if (searchResults) searchResults.innerHTML = "";
+});
+
+/* Weather location -- save button submits the form */
+document.body.addEventListener("click", function(evt) {
+    if (evt.target.id !== "weather-save-btn") return;
+    htmx.trigger(document.getElementById("weather-location-form"), "submit");
+});
+
+/* Weather location -- cancel button resets to search */
+document.body.addEventListener("click", function(evt) {
+    if (evt.target.id !== "weather-cancel-btn") return;
+    var selected = document.getElementById("weather-selected");
+    var searchInput = document.getElementById("weather-search-input");
+    if (selected) selected.classList.add("hidden");
+    if (searchInput) {
+        searchInput.classList.remove("hidden");
+        searchInput.value = "";
+        searchInput.focus();
+    }
+});
+
 /* Render markdown + convert timestamps in content loaded via htmx (history pagination) */
 document.body.addEventListener("htmx:afterSettle", function() {
     convertTimestamps();

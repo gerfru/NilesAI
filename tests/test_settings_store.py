@@ -23,11 +23,15 @@ class TestEditableWhitelist:
             "feature_signal_send_others",
             "signal_api_url",
             "signal_phone_number",
+            "signal_disabled",
             "feature_briefing_daily",
             "feature_briefing_weekly",
             "briefing_daily_time",
             "briefing_weekly_time",
             "briefing_channel",
+            "weather_latitude",
+            "weather_longitude",
+            "weather_location_name",
         }
         assert EDITABLE_SETTINGS == expected
 

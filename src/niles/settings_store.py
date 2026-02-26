@@ -37,11 +37,15 @@ EDITABLE_SETTINGS = {
     "feature_signal_send_others",
     "signal_api_url",
     "signal_phone_number",
+    "signal_disabled",
     "feature_briefing_daily",
     "feature_briefing_weekly",
     "briefing_daily_time",
     "briefing_weekly_time",
     "briefing_channel",
+    "weather_latitude",
+    "weather_longitude",
+    "weather_location_name",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -112,6 +116,30 @@ class SettingsStore:
             if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", value):
                 raise ValueError(
                     f"Invalid time format: '{value}' (expected HH:MM, 00:00–23:59)"
+                )
+
+        # Validate weather coordinates
+        if key == "weather_latitude" and isinstance(value, str) and value:
+            try:
+                lat = float(value)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid latitude: '{value}' (must be a number)"
+                ) from None
+            if not -90 <= lat <= 90:
+                raise ValueError(
+                    f"Invalid latitude: {lat} (must be between -90 and 90)"
+                )
+        if key == "weather_longitude" and isinstance(value, str) and value:
+            try:
+                lon = float(value)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid longitude: '{value}' (must be a number)"
+                ) from None
+            if not -180 <= lon <= 180:
+                raise ValueError(
+                    f"Invalid longitude: {lon} (must be between -180 and 180)"
                 )
 
         async with self.pool.acquire() as conn:
