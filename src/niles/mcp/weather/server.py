@@ -54,6 +54,7 @@ WEATHER_CODES: dict[int, str] = {
 }
 
 _WIND_DIRECTIONS = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"]
+_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
 def describe_weather(code: int) -> str:
@@ -65,6 +66,12 @@ def wind_direction_text(degrees: float) -> str:
     """Convert wind direction in degrees to a compass abbreviation."""
     idx = round(degrees / 45) % 8
     return _WIND_DIRECTIONS[idx]
+
+
+def _daily_value(daily: dict, key: str, index: int, default="?"):
+    """Safely get a value from Open-Meteo daily data arrays."""
+    values = daily.get(key) or []
+    return values[index] if index < len(values) else default
 
 
 def _get_config() -> tuple[str, str, str]:
@@ -191,7 +198,6 @@ async def get_forecast(days: int = 3) -> str:
     if not dates:
         return "Keine Vorhersagedaten verfuegbar."
 
-    _WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     lines = [f"Wettervorhersage ({len(dates)} Tage):"]
 
     for i, date_str in enumerate(dates):
@@ -202,40 +208,13 @@ async def get_forecast(days: int = 3) -> str:
         except (ValueError, TypeError):
             day_label = date_str
 
-        code = (
-            (daily.get("weather_code") or [0])[i]
-            if i < len(daily.get("weather_code", []))
-            else 0
-        )
-        t_min = (
-            (daily.get("temperature_2m_min") or ["?"])[i]
-            if i < len(daily.get("temperature_2m_min", []))
-            else "?"
-        )
-        t_max = (
-            (daily.get("temperature_2m_max") or ["?"])[i]
-            if i < len(daily.get("temperature_2m_max", []))
-            else "?"
-        )
-        precip = (
-            (daily.get("precipitation_sum") or [0])[i]
-            if i < len(daily.get("precipitation_sum", []))
-            else 0
-        )
-        prob = (
-            (daily.get("precipitation_probability_max") or [0])[i]
-            if i < len(daily.get("precipitation_probability_max", []))
-            else 0
-        )
-
-        sunrise_raw = (
-            (daily.get("sunrise") or [""])[i]
-            if i < len(daily.get("sunrise", []))
-            else ""
-        )
-        sunset_raw = (
-            (daily.get("sunset") or [""])[i] if i < len(daily.get("sunset", [])) else ""
-        )
+        code = _daily_value(daily, "weather_code", i, default=0)
+        t_min = _daily_value(daily, "temperature_2m_min", i)
+        t_max = _daily_value(daily, "temperature_2m_max", i)
+        precip = _daily_value(daily, "precipitation_sum", i, default=0)
+        prob = _daily_value(daily, "precipitation_probability_max", i, default=0)
+        sunrise_raw = _daily_value(daily, "sunrise", i, default="")
+        sunset_raw = _daily_value(daily, "sunset", i, default="")
 
         try:
             sunrise = datetime.fromisoformat(sunrise_raw).strftime("%H:%M")
