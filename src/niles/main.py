@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import logging
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -12,12 +13,16 @@ from pathlib import Path
 
 import asyncpg
 import httpx
+import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from .logging_config import generate_request_id, setup_logging
+from .metrics import HTTP_DURATION, HTTP_REQUESTS
 
 from .actions.briefing import BriefingGenerator
 from .actions.calendar import CalendarAction
@@ -42,15 +47,6 @@ from .sync.manager import CalendarSourceManager
 logger = logging.getLogger(__name__)
 
 
-def _configure_logging(level: str = "INFO") -> None:
-    """Configure root logger with the given level."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        force=True,
-    )
-
-
 def _parse_briefing_time(time_str: str) -> tuple[int, int]:
     """Parse 'HH:MM' string to (hour, minute) tuple."""
     try:
@@ -66,7 +62,7 @@ def _parse_briefing_time(time_str: str) -> tuple[int, int]:
 
 
 # Default logging until settings are loaded
-_configure_logging()
+setup_logging()
 
 
 @asynccontextmanager
@@ -87,7 +83,7 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     # Reconfigure logging with settings
-    _configure_logging(settings.log_level)
+    setup_logging(settings.log_level)
 
     # Warn if API key was auto-generated (do not log the key itself)
     if not os.environ.get("NILES_API_KEY"):
@@ -289,11 +285,22 @@ async def lifespan(app: FastAPI):
     app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
 
+    # Shutdown event for SSE drain
+    shutdown_event = asyncio.Event()
+    app.state.shutdown_event = shutdown_event
+
     yield
 
-    # Shutdown
+    # Shutdown — signal SSE streams to close gracefully.
+    # The drain window is best-effort: active LLM inference may exceed it.
+    # SSE generators check the event between yielded items, so streams that
+    # are idle or between tool calls will close within this window.
+    logger.info("Shutdown initiated, draining SSE connections...")
+    shutdown_event.set()
+    await asyncio.sleep(0.5)
+
     await mcp_manager.stop_all()
-    scheduler.shutdown()
+    scheduler.shutdown(wait=False)
     await pool.close()
     logger.info("Niles Core shut down.")
 
@@ -358,9 +365,70 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Attach a unique request_id to every request via structlog contextvars."""
+
+    async def dispatch(self, request: Request, call_next):
+        incoming = request.headers.get("X-Request-ID", "")
+        # Accept only short alphanumeric/dash/underscore IDs to prevent abuse
+        if (
+            incoming
+            and len(incoming) <= 64
+            and incoming.replace("-", "").replace("_", "").isalnum()
+        ):
+            request_id = incoming
+        else:
+            request_id = generate_request_id()
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    """Record HTTP request count and duration for Prometheus."""
+
+    _ID_RE = re.compile(
+        r"/(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?=/|$)",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _normalize_path(path: str) -> str:
+        """Replace numeric/UUID path segments to prevent label cardinality explosion.
+
+        /api/admin/users/42/password → /api/admin/users/:id/password
+        /api/calendar/sources/7/sync → /api/calendar/sources/:id/sync
+        /items/550e8400-e29b-41d4-a716-446655440000 → /items/:id
+        """
+        return MetricsMiddleware._ID_RE.sub("/:id", path)
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in ("/metrics", "/health") or request.url.path.startswith(
+            "/static"
+        ):
+            return await call_next(request)
+        endpoint = self._normalize_path(request.url.path)
+        with HTTP_DURATION.labels(method=request.method, endpoint=endpoint).time():
+            response = await call_next(request)
+        HTTP_REQUESTS.labels(
+            method=request.method, endpoint=endpoint, status=response.status_code
+        ).inc()
+        return response
+
+
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
+# Middleware execution order (outermost first):
+# 1. RequestIdMiddleware — every response gets X-Request-ID, even 429s
+# 2. RateLimitMiddleware — reject abusive clients early
+# 3. SecurityHeadersMiddleware — defence-in-depth headers
+# 4. MetricsMiddleware — record timing (skips /metrics, /health, /static)
+# Starlette applies middleware in reverse add_middleware order.
+app.add_middleware(MetricsMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(RequestIdMiddleware)
 app.include_router(whatsapp_router)
 app.include_router(web_router)
 
@@ -386,6 +454,17 @@ async def require_api_key(
 async def root():
     """Redirect to web UI."""
     return RedirectResponse(url="/ui/chat", status_code=303)
+
+
+@app.get("/metrics")
+async def metrics(_key: str = Depends(require_api_key)):
+    """Prometheus metrics endpoint (API-key protected)."""
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 @app.get("/health")

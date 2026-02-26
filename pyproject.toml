@@ -40,6 +40,12 @@ dependencies = [
 
     # RRULE expansion for recurring calendar events
     "python-dateutil>=2.8.0",
+
+    # Structured JSON logging (12-factor XI)
+    "structlog>=24.1.0",
+
+    # Prometheus metrics
+    "prometheus-client>=0.21.0",
 ]
 
 [project.optional-dependencies]
