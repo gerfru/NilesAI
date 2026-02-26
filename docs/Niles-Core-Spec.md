@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 7.1
-> **Updated:** 2026-02-25
+> **Version:** 7.2
+> **Updated:** 2026-02-26
 
 ---
 
@@ -26,8 +26,8 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | PostgreSQL | 5432 | Not exposed | Database (evolution_db) |
 | Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp gateway |
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
-| Vikunja | 3456 | `http://localhost:3456` | Todo/task management |
-| Caddy | -- | :443, :8443 | HTTPS reverse proxy |
+| Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
+| Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
 **Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed.
 
@@ -69,9 +69,11 @@ POST /chat  ---------->  |  agent/core.py (NilesAgent)    |--> Ollama :11434
                          |    +- actions/calendar.py      |--> PostgreSQL :5432
                          |    +- actions/tasks.py         |--> Vikunja :3456
                          |                                |
-                         |  Middleware:                   |
-                         |    SecurityHeadersMiddleware   |
+                         |  Middleware (execution order): |
+                         |    RequestIdMiddleware         |
                          |    RateLimitMiddleware (60/min)|
+                         |    SecurityHeadersMiddleware   |
+                         |    MetricsMiddleware           |
                          |    API Key Auth (X-API-Key)    |
                          |                                |
                          |  GET  /health (unauthenticated)|
@@ -92,6 +94,8 @@ Niles/
 │       ├── __init__.py
 │       ├── main.py                   # FastAPI + Lifespan + Middleware
 │       ├── config.py                 # Pydantic Settings + apply_overrides
+│       ├── logging_config.py         # Structured JSON logging (structlog)
+│       ├── metrics.py                # Prometheus metrics definitions
 │       ├── user_store.py             # User management (Google OAuth)
 │       ├── settings_store.py         # Runtime settings overrides (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-user WhatsApp sessions (PostgreSQL)
@@ -158,7 +162,8 @@ Niles/
 │   ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 │   ├── test_tasks.py                # Vikunja task management
 │   ├── test_self_chat.py            # WhatsApp self-chat trigger
-│   └── test_briefing.py             # BriefingGenerator + time parsing
+│   ├── test_briefing.py              # BriefingGenerator + time parsing
+│   └── test_logging.py              # Structured logging + Prometheus metrics
 ├── config/
 │   └── soul.md                       # Agent personality
 ├── docker/
@@ -250,7 +255,7 @@ Niles/
 Entry point. Manages the application lifecycle via `lifespan()`:
 
 1. Load settings (ValidationError on missing secrets -> `sys.exit(1)`)
-2. Configure logging (level via `LOG_LEVEL` env variable)
+2. Configure structured JSON logging via structlog (level via `LOG_LEVEL` env variable)
 3. Check NILES_API_KEY (auto-generated if not set, key is not logged)
 4. Create asyncpg connection pool (min=2, max=10)
 5. Initialize MemoryStore + ConversationHistory (CREATE TABLE IF NOT EXISTS)
@@ -265,10 +270,12 @@ Entry point. Manages the application lifecycle via `lifespan()`:
 14. Instantiate actions and agent (incl. wa_store)
 15. Save everything to `app.state`
 
-**Middleware:**
+**Middleware** (execution order, outermost first):
 
-- `SecurityHeadersMiddleware` (X-Content-Type-Options, X-Frame-Options, etc.)
-- `RateLimitMiddleware` (60 req/min per IP, /health and /static exempt, max 10,000 IPs tracked)
+1. `RequestIdMiddleware` -- Generates or validates `X-Request-ID` (max 64 chars, alnum/dash/underscore), binds to structlog contextvars, echoes in response header
+2. `RateLimitMiddleware` -- 60 req/min per IP, /health and /static exempt, max 10,000 IPs tracked
+3. `SecurityHeadersMiddleware` -- X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy
+4. `MetricsMiddleware` -- Prometheus HTTP request count and duration, /metrics /health /static exempt, normalizes numeric/UUID path segments to `:id`
 
 **Endpoints:** See `docs/API.md`.
 
@@ -306,7 +313,7 @@ class Settings(BaseSettings):
     carddav_user: str = ""
     carddav_password: str = ""
     # CalDAV (Legacy, auto-migrated into calendar_sources)
-    caldav_url: str = "https://dav.example.com/caldav/"
+    caldav_url: str = ""
     caldav_user: str = ""
     caldav_password: str = ""
     caldav_calendars: str = ""  # Comma-separated collection hrefs
@@ -819,11 +826,11 @@ CREATE TABLE IF NOT EXISTS settings_overrides (
 - Niles Core runs as non-root user (UID/GID 1000)
 - PostgreSQL port not exposed
 
-### 5.5 Access Logs
+### 5.5 Logging
 
-- Caddy writes JSON-formatted access logs per service
-- Log rotation: 10 MB per file, 3 files kept
-- Files: `access-niles.log`, `access-evolution.log`
+- **Application logs:** Structured JSON to stdout via structlog (`src/niles/logging_config.py`). All stdlib loggers (httpx, uvicorn, asyncpg) are routed through structlog processors for uniform JSON output. Request tracing via `request_id` (bound to structlog contextvars by `RequestIdMiddleware`).
+- **Caddy access logs:** JSON-formatted to stdout (12-factor compliant, no file rotation needed)
+- **Prometheus metrics:** `/metrics` endpoint (API-key protected). HTTP request count/duration, LLM request duration/tokens, tool call count, active SSE connections. See `src/niles/metrics.py`.
 
 ### 5.6 Data Integrity (No Deletions)
 
@@ -873,7 +880,7 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `carddav_url` | `""` | `CARDDAV_URL` | No |
 | `carddav_user` | `""` | `CARDDAV_USER` | No |
 | `carddav_password` | `""` | `CARDDAV_PASSWORD` | No |
-| `caldav_url` | `"https://dav.example.com/caldav/"` | `CALDAV_URL` | No\* |
+| `caldav_url` | `""` | `CALDAV_URL` | No\* |
 | `caldav_user` | `""` | `CALDAV_USER` | No\* |
 | `caldav_password` | `""` | `CALDAV_PASSWORD` | No\* |
 | `caldav_calendars` | `""` | `CALDAV_CALENDARS` | No\* |
@@ -936,7 +943,7 @@ LOG_LEVEL=INFO
 
 **Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
 
 See `.env.example` for complete documentation.
 
@@ -976,10 +983,10 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | Container | Image | Exposed Port | Purpose |
 | --------- | ----- | ------------ | ------- |
 | `niles_caddy` | `caddy:2-alpine` | 443, 8443 | HTTPS reverse proxy |
-| `niles_core` | Build (Dockerfile.niles) | -- (via Caddy) | Python backend + web UI |
+| `niles_core` | `niles-core:${NILES_VERSION:-latest}` (Dockerfile.niles) | -- (via Caddy) | Python backend + web UI |
 | `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
-| `vikunja` | `vikunja/vikunja:latest` | 3456 | Todo/task management |
+| `vikunja` | `vikunja/vikunja:1.1.0` | 3456 | Todo/task management |
 
 ### 7.3 Network
 
@@ -1000,18 +1007,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 | `caddy_data` | `/data` | TLS certificates |
 | `caddy_config` | `/config` | Caddy configuration |
 | `~/.evolution/instances` | `/evolution/instances` | WhatsApp sessions |
-| `../src` | `/app/src` | Live reload (dev) |
 | `../config` | `/app/config:ro` | Agent configuration |
-
-### 7.5 Dev Mode
-
-In `docker-compose.yml`, the `command` overrides the Dockerfile CMD:
-
-```yaml
-command: uvicorn niles.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Together with the volume mount `../src:/app/src`, this enables live reload on code changes.
 
 ---
 
@@ -1032,6 +1028,8 @@ Together with the volume mount `../src:/app/src`, this enables live reload on co
 | Markdown Rendering | marked.js + DOMPurify | CDN (SRI) |
 | Frontend Interaction | htmx | 2.0.4 (CDN) |
 | RRULE Expansion | python-dateutil | >= 2.8.0 |
+| Structured Logging | structlog | >= 24.1.0 |
+| Metrics | prometheus-client | >= 0.21.0 |
 | Scheduling | APScheduler | >= 3.11.2 |
 | Container | Docker Compose | -- |
 | LLM Inference | Ollama (native on host) | local |
@@ -1053,6 +1051,8 @@ jinja2>=3.1.0             # HTML Templates (Web UI)
 aiofiles>=24.0.0          # Static File Serving
 itsdangerous>=2.0         # Signed Session Cookies
 python-dateutil>=2.8.0    # RRULE Expansion (recurring calendar events)
+structlog>=24.1.0         # Structured JSON Logging
+prometheus-client>=0.21.0 # Prometheus Metrics
 ```
 
 Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
