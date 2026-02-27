@@ -1,9 +1,10 @@
 """Tests for the web fetch MCP server."""
 
 import os
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from niles.mcp.fetch.server import fetch_url
+from niles.mcp.fetch.server import _is_private_host, fetch_url
 
 
 class TestFetchUrl:
@@ -161,3 +162,67 @@ class TestFetchUrl:
         ):
             result = await fetch_url("https://example.com/empty")
             assert "Kein Textinhalt" in result
+
+    async def test_ssrf_blocks_private_ip(self):
+        """Localhost/private IPs are blocked."""
+        with patch("niles.mcp.fetch.server._is_private_host", return_value=True):
+            result = await fetch_url("https://169.254.169.254/metadata")
+            assert "interne Adressen" in result
+
+    async def test_ssrf_allows_public_ip(self):
+        """Public IPs are allowed through SSRF check."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/html"}
+        mock_response.content = b"<html><body>Public</body></html>"
+        mock_response.text = "<html><body>Public</body></html>"
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("niles.mcp.fetch.server._is_private_host", return_value=False),
+            patch(
+                "niles.mcp.fetch.server.httpx.AsyncClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "niles.mcp.fetch.server.trafilatura.extract",
+                return_value="Public content",
+            ),
+        ):
+            result = await fetch_url("https://example.com")
+            assert "Public content" in result
+
+
+class TestIsPrivateHost:
+    def test_localhost_is_private(self):
+        assert _is_private_host("localhost") is True
+
+    def test_private_ip_is_private(self):
+        with patch(
+            "niles.mcp.fetch.server.socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))
+            ],
+        ):
+            assert _is_private_host("internal.example.com") is True
+
+    def test_public_ip_is_not_private(self):
+        with patch(
+            "niles.mcp.fetch.server.socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
+            ],
+        ):
+            assert _is_private_host("example.com") is False
+
+    def test_unresolvable_host_returns_false(self):
+        with patch(
+            "niles.mcp.fetch.server.socket.getaddrinfo",
+            side_effect=socket.gaierror("not found"),
+        ):
+            assert _is_private_host("nonexistent.invalid") is False

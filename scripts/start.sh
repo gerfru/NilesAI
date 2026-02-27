@@ -35,7 +35,7 @@ fi
 
 # Build docker compose command with optional profiles
 COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
-if grep -qsE '^FEATURE_SEARCH\s*=\s*true' .env 2>/dev/null; then
+if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
     COMPOSE_CMD="$COMPOSE_CMD --profile search"
     echo "Web Search (SearXNG) profile enabled."
 fi

@@ -9,7 +9,9 @@ Configuration via environment variables:
   FETCH_USER_AGENT     User-Agent header (default: "Niles AI/1.0")
 """
 
+import ipaddress
 import os
+import socket
 
 import httpx
 import trafilatura
@@ -25,6 +27,31 @@ _DEFAULT_USER_AGENT = "Niles AI/1.0 (local assistant)"
 # Blocked schemes / patterns for safety
 _BLOCKED_SCHEMES = ("file://", "ftp://", "data:", "javascript:")
 _MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# Private/reserved IP networks (SSRF protection)
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_private_host(hostname: str) -> bool:
+    """Check if a hostname resolves to a private/reserved IP address."""
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return False
+    for _family, _type, _proto, _canonname, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if any(ip in net for net in _PRIVATE_NETWORKS):
+            return True
+    return False
 
 
 def _get_config() -> tuple[int, int, str]:
@@ -71,6 +98,14 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
     # Ensure https:// or http://
     if not url_lower.startswith(("http://", "https://")):
         url = "https://" + url
+
+    # SSRF protection: block private/internal IPs
+    try:
+        hostname = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+        if _is_private_host(hostname):
+            return "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
+    except (IndexError, ValueError):
+        pass
 
     # --- Fetch ---
     try:
