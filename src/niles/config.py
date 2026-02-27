@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     # Web Search (SearXNG)
     feature_search: bool = False
-    searxng_url: str = "http://searxng:8888"
+    searxng_url: str = "http://searxng:8080"
 
     # Briefing / Digest
     feature_briefing_daily: bool = False

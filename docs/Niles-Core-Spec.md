@@ -28,7 +28,7 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
 | Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
 | signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
-| SearXNG | 8888 | Not exposed | Meta search engine (optional, profile `search`) |
+| SearXNG | 8080 | Not exposed | Meta search engine (optional, profile `search`) |
 | Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
 **Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
@@ -368,7 +368,7 @@ class Settings(BaseSettings):
     feature_signal_send_others: bool = False
     # Web Search (SearXNG)
     feature_search: bool = False
-    searxng_url: str = "http://searxng:8888"
+    searxng_url: str = "http://searxng:8080"
     # Briefing / Digest
     briefing_channel: str = "whatsapp"        # whatsapp | signal | both
     feature_briefing_daily: bool = False
@@ -1057,7 +1057,7 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | No |
 | `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | No |
 | `feature_search` | `false` | `FEATURE_SEARCH` | No\*\*\*\*\* |
-| `searxng_url` | `"http://searxng:8888"` | `SEARXNG_URL` | No |
+| `searxng_url` | `"http://searxng:8080"` | `SEARXNG_URL` | No |
 
 \* `base_url` is recommended when Google OAuth is behind a reverse proxy (prevents redirect URI from untrusted headers).
 
@@ -1162,7 +1162,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 - `evolution_api` -> `niles_core:8000` (webhook)
 - `niles_core` -> `vikunja:3456` (task management API)
 - `niles_core` -> `signal_api:8080` (Signal messaging, optional)
-- `niles_core` -> `searxng:8888` (SearXNG search, optional, via MCP)
+- `niles_core` -> `searxng:8080` (SearXNG search, optional, via MCP)
 - `niles_core` -> `host.docker.internal:11434` (Ollama on host)
 
 ### 7.4 Volumes

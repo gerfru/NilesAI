@@ -100,7 +100,7 @@ services:
     container_name: niles_searxng
     restart: unless-stopped
     environment:
-      - SEARXNG_BASE_URL=http://searxng:8888/
+      - SEARXNG_BASE_URL=http://searxng:8080/
       - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-niles-local-default}
     volumes:
       - searxng_data:/etc/searxng
@@ -174,7 +174,7 @@ services:
       - BRIEFING_CHANNEL=${BRIEFING_CHANNEL:-whatsapp}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FEATURE_SEARCH=${FEATURE_SEARCH:-false}
-      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8888}
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
     volumes:
       - ../config:/app/config:ro
     networks:
