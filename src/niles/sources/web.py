@@ -351,6 +351,8 @@ def _safe_settings_dict(settings) -> dict:
         "infra": infra,
         "briefing": briefing,
         "weather": weather,
+        "feature_search": getattr(settings, "feature_search", False),
+        "searxng_url": getattr(settings, "searxng_url", "http://searxng:8888"),
     }
 
 

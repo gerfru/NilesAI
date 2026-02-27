@@ -30,6 +30,8 @@ class TestEditableWhitelist:
             "weather_latitude",
             "weather_longitude",
             "weather_location_name",
+            "feature_search",
+            "searxng_url",
         }
         assert EDITABLE_SETTINGS == expected
 

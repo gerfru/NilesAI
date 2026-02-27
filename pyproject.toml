@@ -54,6 +54,9 @@ dependencies = [
 
     # WebSocket client (Signal integration)
     "websockets>=14.0",
+
+    # MCP Web Search (SearXNG client — only active when feature_search=true)
+    "searxng-simple-mcp>=0.3.0",
 ]
 
 [project.optional-dependencies]

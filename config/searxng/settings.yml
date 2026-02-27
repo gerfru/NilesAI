@@ -1,0 +1,33 @@
+general:
+  instance_name: "Niles Search"
+  debug: false
+
+search:
+  safe_search: 0
+  default_lang: "de"
+  formats:
+    - html
+    - json
+
+server:
+  port: 8888
+  bind_address: "0.0.0.0"
+  secret_key: "${SEARXNG_SECRET_KEY}"
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
