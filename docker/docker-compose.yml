@@ -96,11 +96,12 @@ services:
 
   # SearXNG (Privacy-focused meta search engine) — activate via --profile search
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2025.5.10-1b787ed35
     container_name: niles_searxng
     restart: unless-stopped
     environment:
       - SEARXNG_BASE_URL=http://searxng:8888/
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-niles-local-default}
     volumes:
       - searxng_data:/etc/searxng
       - ../config/searxng/settings.yml:/etc/searxng/settings.yml:ro
