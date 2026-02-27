@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)-5s %(message)s")
 logger = logging.getLogger("niles.migrate")
 
 # Maximum seconds to wait for PostgreSQL to accept connections
-_PG_WAIT_TIMEOUT = 30
+_PG_WAIT_TIMEOUT = int(os.environ.get("PG_WAIT_TIMEOUT", "60"))
 
 
 def _get_database_url() -> str:
@@ -96,10 +96,15 @@ def main() -> None:
     cfg.set_main_option("sqlalchemy.url", url)
 
     if has_users and not has_alembic:
-        # Existing installation — tables already exist, stamp to head
-        logger.info("Existing installation detected — stamping to current head")
-        command.stamp(cfg, "head")
-        logger.info("Stamped to head")
+        # Existing installation — tables already exist.
+        # Stamp baseline (001), then upgrade to apply data migrations (e.g. 002)
+        # which are idempotent and safe to re-run on existing data.
+        logger.info(
+            "Existing installation detected — stamping baseline, then upgrading"
+        )
+        command.stamp(cfg, "001")
+        command.upgrade(cfg, "head")
+        logger.info("Stamped + upgraded to head")
     else:
         # Fresh install or already managed — apply pending migrations
         logger.info("Running alembic upgrade head...")
