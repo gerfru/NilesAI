@@ -89,6 +89,10 @@ async def send_daily_briefing(app_state) -> bool:
     Returns True if the briefing was sent, False if no channel was available.
     """
     briefing = app_state.briefing_generator
+    # Refresh weather coordinates from current settings (may change at runtime)
+    settings = app_state.settings
+    briefing.weather_latitude = settings.weather_latitude
+    briefing.weather_longitude = settings.weather_longitude
     try:
         message = await briefing.generate_daily()
     except Exception:
@@ -106,6 +110,10 @@ async def send_weekly_briefing(app_state) -> bool:
     Returns True if the briefing was sent, False if no channel was available.
     """
     briefing = app_state.briefing_generator
+    # Refresh weather coordinates from current settings (may change at runtime)
+    settings = app_state.settings
+    briefing.weather_latitude = settings.weather_latitude
+    briefing.weather_longitude = settings.weather_longitude
     try:
         message = await briefing.generate_weekly()
     except Exception:
