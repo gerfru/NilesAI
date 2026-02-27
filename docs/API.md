@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-02-26
+> **Updated:** 2026-02-27
 
 ---
 
@@ -12,6 +12,7 @@ All external access goes through HTTPS via the Caddy reverse proxy with self-sig
 | ---- | ------- | -------- |
 | 443 | Niles Core API + Web UI | niles_core:8000 |
 | 8443 | Evolution API | evolution_api:8080 |
+| 3457 | Vikunja (Task Management) | vikunja:3456 |
 
 - **Self-signed certificates:** Accept the browser warning on first access
 - **curl:** Use the `--insecure` flag (or `-k`)
@@ -592,7 +593,7 @@ Creates a new calendar entry on the first writable calendar source (via `Calenda
 
 ### list_tasks
 
-Lists open tasks from Vikunja. Only available when `feature_vikunja` is active.
+Lists open tasks from Vikunja. Only available when the user has Vikunja credentials (auto-provisioned on login).
 
 **Parameters:**
 
@@ -617,7 +618,7 @@ Lists open tasks from Vikunja. Only available when `feature_vikunja` is active.
 
 ### create_task
 
-Creates a new task in Vikunja. Only available when `feature_vikunja` is active.
+Creates a new task in Vikunja. Only available when the user has Vikunja credentials (auto-provisioned on login).
 
 **Parameters:**
 
@@ -645,7 +646,7 @@ Creates a new task in Vikunja. Only available when `feature_vikunja` is active.
 
 ### complete_task
 
-Marks a task as done. Searches by title among open tasks. Only available when `feature_vikunja` is active.
+Marks a task as done. Searches by title among open tasks. Only available when the user has Vikunja credentials (auto-provisioned on login).
 
 **Parameters:**
 
