@@ -5,33 +5,35 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def _get_connected_number(app_state) -> tuple[str | None, str | None]:
-    """Return (phone_number, instance_name) from a connected WhatsApp session.
+async def _get_connected_session(
+    app_state,
+) -> tuple[str | None, str | None, int | None]:
+    """Return (phone_number, instance_name, user_id) from a connected WhatsApp session.
 
     Queries the whatsapp_sessions table for any session with status='connected'.
-    Returns (None, None) if no connected session exists.
+    Returns (None, None, None) if no connected session exists.
     """
     pool = app_state.pool
     try:
         row = await pool.fetchrow(
-            "SELECT phone_number, instance_name FROM whatsapp_sessions "
+            "SELECT phone_number, instance_name, user_id FROM whatsapp_sessions "
             "WHERE status = 'connected' AND phone_number IS NOT NULL "
             "LIMIT 1"
         )
     except Exception:
         logger.warning("Briefing: whatsapp_sessions nicht abrufbar")
-        return None, None
+        return None, None, None
 
     if not row or not row["phone_number"]:
         logger.info("Briefing: Keine verbundene WhatsApp-Session gefunden")
-        return None, None
+        return None, None, None
 
-    return row["phone_number"], row["instance_name"]
+    return row["phone_number"], row["instance_name"], row["user_id"]
 
 
 async def _send_via_whatsapp(app_state, message: str) -> bool:
     """Send briefing message via WhatsApp. Returns True on success."""
-    number, instance = await _get_connected_number(app_state)
+    number, instance, _user_id = await _get_connected_session(app_state)
     if not number:
         return False
     try:
@@ -82,6 +84,12 @@ async def _send_briefing(app_state, message: str) -> bool:
     return sent_any
 
 
+async def _resolve_briefing_user_id(app_state) -> int | None:
+    """Get the user_id of the connected WhatsApp session for per-user tasks."""
+    _number, _instance, user_id = await _get_connected_session(app_state)
+    return user_id
+
+
 async def send_daily_briefing(app_state) -> bool:
     """Generate and send the daily briefing.
 
@@ -93,8 +101,9 @@ async def send_daily_briefing(app_state) -> bool:
     settings = app_state.settings
     briefing.weather_latitude = settings.weather_latitude
     briefing.weather_longitude = settings.weather_longitude
+    user_id = await _resolve_briefing_user_id(app_state)
     try:
-        message = await briefing.generate_daily()
+        message = await briefing.generate_daily(user_id=user_id)
     except Exception:
         logger.exception("Failed to generate daily briefing")
         return False
@@ -114,8 +123,9 @@ async def send_weekly_briefing(app_state) -> bool:
     settings = app_state.settings
     briefing.weather_latitude = settings.weather_latitude
     briefing.weather_longitude = settings.weather_longitude
+    user_id = await _resolve_briefing_user_id(app_state)
     try:
-        message = await briefing.generate_weekly()
+        message = await briefing.generate_weekly(user_id=user_id)
     except Exception:
         logger.exception("Failed to generate weekly briefing")
         return False
