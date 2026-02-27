@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from typing import Any
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import asyncpg
@@ -47,6 +48,8 @@ EDITABLE_SETTINGS = {
     "weather_latitude",
     "weather_longitude",
     "weather_location_name",
+    "feature_search",
+    "searxng_url",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -120,6 +123,14 @@ class SettingsStore:
                 raise ValueError(
                     f"Invalid latitude: {lat} (must be between -90 and 90)"
                 )
+        # Validate URL format for URL-type settings
+        if key == "searxng_url" and isinstance(value, str) and value:
+            parsed = urlparse(value)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ValueError(
+                    f"Invalid URL: '{value}' (must be http:// or https://)"
+                )
+
         if key == "weather_longitude" and isinstance(value, str) and value:
             try:
                 lon = float(value)

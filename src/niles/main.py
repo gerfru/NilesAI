@@ -270,6 +270,10 @@ async def lifespan(app: FastAPI):
         os.environ["WEATHER_LONGITUDE"] = settings.weather_longitude
     os.environ["WEATHER_TIMEZONE"] = settings.timezone
 
+    # Web Search (SearXNG) — feature flag + URL for mcp_servers.yaml expansion
+    os.environ["FEATURE_SEARCH"] = str(settings.feature_search).lower()
+    os.environ["SEARXNG_URL"] = settings.searxng_url
+
     mcp_manager = MCPManager()
     await mcp_manager.start_all()
 

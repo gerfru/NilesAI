@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 from niles.mcp.client import (
     MCPManager,
     _VALID_TOOL_NAME,
+    _coerce_arguments,
     _expand_env,
     _mcp_tool_to_openai,
+    _simplify_schema,
 )
 
 
@@ -72,6 +74,133 @@ class TestMCPToolToOpenAI:
         assert result["function"]["parameters"] == {"type": "object", "properties": {}}
 
 
+class TestSimplifySchema:
+    def test_anyof_nullable_flattened(self):
+        """anyOf with null type → simple type."""
+        schema = {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": None,
+            "description": "Optional param",
+        }
+        result = _simplify_schema(schema)
+        assert result["type"] == "string"
+        assert "anyOf" not in result
+
+    def test_anyof_non_nullable_kept(self):
+        """anyOf with multiple non-null types stays as anyOf."""
+        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+        result = _simplify_schema(schema)
+        assert "anyOf" in result
+        assert len(result["anyOf"]) == 2
+
+    def test_exclusive_minimum_replaced(self):
+        """exclusiveMinimum → minimum."""
+        schema = {"type": "integer", "exclusiveMinimum": 0}
+        result = _simplify_schema(schema)
+        assert result["minimum"] == 1
+        assert "exclusiveMinimum" not in result
+
+    def test_nested_properties_simplified(self):
+        """Properties containing anyOf patterns are simplified recursively."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "language": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": "de",
+                },
+                "query": {"type": "string"},
+            },
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        assert result["properties"]["language"]["type"] == "string"
+        assert result["properties"]["query"]["type"] == "string"
+        assert result["required"] == ["query"]
+
+    def test_simple_schema_unchanged(self):
+        """Simple schema passes through without modification."""
+        schema = {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        assert result == schema
+
+    def test_real_searxng_schema(self):
+        """Full SearXNG-style schema is simplified correctly."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "result_count": {
+                    "type": "integer",
+                    "default": 10,
+                    "exclusiveMinimum": 0,
+                },
+                "categories": {
+                    "anyOf": [
+                        {"items": {"type": "string"}, "type": "array"},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                },
+            },
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        # query unchanged
+        assert result["properties"]["query"]["type"] == "string"
+        # exclusiveMinimum → minimum
+        assert result["properties"]["result_count"]["minimum"] == 1
+        assert "exclusiveMinimum" not in result["properties"]["result_count"]
+        # anyOf nullable → array type
+        assert result["properties"]["categories"]["type"] == "array"
+        assert "anyOf" not in result["properties"]["categories"]
+
+
+class TestCoerceArguments:
+    def test_string_int_converted(self):
+        assert _coerce_arguments({"count": "10"}) == {"count": 10}
+
+    def test_actual_int_unchanged(self):
+        assert _coerce_arguments({"count": 10}) == {"count": 10}
+
+    def test_json_list_string_converted(self):
+        result = _coerce_arguments({"categories": '["general", "history"]'})
+        assert result == {"categories": ["general", "history"]}
+
+    def test_python_list_string_converted(self):
+        """Python-style list literal with single quotes."""
+        result = _coerce_arguments({"categories": "['general', 'history']"})
+        assert result == {"categories": ["general", "history"]}
+
+    def test_null_string_converted(self):
+        assert _coerce_arguments({"time_range": "null"}) == {"time_range": None}
+
+    def test_plain_string_unchanged(self):
+        assert _coerce_arguments({"query": "Geschichte Graz"}) == {
+            "query": "Geschichte Graz"
+        }
+
+    def test_mixed_types(self):
+        """Real-world example from llama3.1 searxng call."""
+        args = {
+            "query": "Geschichte von Graz",
+            "categories": "['general', 'history']",
+            "language": "de",
+            "result_count": "10",
+            "result_format": "text",
+        }
+        result = _coerce_arguments(args)
+        assert result["query"] == "Geschichte von Graz"
+        assert result["categories"] == ["general", "history"]
+        assert result["language"] == "de"
+        assert result["result_count"] == 10
+        assert result["result_format"] == "text"
+
+
 class TestMCPManagerConfig:
     def test_load_empty_config(self, tmp_path):
         config = tmp_path / "mcp.yaml"
@@ -105,6 +234,55 @@ class TestMCPManagerConfig:
         manager = MCPManager(config_path=config)
         servers = manager._load_config()
         assert servers == {}
+
+    def test_enabled_false_filters_server(self, tmp_path, monkeypatch):
+        """Server with enabled: '${FLAG}' where FLAG=false is filtered out."""
+        monkeypatch.setenv("MY_FLAG", "false")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  active:\n    command: echo\n    args: [hi]\n"
+            "  disabled:\n    command: echo\n    args: [bye]\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "active" in servers
+        assert "disabled" not in servers
+
+    def test_enabled_true_passes(self, tmp_path, monkeypatch):
+        """Server with enabled: '${FLAG}' where FLAG=true is kept."""
+        monkeypatch.setenv("MY_FLAG", "true")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  myserver:\n    command: echo\n    args: [hi]\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "myserver" in servers
+
+    def test_enabled_defaults_true(self, tmp_path):
+        """Server without enabled field defaults to enabled (backward compat)."""
+        config = tmp_path / "mcp.yaml"
+        config.write_text("servers:\n  myserver:\n    command: echo\n    args: [hi]\n")
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "myserver" in servers
+
+    def test_enabled_field_not_leaked(self, tmp_path, monkeypatch):
+        """The 'enabled' key is removed from the config dict (pop, not get)."""
+        monkeypatch.setenv("MY_FLAG", "true")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  s:\n    command: echo\n    args: []\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "enabled" not in servers["s"]
 
 
 class TestMCPManagerTools:
