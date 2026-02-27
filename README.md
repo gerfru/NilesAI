@@ -88,7 +88,7 @@ src/niles/                     Python Backend
   templates/                   Jinja2 Templates (Tailwind CSS)
   static/                      CSS, JavaScript
 alembic/                       Database migrations (Alembic)
-tests/                         554 tests (pytest + pytest-asyncio)
+tests/                         586 tests (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
 docker/                        Dockerfile, docker-compose.yml, Caddyfile
 scripts/                       start, stop, status, dev, test, backup

@@ -209,7 +209,10 @@ Niles/
 │   ├── build.sh                      # Docker image build
 │   ├── start.sh                      # Docker start
 │   ├── stop.sh                       # Docker stop
-│   └── status.sh                     # Service status check
+│   ├── status.sh                     # Service status check
+│   ├── backup.sh                     # Database + config backup
+│   ├── cleanup.sh                    # Full reset (delete volumes)
+│   └── check-pii.sh                  # PII leak detection
 ├── docs/
 ├── tailwind.config.js          # Tailwind CSS configuration
 ├── pyproject.toml
@@ -531,10 +534,20 @@ Each web UI user can connect their own WhatsApp instance (via QR code in the web
 
 ```python
 def load_system_prompt(path: str | None = None) -> str
-def build_system_prompt(base_prompt: str, memories: list[dict]) -> str
+def build_system_prompt(
+    base_prompt: str,
+    memories: list[dict],
+    timezone: str = "Europe/Vienna",
+    calendar_sources: list[str] | None = None,
+) -> str
 ```
 
-`load_system_prompt` loads `config/soul.md`. `build_system_prompt` appends a "Your Memory" section with all memory entries.
+`load_system_prompt` loads `config/soul.md`. `build_system_prompt` appends:
+
+1. **Current time** section (weekday, date, time, timezone)
+2. **Upcoming 7 days** (weekday → date mapping so the LLM doesn't have to calculate)
+3. **Available calendars** (list of calendar source names, if any)
+4. **Memory** section (all key-value entries)
 
 ### 3.10 Web UI (`src/niles/sources/web.py`)
 
@@ -1119,33 +1132,62 @@ See `.env.example` for complete documentation.
 ```dockerfile
 FROM python:3.12-slim
 WORKDIR /app
+
+# Install uv for fast dependency management
 RUN pip install uv
+
+# Install dependencies first (cached layer, only invalidated when pyproject.toml changes)
 COPY pyproject.toml .
+RUN mkdir -p src/niles && touch src/niles/__init__.py \
+    && uv pip install --system . \
+    && rm -rf src/
+
+# Copy source code
 COPY src/ ./src/
-# Download Tailwind standalone CLI (via Python, no curl/wget in slim) and build CSS
+
+# Download Tailwind standalone CLI with SHA256 verification and build CSS
 COPY tailwind.config.js .
-RUN python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss')" \
+RUN python -c "\
+import urllib.request, hashlib; \
+urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss'); \
+digest = hashlib.sha256(open('/usr/local/bin/tailwindcss','rb').read()).hexdigest(); \
+expected = '7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4'; \
+assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
     && chmod +x /usr/local/bin/tailwindcss \
     && tailwindcss --minify \
        -i src/niles/static/css/input.css \
        -o src/niles/static/css/style.css
-RUN uv pip install --system .
+
+# Copy config + Alembic migration infrastructure
 COPY config/ ./config/
-RUN groupadd --gid 1000 niles && \
+COPY alembic.ini .
+COPY alembic/ ./alembic/
+
+# Copy entrypoint (runs Alembic migrations, then starts uvicorn)
+COPY docker/entrypoint.sh /app/entrypoint.sh
+
+# Run as non-root user
+RUN chmod +x /app/entrypoint.sh && \
+    groupadd --gid 1000 niles && \
     useradd --uid 1000 --gid niles --no-create-home niles && \
     chown -R niles:niles /app
 USER niles
+
 ENV PYTHONPATH=/app/src
-CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 ```
 
-**Note:** `python:3.12-slim` contains neither `curl` nor `wget`. Tailwind CLI is therefore downloaded via Python `urllib.request.urlretrieve`.
+**Key design decisions:**
+
+- `python:3.12-slim` contains neither `curl` nor `wget`. Tailwind CLI is downloaded via Python `urllib.request.urlretrieve` with SHA256 verification.
+- Dependencies are installed before copying source code (`COPY pyproject.toml` → `uv pip install` → `COPY src/`). This keeps the dependency layer cached when only source code changes.
+- `entrypoint.sh` runs Alembic migrations (`python -m niles.migrate`) before starting uvicorn. This ensures the database schema is always up to date on container start.
 
 ### 7.2 Docker Compose Services
 
 | Container | Image | Exposed Port | Purpose |
 | --------- | ----- | ------------ | ------- |
-| `niles_caddy` | `caddy:2-alpine` | 443, 8443 | HTTPS reverse proxy |
+| `niles_caddy` | `caddy:2-alpine` | 443, 8443, 3457 | HTTPS reverse proxy |
 | `niles_core` | `niles-core:${NILES_VERSION:-latest}` (Dockerfile.niles) | -- (via Caddy) | Python backend + web UI |
 | `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
@@ -1215,7 +1257,10 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 fastapi>=0.129.0          # Web Framework
 uvicorn[standard]>=0.41.0 # ASGI Server
 httpx>=0.28.1             # Async HTTP Client (+ Google OAuth)
-asyncpg>=0.31.0           # PostgreSQL
+asyncpg>=0.31.0           # PostgreSQL (async)
+alembic>=1.13.0           # Database migrations
+sqlalchemy>=2.0.0         # ORM (Alembic dependency)
+psycopg2-binary>=2.9.0    # PostgreSQL (sync, for Alembic)
 openai>=2.21.0            # LLM Client (OpenAI-compatible)
 mcp>=1.26.0               # MCP SDK
 pydantic-settings>=2.13.0 # Config Management
@@ -1224,12 +1269,15 @@ apscheduler>=3.11.2       # Scheduling (CardDAV/CalDAV Sync)
 jinja2>=3.1.0             # HTML Templates (Web UI)
 aiofiles>=24.0.0          # Static File Serving
 itsdangerous>=2.0         # Signed Session Cookies
+argon2-cffi>=25.1.0       # Password hashing (Argon2id)
 python-dateutil>=2.8.0    # RRULE Expansion (recurring calendar events)
 structlog>=24.1.0         # Structured JSON Logging
 prometheus-client>=0.21.0 # Prometheus Metrics
 websockets>=14.0          # Signal WebSocket listener
 trafilatura>=2.0.0        # HTML text extraction (Web Fetch MCP)
+fastmcp>=2.0,<3.0         # FastMCP (searxng-simple-mcp dependency, pinned <3)
 searxng-simple-mcp>=0.3.0 # SearXNG MCP client (Web Search)
+json-repair>=0.58.0       # Robust JSON repair for malformed LLM tool-call output
 ```
 
 Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).

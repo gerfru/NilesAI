@@ -103,14 +103,6 @@ curl -sk https://localhost/health
 
 Web UI: `https://localhost/ui/login` (self-signed certificate -- accept browser warning)
 
-### Alternative: Interactive Setup
-
-```bash
-./scripts/setup-interactive.sh
-```
-
-Guides step by step through the setup with status checks.
-
 ---
 
 ## 3. Ollama (LLM Backend)
@@ -858,7 +850,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | `./scripts/cleanup.sh` | Delete all containers and volumes (reset) |
 | `./scripts/dev.sh` | Local dev server without Docker |
 | `./scripts/test.sh` | Run tests |
-| `./scripts/setup-interactive.sh` | Interactive setup wizard |
+| `./scripts/check-pii.sh` | Scan code for PII leaks |
 
 ### Further Documentation
 
