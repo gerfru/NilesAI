@@ -183,7 +183,8 @@ tests/
 ├── test_vikunja_store.py         # Per-user Vikunja credentials + agent resolution
 ├── test_vikunja_provisioning.py  # Vikunja auto-provisioning (register, login, token)
 ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
-└── test_logging.py               # Structured logging + Prometheus metrics
+├── test_logging.py               # Structured logging + Prometheus metrics
+└── test_fetch_mcp.py             # Web Fetch MCP server (SSRF, extraction, truncation)
 ```
 
 ### Conventions

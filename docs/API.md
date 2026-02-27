@@ -674,6 +674,56 @@ Marks a task as done. Searches by title among open tasks. Only available when th
 
 ---
 
+## MCP Tools (Auto-Discovered)
+
+In addition to the built-in tools above, the agent can use tools from MCP servers. These are automatically discovered on startup from `config/mcp_servers.yaml`.
+
+### mcp__fetch__fetch_url
+
+Fetches a web page and extracts the main text content (strips navigation, ads, footer). Always active.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `url` | string | Yes | URL to fetch (https:// prepended if missing) |
+| `max_chars` | integer | No | Max characters to return (default: 8000) |
+
+**Return (success):** Extracted plain text content of the page.
+
+**Return (error):** `"Fehler: ..."` with description (timeout, blocked scheme, SSRF, wrong content type).
+
+**Security:**
+
+- Blocked schemes: `file://`, `ftp://`, `data:`, `javascript:`
+- SSRF protection: private/internal IP addresses are blocked (10.x, 172.16.x, 192.168.x, 127.x, 169.254.x, IPv6 link-local/ULA)
+- Content-Type: only `text/html`, `text/plain`, `application/xhtml`
+- Max response size: 5 MB
+- Max redirects: 5
+
+### mcp__searxng__search
+
+Web search via SearXNG meta search engine. Only available when `FEATURE_SEARCH=true`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `query` | string | Yes | Search query |
+| `max_results` | integer | No | Max results (default: 10) |
+| `language` | string | No | Language code (default: `de`) |
+| `time_range` | string | No | Time filter (e.g., `day`, `week`, `month`) |
+
+**Return:** Search results with title, URL, and snippet. Formatted for LLM context (low token usage).
+
+### mcp__weather__*
+
+Weather tools via Open-Meteo API. Always active (when coordinates configured in Settings > Weather).
+
+Tools include current weather conditions and forecasts. See [Weather MCP server](../src/niles/mcp/weather/server.py) for details.
+
+---
+
 ## Automated Briefings (Scheduled)
 
 Niles automatically sends daily and weekly overviews via the configured channel (WhatsApp, Signal, or both). These are not triggered through the API but run as APScheduler cron jobs.
