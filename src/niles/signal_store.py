@@ -20,24 +20,6 @@ class SignalMessageStore:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def initialize(self) -> None:
-        """Create signal_messages table if it doesn't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS signal_messages (
-                id SERIAL PRIMARY KEY,
-                phone TEXT NOT NULL,
-                text TEXT NOT NULL,
-                from_me BOOLEAN NOT NULL DEFAULT FALSE,
-                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                chat_id TEXT NOT NULL DEFAULT ''
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_signal_messages_phone_ts
-            ON signal_messages (phone, timestamp DESC)
-        """)
-        logger.info("Signal message store initialized")
-
     async def store(
         self,
         phone: str,
