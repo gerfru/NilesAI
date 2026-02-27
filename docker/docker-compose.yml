@@ -67,7 +67,7 @@ services:
       VIKUNJA_DATABASE_USER: evolution
       VIKUNJA_DATABASE_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
       VIKUNJA_DATABASE_DATABASE: vikunja_db
-      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://vikunja.localhost}
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://localhost:3457}
       VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
@@ -102,10 +102,11 @@ services:
     ports:
       - "443:443"
       - "8443:8443"
+      - "3457:3457"
     environment:
       - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
       - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
-      - CADDY_HOSTS_VIKUNJA=${CADDY_HOSTS_VIKUNJA:-https://vikunja.localhost}
+      - CADDY_HOSTS_3457=${CADDY_HOSTS_3457:-https://localhost:3457}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
