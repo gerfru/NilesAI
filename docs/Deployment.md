@@ -20,10 +20,11 @@ For technical details on architecture and development, see [Development.md](Deve
 8. [Calendar (CalDAV + Google Calendar)](#8-calendar-caldav--google-calendar)
 9. [Tasks (Vikunja)](#9-tasks-vikunja)
 10. [Briefing (Daily/Weekly)](#10-briefing-dailyweekly)
-11. [HTTPS & Remote Access (Tailscale + Caddy)](#11-https--remote-access-tailscale--caddy)
-12. [Backup & Maintenance](#12-backup--maintenance)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Reference](#14-reference)
+11. [Web Search & Fetch](#11-web-search--fetch)
+12. [HTTPS & Remote Access (Tailscale + Caddy)](#12-https--remote-access-tailscale--caddy)
+13. [Backup & Maintenance](#13-backup--maintenance)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Reference](#15-reference)
 
 ---
 
@@ -507,7 +508,89 @@ Set `FEATURE_BRIEFING_DAILY=false` and `FEATURE_BRIEFING_WEEKLY=false` in `.env`
 
 ---
 
-## 11. HTTPS & Remote Access (Tailscale + Caddy)
+## 11. Web Search & Fetch
+
+Niles can search the web and read web pages via two MCP tools.
+
+### Web Search (SearXNG)
+
+[SearXNG](https://docs.searxng.org/) is a self-hosted meta search engine that aggregates results from Google, Bing, DuckDuckGo, and Wikipedia. It runs as a Docker container and requires no API keys.
+
+#### Setup
+
+1. Set in `.env`:
+
+```bash
+FEATURE_SEARCH=true
+#SEARXNG_URL=http://searxng:8888     # default, usually no change needed
+#SEARXNG_SECRET_KEY=<openssl rand -hex 32>  # optional, has a default
+```
+
+2. Start with the `search` profile:
+
+```bash
+./scripts/start.sh
+```
+
+The start script automatically detects `FEATURE_SEARCH=true` and activates the SearXNG Docker profile.
+
+#### How It Works
+
+- SearXNG runs in the Docker network (port 8888, not externally exposed)
+- The MCP server `searxng-simple-mcp` runs as a stdio process inside `niles_core`
+- The agent uses the `mcp__searxng__search` tool when the user asks to research something
+- Results include title, URL, and snippet
+
+#### Verification
+
+```bash
+# Check SearXNG is running
+docker ps | grep searxng
+
+# Test search (from inside Docker network)
+docker exec niles_core python -c "import httpx; print(httpx.get('http://searxng:8888/healthz').status_code)"
+```
+
+In chat: "Recherchiere aktuelle Nachrichten zu Apple" -- Niles should call the search tool and return results with source URLs.
+
+### Web Fetch
+
+The Web Fetch MCP server extracts clean text from web pages. It is **always active** (no feature flag, no external container).
+
+#### How It Works
+
+- Runs as a Python MCP server (`niles.mcp.fetch`) inside `niles_core`
+- Uses `trafilatura` to extract main content (strips navigation, ads, footer)
+- SSRF protection: private/internal IP addresses are blocked
+- Supports HTML and plain text only (PDFs, images, etc. are rejected)
+- Automatic truncation at 8000 characters (configurable via `FETCH_MAX_CHARS`)
+
+#### Use Cases
+
+- User shares a URL: "What does this page say?"
+- After a web search: agent reads full article from a search result
+- "Summarize this article: https://..."
+
+#### Combined Research Flow
+
+When both search and fetch are active, the agent can perform deep research:
+
+1. Search with `mcp__searxng__search` for a topic
+2. Read 1-2 relevant results with `mcp__fetch__fetch_url`
+3. Summarize findings with source URLs
+
+### Search & Fetch Troubleshooting
+
+| Problem | Solution |
+| ------- | -------- |
+| Search tool not available | Check `FEATURE_SEARCH=true` in `.env`, restart |
+| SearXNG container not starting | Run `docker compose -f docker/docker-compose.yml --profile search up -d` |
+| "Zugriff auf interne Adressen nicht erlaubt" | SSRF protection working correctly -- internal URLs are blocked by design |
+| Fetch returns "Content-Type" error | Only HTML/text pages are supported (no PDFs, images) |
+
+---
+
+## 12. HTTPS & Remote Access (Tailscale + Caddy)
 
 ### Caddy (Reverse Proxy)
 
@@ -561,7 +644,7 @@ Niles is now accessible from any device on the Tailscale network.
 
 ---
 
-## 12. Backup & Maintenance
+## 13. Backup & Maintenance
 
 ### Create Backup
 
@@ -612,7 +695,7 @@ Deletes all containers and Docker volumes (PostgreSQL data). WhatsApp sessions (
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 ### Service Won't Start
 
@@ -669,7 +752,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 ---
 
-## 14. Reference
+## 15. Reference
 
 ### Environment Variables
 
@@ -732,12 +815,21 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `BRIEFING_DAILY_TIME` | `07:30` | Time for daily briefing (HH:MM) |
 | `BRIEFING_WEEKLY_TIME` | `07:15` | Time for weekly overview (HH:MM) |
 
+**Web Search (optional):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `FEATURE_SEARCH` | `false` | Enable SearXNG web search |
+| `SEARXNG_URL` | `http://searxng:8888` | SearXNG endpoint (Docker-internal) |
+| `SEARXNG_SECRET_KEY` | `niles-local-default` | SearXNG secret key (generate with `openssl rand -hex 32`) |
+
 **Feature Flags:**
 
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
+| `FEATURE_SEARCH` | `false` | Enable SearXNG web search (requires Docker profile `search`) |
 
 Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
 
@@ -752,6 +844,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | 8000 | Niles Core (internal) | HTTP (not directly accessible) |
 | 8080 | Evolution API (internal) | HTTP (not directly accessible) |
 | 8080 | signal-cli-rest-api (internal, profile: signal) | HTTP (not directly accessible) |
+| 8888 | SearXNG (internal, profile: search) | HTTP (not directly accessible) |
 
 ### Scripts
 
