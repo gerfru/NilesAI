@@ -89,8 +89,9 @@ The script:
 1. Checks if Docker is running
 2. Builds the Niles Core image
 3. Starts all containers (PostgreSQL, Evolution API, Vikunja, Caddy, Niles Core)
-4. Automatically creates the `vikunja_db` database
-5. Outputs the service URLs
+4. Applies database migrations automatically (Alembic)
+5. Automatically creates the `vikunja_db` database
+6. Outputs the service URLs
 
 ### Health Check
 
@@ -302,16 +303,7 @@ The `docker-compose.yml` includes signal-cli-rest-api which bundles signal-cli (
 
 ### Setup
 
-#### 1. Enable Signal in Settings UI
-
-1. Start containers: `./scripts/start.sh` (the signal_api container starts automatically)
-2. Open Settings in the web UI
-3. Toggle **Signal** to enabled
-4. Restart containers: `./scripts/start.sh`
-
-> **Note:** Enabling the feature flag requires a container restart (same as Vikunja). After restart, the Signal card appears in Settings.
-
-#### 2. Link Signal Account
+#### 1. Link Signal Account
 
 1. In Settings, click **Signal verbinden** (Connect Signal)
 2. Scan the QR code with your Signal app (Settings > Linked Devices > Link New Device)
@@ -328,7 +320,7 @@ Messages from **other Signal users** are stored in the local database. Niles doe
 
 | Problem | Solution |
 | ------- | -------- |
-| Signal card not visible | Enable `feature_signal` in Settings, restart container |
+| Signal card not visible | Signal activates automatically when `signal_api_url` is configured |
 | QR code not loading | Check if signal_api container is running: `docker ps` |
 | QR code disappears quickly | Normal during linking -- keep the Settings page open until status changes to "Connected" |
 | Connection lost | Re-link via Settings > Signal > Connect |
@@ -755,7 +747,6 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `SIGNAL_API_URL` | `http://signal_api:8080` | signal-cli-rest-api endpoint (override only) |
-| `FEATURE_SIGNAL` | `false` | Enable Signal integration |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 | `BRIEFING_CHANNEL` | `whatsapp` | Briefing delivery: whatsapp, signal, or both |
 
@@ -773,7 +764,6 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
-| `FEATURE_SIGNAL` | `false` | Enable Signal messaging |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 
 Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).

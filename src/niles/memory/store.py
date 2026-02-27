@@ -15,22 +15,6 @@ class MemoryStore:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def initialize(self) -> None:
-        """Create memory table and indexes if they don't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS memory (
-                key TEXT PRIMARY KEY,
-                value JSONB NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_memory_updated
-            ON memory (updated_at DESC)
-        """)
-        logger.info("Memory store initialized")
-
     async def get(self, key: str) -> Any | None:
         """Get a value by key. Returns None if not found."""
         row = await self.pool.fetchrow("SELECT value FROM memory WHERE key = $1", key)
