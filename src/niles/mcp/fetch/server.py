@@ -107,15 +107,46 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
     except (IndexError, ValueError):
         pass
 
-    # --- Fetch ---
+    # --- Fetch (manual redirect loop for SSRF protection) ---
     try:
         async with httpx.AsyncClient(
-            follow_redirects=True,
+            follow_redirects=False,
             timeout=timeout,
             headers={"User-Agent": user_agent},
-            max_redirects=5,
         ) as client:
-            response = await client.get(url)
+            current_url = url
+            for _redirect_i in range(5):
+                response = await client.get(current_url)
+                if response.is_redirect:
+                    location = response.headers.get("location", "")
+                    if not location:
+                        return "Fehler: Redirect ohne Location-Header."
+                    # Resolve relative redirects
+                    if location.startswith("/"):
+                        # Same origin relative redirect
+                        parts = current_url.split("://", 1)
+                        host_part = parts[1].split("/", 1)[0] if len(parts) > 1 else ""
+                        location = f"{parts[0]}://{host_part}{location}"
+                    elif not location.lower().startswith(("http://", "https://")):
+                        return (
+                            f"Fehler: URL-Schema in Redirect nicht erlaubt: {location}"
+                        )
+                    # SSRF check on redirect target
+                    try:
+                        redir_host = (
+                            location.split("://", 1)[1]
+                            .split("/", 1)[0]
+                            .split(":", 1)[0]
+                        )
+                        if _is_private_host(redir_host):
+                            return "Fehler: Redirect zu interner Adresse blockiert."
+                    except (IndexError, ValueError):
+                        return "Fehler: Ungueltige Redirect-URL."
+                    current_url = location
+                    continue
+                break
+            else:
+                return "Fehler: Zu viele Redirects (max 5)."
             response.raise_for_status()
 
             # Content-Type check

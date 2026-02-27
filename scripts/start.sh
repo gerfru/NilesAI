@@ -38,6 +38,10 @@ COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
 if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
     COMPOSE_CMD="$COMPOSE_CMD --profile search"
     echo "Web Search (SearXNG) profile enabled."
+    if ! grep -qsE '^SEARXNG_SECRET_KEY\s*=' .env 2>/dev/null; then
+        echo "  WARNING: SEARXNG_SECRET_KEY not set in .env — using insecure default."
+        echo "  Generate one with: openssl rand -hex 32"
+    fi
 fi
 
 # Start Docker services
