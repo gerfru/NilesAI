@@ -40,8 +40,8 @@
 	reverse_proxy evolution_api:8080
 }
 
-# Vikunja (Todos) — Subdomain
-{$CADDY_HOSTS_VIKUNJA:https://vikunja.localhost} {
+# Vikunja (Todos) — Port 3457
+{$CADDY_HOSTS_3457:https://localhost:3457} {
 	tls internal
 	import security_headers
 	log {
