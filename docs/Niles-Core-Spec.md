@@ -28,6 +28,7 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
 | Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
 | signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
+| SearXNG | 8888 | Not exposed | Meta search engine (optional, profile `search`) |
 | Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
 **Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
@@ -133,7 +134,15 @@ Niles/
 │       │   ├── ical_parser.py        # Shared iCalendar parser
 │       │   └── manager.py            # CalendarSourceManager (CRUD, sync, migration)
 │       ├── mcp/
-│       │   └── client.py             # MCP server manager
+│       │   ├── client.py             # MCP server manager
+│       │   ├── weather/              # Weather MCP server (Open-Meteo)
+│       │   │   ├── __init__.py
+│       │   │   ├── __main__.py
+│       │   │   └── server.py
+│       │   └── fetch/                # Web Fetch MCP server (trafilatura)
+│       │       ├── __init__.py
+│       │       ├── __main__.py
+│       │       └── server.py
 │       ├── templates/
 │       │   ├── base.html             # Layout (Nav, CSP, Tailwind CSS, htmx)
 │       │   ├── login.html            # Login (Google + API key fallback)
@@ -179,13 +188,17 @@ Niles/
 │   ├── test_self_chat.py            # WhatsApp self-chat trigger
 │   ├── test_signal.py               # Signal action, listener, echo guard, triggers
 │   ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
-│   └── test_logging.py              # Structured logging + Prometheus metrics
+│   ├── test_logging.py              # Structured logging + Prometheus metrics
+│   └── test_fetch_mcp.py            # Web Fetch MCP server (SSRF, extraction, truncation)
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
 │   └── versions/                    # Migration files (001_baseline, 002_...)
 ├── config/
-│   └── soul.md                       # Agent personality
+│   ├── soul.md                       # Agent personality
+│   ├── mcp_servers.yaml              # MCP server configuration
+│   └── searxng/
+│       └── settings.yml              # SearXNG engine config
 ├── docker/
 │   ├── docker-compose.yml
 │   ├── Dockerfile.niles              # Non-root user (UID 1000)
@@ -353,6 +366,9 @@ class Settings(BaseSettings):
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""
     feature_signal_send_others: bool = False
+    # Web Search (SearXNG)
+    feature_search: bool = False
+    searxng_url: str = "http://searxng:8888"
     # Briefing / Digest
     briefing_channel: str = "whatsapp"        # whatsapp | signal | both
     feature_briefing_daily: bool = False
@@ -408,6 +424,9 @@ class NilesAgent:
 | `list_tasks` | `project?, include_done?` | List open tasks from Vikunja (max 50). Feature flag: `feature_vikunja`. |
 | `create_task` | `title: str, description?, due_date?, priority?, project?` | Create new task in Vikunja. |
 | `complete_task` | `title: str` | Mark task as done (search by title). |
+| `mcp__weather__*` | varies | Weather tools via MCP (Open-Meteo, always active). |
+| `mcp__fetch__fetch_url` | `url: str, max_chars?: int` | Fetch and extract text from a web page (always active). SSRF-protected. |
+| `mcp__searxng__search` | `query: str, max_results?: int, ...` | Web search via SearXNG (when `feature_search=true`). |
 
 **Pipeline per event:**
 
@@ -479,6 +498,7 @@ EDITABLE_SETTINGS = {
     "feature_briefing_daily", "feature_briefing_weekly",
     "briefing_daily_time", "briefing_weekly_time", "briefing_channel",
     "weather_latitude", "weather_longitude", "weather_location_name",
+    "feature_search", "searxng_url",
 }
 
 class SettingsStore:
@@ -675,6 +695,28 @@ APScheduler for daily sync: CardDAV 03:00 (when `carddav_url` configured), calen
 ### 3.19 MCP Client (`src/niles/mcp/client.py`)
 
 MCP server manager for external tool integrations. Configuration via `config/mcp_servers.yaml`.
+
+**Configuration format:**
+
+```yaml
+servers:
+  <name>:
+    command: <executable>
+    args: [<arg1>, ...]
+    enabled: "${FEATURE_FLAG}"    # optional, default "true"
+    env:
+      KEY: "${ENV_VAR}"           # ${VAR} expands from environment
+```
+
+The `enabled` field supports environment variable expansion and defaults to `"true"`. Values like `"false"`, `"0"`, `"no"` skip the server. This mechanism controls feature-gated servers (e.g., SearXNG only starts when `FEATURE_SEARCH=true`).
+
+**Configured servers:**
+
+| Server | Module | Always Active | Description |
+| ------ | ------ | ------------- | ----------- |
+| `weather` | `niles.mcp.weather` | Yes | Open-Meteo weather data (current + forecast) |
+| `fetch` | `niles.mcp.fetch` | Yes | Web page text extraction via trafilatura. SSRF protection (private IP blocklist). |
+| `searxng` | `searxng_simple_mcp.server` | No (`FEATURE_SEARCH`) | SearXNG meta search (Google, Bing, DuckDuckGo, Wikipedia). Requires SearXNG Docker container. |
 
 **Destructive tool blocking:** During tool discovery, MCP tools with destructive name prefixes are automatically blocked (delete, remove, drop, destroy, purge, erase, wipe, truncate). Case-insensitive. Blocked tools are logged but not registered. This prevents an MCP server from accidentally exposing deletion capabilities to the LLM.
 
@@ -961,6 +1003,8 @@ Niles follows the principle **"Read and create, never delete"**:
 | Signal (signal-cli-rest-api) | Yes | Yes (send) | No | No |
 | Contacts (CardDAV) | Yes | No | No | No |
 | Memory (PostgreSQL) | Yes | Yes | Yes (update) | No |
+| Web Search (SearXNG) | Yes | No | No | No |
+| Web Fetch | Yes | No | No | No |
 
 ---
 
@@ -1012,6 +1056,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | No |
 | `briefing_daily_time` | `"07:30"` | `BRIEFING_DAILY_TIME` | No |
 | `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | No |
+| `feature_search` | `false` | `FEATURE_SEARCH` | No\*\*\*\*\* |
+| `searxng_url` | `"http://searxng:8888"` | `SEARXNG_URL` | No |
 
 \* `base_url` is recommended when Google OAuth is behind a reverse proxy (prevents redirect URI from untrusted headers).
 
@@ -1020,6 +1066,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 \*\*\* Required if Vikunja integration is desired. Accounts are auto-provisioned on login (no manual token needed).
 
 \*\*\*\* Required if Signal integration is desired. Phone number is auto-discovered after QR linking.
+
+\*\*\*\*\* Enables SearXNG web search. Requires the SearXNG Docker container (profile `search`).
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
@@ -1058,7 +1106,7 @@ VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
 
 **Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_PUBLIC_URL`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_PUBLIC_URL`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `FEATURE_SEARCH`, `SEARXNG_URL`, `SEARXNG_SECRET_KEY`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
 
 See `.env.example` for complete documentation.
 
@@ -1103,6 +1151,7 @@ CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
 | `vikunja` | `vikunja/vikunja:1.1.0` | 3456 | Todo/task management |
 | `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | -- | Signal gateway (signal-cli v0.13.24) |
+| `niles_searxng` | `searxng/searxng:2025.5.10-1b787ed35` | -- | Meta search engine (profile `search`) |
 
 ### 7.3 Network
 
@@ -1113,6 +1162,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 - `evolution_api` -> `niles_core:8000` (webhook)
 - `niles_core` -> `vikunja:3456` (task management API)
 - `niles_core` -> `signal_api:8080` (Signal messaging, optional)
+- `niles_core` -> `searxng:8888` (SearXNG search, optional, via MCP)
 - `niles_core` -> `host.docker.internal:11434` (Ollama on host)
 
 ### 7.4 Volumes
@@ -1125,6 +1175,7 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 | `caddy_config` | `/config` | Caddy configuration |
 | `~/.evolution/instances` | `/evolution/instances` | WhatsApp sessions |
 | `signal_cli_config` | `/home/.local/share/signal-cli` | Signal account data |
+| `searxng_data` | `/etc/searxng` | SearXNG configuration |
 | `../config` | `/app/config:ro` | Agent configuration |
 
 ---
@@ -1154,6 +1205,9 @@ All containers on bridge network `niles_network`. Container names serve as hostn
 | WebSocket Client | websockets | >= 14.0 |
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 | Signal Gateway | signal-cli-rest-api | 1771797934-ci (signal-cli v0.13.24) |
+| HTML Extraction | trafilatura | >= 2.0.0 |
+| Search MCP | searxng-simple-mcp | >= 0.3.0 |
+| Search Engine | SearXNG | 2025.5.10-1b787ed35 (Docker) |
 
 ### pyproject.toml Dependencies
 
@@ -1174,6 +1228,8 @@ python-dateutil>=2.8.0    # RRULE Expansion (recurring calendar events)
 structlog>=24.1.0         # Structured JSON Logging
 prometheus-client>=0.21.0 # Prometheus Metrics
 websockets>=14.0          # Signal WebSocket listener
+trafilatura>=2.0.0        # HTML text extraction (Web Fetch MCP)
+searxng-simple-mcp>=0.3.0 # SearXNG MCP client (Web Search)
 ```
 
 Dev: `pytest>=9.0.0`, `pytest-asyncio>=1.3.0`, `httpx` (TestClient).
