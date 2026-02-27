@@ -28,6 +28,7 @@ class TestFetchUrl:
         mock_response.content = b"<html><body><p>Hello World</p></body></html>"
         mock_response.text = "<html><body><p>Hello World</p></body></html>"
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -66,6 +67,7 @@ class TestFetchUrl:
         mock_response.status_code = 200
         mock_response.headers = {"content-type": "application/pdf"}
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -89,6 +91,7 @@ class TestFetchUrl:
             "<html><body><article><p>Main content here.</p></article></body></html>"
         )
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -116,6 +119,7 @@ class TestFetchUrl:
         mock_response.content = b"<html><body>long</body></html>"
         mock_response.text = "<html><body>long</body></html>"
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -144,6 +148,7 @@ class TestFetchUrl:
         mock_response.content = b"<html><body></body></html>"
         mock_response.text = "<html><body></body></html>"
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -177,6 +182,7 @@ class TestFetchUrl:
         mock_response.content = b"<html><body>Public</body></html>"
         mock_response.text = "<html><body>Public</body></html>"
         mock_response.raise_for_status = MagicMock()
+        mock_response.is_redirect = False
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -196,6 +202,83 @@ class TestFetchUrl:
         ):
             result = await fetch_url("https://example.com")
             assert "Public content" in result
+
+    async def test_ssrf_redirect_to_private_ip_blocked(self):
+        """Redirect to private IP is blocked (SSRF via redirect chain)."""
+        redirect_response = MagicMock()
+        redirect_response.is_redirect = True
+        redirect_response.headers = {"location": "http://169.254.169.254/metadata"}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=redirect_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("niles.mcp.fetch.server._is_private_host") as mock_priv,
+            patch(
+                "niles.mcp.fetch.server.httpx.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
+            # Initial URL is public, redirect target is private
+            mock_priv.side_effect = lambda h: h == "169.254.169.254"
+            result = await fetch_url("https://evil.example.com/redirect")
+            assert "Redirect" in result and "blockiert" in result
+
+    async def test_ssrf_redirect_to_public_ip_allowed(self):
+        """Redirect to another public IP is allowed."""
+        redirect_response = MagicMock()
+        redirect_response.is_redirect = True
+        redirect_response.headers = {"location": "https://other.example.com/page"}
+
+        final_response = MagicMock()
+        final_response.is_redirect = False
+        final_response.status_code = 200
+        final_response.headers = {"content-type": "text/html"}
+        final_response.content = b"<html><body>Redirected</body></html>"
+        final_response.text = "<html><body>Redirected</body></html>"
+        final_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[redirect_response, final_response])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("niles.mcp.fetch.server._is_private_host", return_value=False),
+            patch(
+                "niles.mcp.fetch.server.httpx.AsyncClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "niles.mcp.fetch.server.trafilatura.extract",
+                return_value="Redirected content",
+            ),
+        ):
+            result = await fetch_url("https://example.com/old-page")
+            assert "Redirected content" in result
+
+    async def test_ssrf_too_many_redirects(self):
+        """More than 5 redirects returns error."""
+        redirect_response = MagicMock()
+        redirect_response.is_redirect = True
+        redirect_response.headers = {"location": "https://example.com/loop"}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=redirect_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("niles.mcp.fetch.server._is_private_host", return_value=False),
+            patch(
+                "niles.mcp.fetch.server.httpx.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
+            result = await fetch_url("https://example.com/loop")
+            assert "Zu viele Redirects" in result
 
 
 class TestIsPrivateHost:
