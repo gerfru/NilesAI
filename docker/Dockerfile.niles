@@ -31,8 +31,16 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
 # Copy config
 COPY config/ ./config/
 
+# Copy Alembic migration infrastructure
+COPY alembic.ini .
+COPY alembic/ ./alembic/
+
+# Copy entrypoint
+COPY docker/entrypoint.sh /app/entrypoint.sh
+
 # Run as non-root user
-RUN groupadd --gid 1000 niles && \
+RUN chmod +x /app/entrypoint.sh && \
+    groupadd --gid 1000 niles && \
     useradd --uid 1000 --gid niles --no-create-home niles && \
     chown -R niles:niles /app
 USER niles
@@ -40,4 +48,4 @@ USER niles
 # src/niles must be importable as "niles"
 ENV PYTHONPATH=/app/src
 
-CMD ["uvicorn", "niles.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

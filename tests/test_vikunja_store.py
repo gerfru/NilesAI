@@ -31,13 +31,6 @@ class TestVikunjaCredentialStore:
         pool = AsyncMock()
         return VikunjaCredentialStore(pool)
 
-    async def test_initialize_creates_table(self, store):
-        await store.initialize()
-        store.pool.execute.assert_called_once()
-        sql = store.pool.execute.call_args[0][0]
-        assert "vikunja_credentials" in sql
-        assert "CREATE TABLE IF NOT EXISTS" in sql
-
     async def test_get_credentials_found(self, store):
         store.pool.fetchrow.return_value = {
             "user_id": 5,
