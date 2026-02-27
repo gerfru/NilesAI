@@ -106,6 +106,55 @@ class TestMCPManagerConfig:
         servers = manager._load_config()
         assert servers == {}
 
+    def test_enabled_false_filters_server(self, tmp_path, monkeypatch):
+        """Server with enabled: '${FLAG}' where FLAG=false is filtered out."""
+        monkeypatch.setenv("MY_FLAG", "false")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  active:\n    command: echo\n    args: [hi]\n"
+            "  disabled:\n    command: echo\n    args: [bye]\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "active" in servers
+        assert "disabled" not in servers
+
+    def test_enabled_true_passes(self, tmp_path, monkeypatch):
+        """Server with enabled: '${FLAG}' where FLAG=true is kept."""
+        monkeypatch.setenv("MY_FLAG", "true")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  myserver:\n    command: echo\n    args: [hi]\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "myserver" in servers
+
+    def test_enabled_defaults_true(self, tmp_path):
+        """Server without enabled field defaults to enabled (backward compat)."""
+        config = tmp_path / "mcp.yaml"
+        config.write_text("servers:\n  myserver:\n    command: echo\n    args: [hi]\n")
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "myserver" in servers
+
+    def test_enabled_field_not_leaked(self, tmp_path, monkeypatch):
+        """The 'enabled' key is removed from the config dict (pop, not get)."""
+        monkeypatch.setenv("MY_FLAG", "true")
+        config = tmp_path / "mcp.yaml"
+        config.write_text(
+            "servers:\n"
+            "  s:\n    command: echo\n    args: []\n"
+            "    enabled: '${MY_FLAG}'\n"
+        )
+        manager = MCPManager(config_path=config)
+        servers = manager._load_config()
+        assert "enabled" not in servers["s"]
+
 
 class TestMCPManagerTools:
     def test_get_openai_tools_empty(self):

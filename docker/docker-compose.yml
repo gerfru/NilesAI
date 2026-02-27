@@ -94,6 +94,21 @@ services:
     networks:
       - niles_network
 
+  # SearXNG (Privacy-focused meta search engine) — activate via --profile search
+  searxng:
+    image: searxng/searxng:latest
+    container_name: niles_searxng
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8888/
+    volumes:
+      - searxng_data:/etc/searxng
+      - ../config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - niles_network
+    profiles:
+      - search
+
   # Caddy Reverse Proxy (HTTPS termination)
   caddy:
     container_name: niles_caddy
@@ -157,6 +172,8 @@ services:
       - FEATURE_SIGNAL_SEND_OTHERS=${FEATURE_SIGNAL_SEND_OTHERS:-false}
       - BRIEFING_CHANNEL=${BRIEFING_CHANNEL:-whatsapp}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FEATURE_SEARCH=${FEATURE_SEARCH:-false}
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8888}
     volumes:
       - ../config:/app/config:ro
     networks:
@@ -171,6 +188,7 @@ volumes:
   caddy_data:
   caddy_config:
   signal_cli_config:
+  searxng_data:
 
 networks:
   niles_network:
