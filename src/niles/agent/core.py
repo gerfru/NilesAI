@@ -491,6 +491,12 @@ class NilesAgent:
         plain text instead of using the function-calling API.  This method
         tries to extract a valid tool call from the text.
 
+        Handles several patterns:
+        - Pure JSON: ``{"name": "tool", "parameters": {...}}``
+        - Markdown-fenced: ````json\\n{...}\\n````
+        - Prefixed text: ``Ich rufe tool auf... {"name": "tool", ...}``
+        - Malformed JSON: ``"parameters{"`` / ``"parameters>{"``
+
         Returns {"name": str, "arguments": str} or None.
         """
         if known_tools is None:
@@ -502,23 +508,58 @@ class NilesAgent:
         cleaned = re.sub(r"\s*```$", "", cleaned)
         cleaned = cleaned.strip()
 
-        # Must look like JSON
+        # If text doesn't start with '{', try to find JSON embedded in it
         if not cleaned.startswith("{"):
-            return None
+            # Look for the first '{' that could start a tool-call JSON object
+            brace_pos = cleaned.find("{")
+            if brace_pos == -1:
+                return None
+            cleaned = cleaned[brace_pos:]
 
+        result = NilesAgent._parse_json_tool_call(cleaned, known_tools)
+        if result:
+            return result
+
+        return None
+
+    @staticmethod
+    def _parse_json_tool_call(
+        cleaned: str,
+        known_tools: frozenset[str],
+    ) -> dict | None:
+        """Parse a JSON string into a tool call dict.
+
+        Tries three strategies:
+        1. Standard ``json.loads()``
+        2. Regex repair for llama3.1-specific ``"parameters..."`` patterns
+        3. ``json_repair.repair_json()`` as broad fallback
+
+        Returns {"name": str, "arguments": str} or None.
+        """
+        obj: dict | None = None
+
+        # Stage 1: Standard parse
         try:
             obj = json.loads(cleaned)
         except json.JSONDecodeError:
-            # llama3.1 produces various malformed separators between key and
-            # opening brace:  "parameters{"  "parameters>{"  "parameters:{"
-            # Normalise them all to  "parameters": {
+            pass
+
+        # Stage 2: llama3.1-specific repair ("parameters{", "parameters>{")
+        if obj is None:
             repaired = re.sub(r'"(parameters|arguments)[^"]*\{', r'"\1":{', cleaned)
             if repaired != cleaned:
                 try:
                     obj = json.loads(repaired)
                 except json.JSONDecodeError:
-                    return None
-            else:
+                    pass
+
+        # Stage 3: json-repair library as broad fallback
+        if obj is None:
+            try:
+                from json_repair import repair_json
+
+                obj = repair_json(cleaned, return_objects=True)
+            except Exception:
                 return None
 
         if not isinstance(obj, dict):
@@ -704,7 +745,8 @@ class NilesAgent:
                 stream = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=all_tools,
+                    tools=all_tools or None,
+                    tool_choice="auto" if all_tools else None,
                     temperature=0.7,
                     stream=True,
                     stream_options={"include_usage": True},
@@ -904,7 +946,8 @@ class NilesAgent:
                 response = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=all_tools,
+                    tools=all_tools or None,
+                    tool_choice="auto" if all_tools else None,
                     temperature=0.7,
                 )
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
@@ -1016,10 +1059,19 @@ class NilesAgent:
         logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)
 
         if name == "find_contact":
-            contact = await self.contacts.find_by_name(args["name"])
+            query = args.get("name") or args.get("query") or ""
+            if not query:
+                # LLM sent wrong param names — use the first string value
+                for v in args.values():
+                    if isinstance(v, str) and v:
+                        query = v
+                        break
+            if not query:
+                return {"error": "Kein Name angegeben"}
+            contact = await self.contacts.find_by_name(query)
             if contact:
                 return contact
-            return {"error": f"Kontakt '{args['name']}' nicht gefunden"}
+            return {"error": f"Kontakt '{query}' nicht gefunden"}
 
         if name == "send_whatsapp":
             to = args["to"]
@@ -1259,14 +1311,28 @@ class NilesAgent:
         if name == "find_event":
             if not self.calendar:
                 return {"error": "Kalender ist nicht konfiguriert"}
-            # Guard: small LLMs often confuse the user's name with a calendar
-            # source name and pass it as filter on general date queries.
-            # Only honour the calendar filter when a search term is present
-            # (e.g. birthday lookups).
-            # Known limitation: explicit calendar-only queries like "was steht
-            # in meinem Arbeits-Kalender an?" (calendar set, query empty) will
-            # also have their filter dropped.  Acceptable trade-off — the
-            # small LLM misuse case is far more common.
+
+            # Guard 1: small LLMs sometimes put a contact name into date_from
+            # (e.g. find_event(date_from="mama") when they should use
+            # find_contact).  Detect and redirect.
+            date_from = args.get("date_from", "")
+            date_to = args.get("date_to", "")
+            _date_chars = set("0123456789-/.T:+Z ")
+            for df in (date_from, date_to):
+                if df and not set(df).issubset(_date_chars):
+                    # Looks like a name, not a date — treat as query instead
+                    logger.info("find_event: moving non-date value '%s' to query", df)
+                    if not args.get("query"):
+                        args["query"] = df
+                    if df == date_from:
+                        date_from = ""
+                    else:
+                        date_to = ""
+
+            # Guard 2: small LLMs often confuse the user's name with a
+            # calendar source name and pass it as filter on general date
+            # queries.  Only honour the calendar filter when a search term
+            # is present (e.g. birthday lookups).
             cal_filter = args.get("calendar", "")
             if cal_filter and not args.get("query"):
                 logger.debug(
@@ -1276,8 +1342,8 @@ class NilesAgent:
                 cal_filter = ""
             events = await self.calendar.find_by_query(
                 query=args.get("query", ""),
-                date_from=args.get("date_from", ""),
-                date_to=args.get("date_to", ""),
+                date_from=date_from,
+                date_to=date_to,
                 calendar=cal_filter,
             )
             if events:
