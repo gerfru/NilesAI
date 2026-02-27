@@ -374,7 +374,6 @@ class NilesAgent:
         calendar: CalendarAction | None = None,
         calendar_manager: CalendarSourceManager | None = None,
         wa_store: WhatsAppSessionStore | None = None,
-        tasks: TasksAction | None = None,
         vikunja_store: VikunjaCredentialStore | None = None,
         signal: SignalAction | None = None,
         signal_store: SignalMessageStore | None = None,
@@ -393,7 +392,6 @@ class NilesAgent:
         self.calendar = calendar
         self.calendar_manager = calendar_manager
         self.wa_store = wa_store
-        self.tasks = tasks
         self.vikunja_store = vikunja_store
         self.signal = signal
         self.signal_store = signal_store

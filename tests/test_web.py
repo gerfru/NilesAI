@@ -91,6 +91,7 @@ def _make_request(
     request.app.state.settings_store = settings_store or AsyncMock()
     request.app.state.user_store = user_store or AsyncMock()
     request.app.state.wa_store = wa_store
+    request.app.state.vikunja_provisioner = None
     request.app.state.shutdown_event = None
     request.client.host = client_ip
     request.url.scheme = "http"
