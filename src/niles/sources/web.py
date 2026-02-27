@@ -250,6 +250,13 @@ def _user_chat_id(user: dict) -> str:
     return f"web-user-{user['uid']}"
 
 
+async def _maybe_provision_vikunja(request: Request, user_id: int, email: str) -> None:
+    """Auto-provision Vikunja account after login (no-op if not configured)."""
+    provisioner = request.app.state.vikunja_provisioner
+    if provisioner:
+        await provisioner.ensure_provisioned(user_id, email)
+
+
 async def _resolve_channel(
     user: dict,
     channel: str,
@@ -421,13 +428,7 @@ async def login_submit(
     # Update last_login
     await user_store.update_last_login(user["id"])
 
-    # Auto-provision Vikunja account
-    provisioner = getattr(request.app.state, "vikunja_provisioner", None)
-    if provisioner:
-        try:
-            await provisioner.ensure_provisioned(user["id"], user["email"])
-        except Exception:
-            logger.warning("Vikunja provisioning failed for user %d", user["id"])
+    await _maybe_provision_vikunja(request, user["id"], user["email"])
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
@@ -614,13 +615,7 @@ async def callback_google(
     )
     logger.info("Google login: %s (user_id=%d)", email, user["id"])
 
-    # Auto-provision Vikunja account
-    provisioner = getattr(request.app.state, "vikunja_provisioner", None)
-    if provisioner:
-        try:
-            await provisioner.ensure_provisioned(user["id"], email)
-        except Exception:
-            logger.warning("Vikunja provisioning failed for user %d", user["id"])
+    await _maybe_provision_vikunja(request, user["id"], email)
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
