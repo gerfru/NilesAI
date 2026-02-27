@@ -43,61 +43,10 @@ class CalendarSourceManager:
         self.settings = settings
 
     async def initialize(self) -> None:
-        """Create calendar_sources table, ensure events table exists, run migration."""
-        # Ensure events table exists (may not be created by CalDAVSync if disabled)
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                id SERIAL PRIMARY KEY,
-                summary TEXT NOT NULL,
-                dtstart TIMESTAMP WITH TIME ZONE NOT NULL,
-                dtend TIMESTAMP WITH TIME ZONE,
-                all_day BOOLEAN DEFAULT FALSE,
-                description TEXT,
-                location TEXT,
-                caldav_uid TEXT UNIQUE,
-                caldav_url TEXT,
-                transp TEXT DEFAULT 'OPAQUE',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_events_dtstart ON events (dtstart)
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_events_summary ON events (summary)
-        """)
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS calendar_sources (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                url TEXT NOT NULL,
-                source_type TEXT NOT NULL DEFAULT 'ics',
-                writable BOOLEAN DEFAULT FALSE,
-                enabled BOOLEAN DEFAULT TRUE,
-                auth_user TEXT,
-                auth_password TEXT,
-                google_refresh_token TEXT,
-                google_token_expiry TIMESTAMP WITH TIME ZONE,
-                last_synced TIMESTAMP WITH TIME ZONE,
-                last_error TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(url, source_type)
-            )
-        """)
-        # Extend events table with source_id (NULL = legacy/CalDAV before migration)
-        await self.pool.execute("""
-            ALTER TABLE events ADD COLUMN IF NOT EXISTS
-                source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id)
-        """)
-        # Add transparency field (OPAQUE = busy, TRANSPARENT = free)
-        await self.pool.execute("""
-            ALTER TABLE events ADD COLUMN IF NOT EXISTS
-                transp TEXT DEFAULT 'OPAQUE'
-        """)
+        """Run post-migration business logic.
+
+        Schema creation is handled by Alembic (see alembic/versions/).
+        """
         await self._migrate_env_source()
         logger.info("Calendar source manager initialized")
 

@@ -108,11 +108,24 @@ async def lifespan(app: FastAPI):
     )
     logger.info("PostgreSQL pool created")
 
+    # Verify schema is managed by Alembic
+    try:
+        alembic_version = await pool.fetchval(
+            "SELECT version_num FROM alembic_version LIMIT 1"
+        )
+    except Exception:
+        alembic_version = None
+    if alembic_version is None:
+        logger.error(
+            "No alembic_version found. Database migrations have not been applied. "
+            "Run 'python -m niles.migrate' or check entrypoint.sh."
+        )
+        sys.exit(1)
+    logger.info("Database schema version: %s", alembic_version)
+
     # Memory & History
     memory = MemoryStore(pool)
-    await memory.initialize()
     history = ConversationHistory(pool)
-    await history.initialize()
 
     # User store (Google OAuth users)
     user_store = UserStore(pool)
@@ -120,15 +133,12 @@ async def lifespan(app: FastAPI):
 
     # WhatsApp session store (per-user Evolution API instances)
     wa_store = WhatsAppSessionStore(pool)
-    await wa_store.initialize()
 
     # Vikunja credential store (per-user API tokens)
     vikunja_store = VikunjaCredentialStore(pool)
-    await vikunja_store.initialize()
 
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool)
-    await settings_store.initialize()
     overrides = await settings_store.get_all()
     if overrides:
         settings = apply_overrides(settings, overrides)
@@ -136,7 +146,6 @@ async def lifespan(app: FastAPI):
 
     # CardDAV Sync
     carddav_sync = CardDAVSync(pool, settings)
-    await carddav_sync.initialize()
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
     caldav_sync = None
@@ -148,7 +157,6 @@ async def lifespan(app: FastAPI):
             timezone=settings.timezone,
             caldav_calendars=settings.caldav_calendars,
         )
-        await caldav_sync.initialize()
 
     # Calendar Source Manager (unified sync for ICS + CalDAV + Google)
     calendar_manager = CalendarSourceManager(pool, settings)
@@ -265,7 +273,6 @@ async def lifespan(app: FastAPI):
     if settings.signal_api_url:
         signal_action = SignalAction(settings)
         signal_store = SignalMessageStore(pool)
-        await signal_store.initialize()
         logger.info("Signal integration enabled (%s)", settings.signal_phone_number)
 
     # Vikunja (Todo/Task Management)

@@ -13,23 +13,6 @@ class ConversationHistory:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def initialize(self) -> None:
-        """Create conversations table if it doesn't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id SERIAL PRIMARY KEY,
-                chat_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_conversations_chat
-            ON conversations (chat_id, created_at)
-        """)
-        logger.info("Conversation history initialized")
-
     async def add_message(self, chat_id: str, role: str, content: str) -> None:
         """Add a message to the conversation history."""
         await self.pool.execute(

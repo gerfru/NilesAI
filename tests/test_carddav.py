@@ -81,20 +81,6 @@ def sync(pool, config):
     return CardDAVSync(pool, config)
 
 
-class TestInitialize:
-    async def test_creates_table_and_indexes(self, sync, pool):
-        # _migrate_phones does a fetch that returns [] by default
-        pool.fetch.return_value = []
-        await sync.initialize()
-        # contacts table + full_name index + contact_phones table + contact_phones index
-        assert pool.execute.call_count == 4
-        calls = [c[0][0] for c in pool.execute.call_args_list]
-        assert "CREATE TABLE IF NOT EXISTS contacts" in calls[0]
-        assert "idx_contacts_full_name" in calls[1]
-        assert "CREATE TABLE IF NOT EXISTS contact_phones" in calls[2]
-        assert "idx_contact_phones_contact_id" in calls[3]
-
-
 class TestPropfind:
     async def test_extracts_vcf_urls(self, sync):
         mock_response = MagicMock()
