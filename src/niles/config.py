@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     signal_phone_number: str = ""  # e.g. +436601234567
     feature_signal_send_others: bool = False
 
+    # Web Search (SearXNG)
+    feature_search: bool = False
+    searxng_url: str = "http://searxng:8888"
+
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False

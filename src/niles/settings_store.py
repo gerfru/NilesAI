@@ -47,6 +47,8 @@ EDITABLE_SETTINGS = {
     "weather_latitude",
     "weather_longitude",
     "weather_location_name",
+    "feature_search",
+    "searxng_url",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")

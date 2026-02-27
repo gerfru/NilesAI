@@ -65,7 +65,12 @@ class MCPManager:
         self._openai_tools: list[dict] = []
 
     def _load_config(self) -> dict:
-        """Load and parse the YAML config file."""
+        """Load and parse the YAML config file.
+
+        Servers with ``enabled: "false"`` (or env-var expansion resolving to
+        a falsy value) are filtered out.  Default is ``"true"`` so existing
+        entries without an ``enabled`` key keep working.
+        """
         if not self._config_path.exists():
             logger.info(
                 "MCP config not found at %s, no servers to start", self._config_path
@@ -75,7 +80,19 @@ class MCPManager:
         with open(self._config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        return data.get("servers", {}) or {}
+        servers = data.get("servers", {}) or {}
+
+        active: dict = {}
+        for name, config in servers.items():
+            enabled = config.pop("enabled", "true")
+            if isinstance(enabled, str):
+                enabled = _expand_env(enabled)
+            if str(enabled).lower() not in ("true", "1", "yes"):
+                logger.info("MCP server '%s' disabled via config", name)
+                continue
+            active[name] = config
+
+        return active
 
     async def start_all(self) -> None:
         """Start all configured MCP servers and discover their tools."""
