@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import asyncpg
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -56,16 +57,14 @@ class BriefingGenerator:
         self,
         pool: asyncpg.Pool,
         timezone: str = "Europe/Vienna",
-        vikunja_api_url: str = "",
-        vikunja_api_token: str = "",
+        vikunja_store=None,
         weather_latitude: str = "",
         weather_longitude: str = "",
     ):
         self.pool = pool
         self.tz = ZoneInfo(timezone)
         self.timezone = timezone
-        self.vikunja_api_url = vikunja_api_url.rstrip("/") if vikunja_api_url else ""
-        self.vikunja_api_token = vikunja_api_token
+        self.vikunja_store = vikunja_store
         self.weather_latitude = weather_latitude
         self.weather_longitude = weather_longitude
 
@@ -93,22 +92,28 @@ class BriefingGenerator:
         )
         return [dict(r) for r in rows]
 
-    async def _get_open_tasks(self) -> list[dict]:
-        """Fetch open tasks from Vikunja API.
+    async def _get_open_tasks(self, user_id: int | None = None) -> list[dict]:
+        """Fetch open tasks from Vikunja API using per-user credentials.
 
         Returns simplified task list, or empty list if Vikunja
         is not configured or not reachable.
         """
-        if not self.vikunja_api_url or not self.vikunja_api_token:
+        if not self.vikunja_store or user_id is None:
             return []
 
-        import httpx
+        creds = await self.vikunja_store.get_credentials(user_id)
+        if not creds or not creds["api_token"]:
+            return []
+
+        api_url = creds["api_url"].rstrip("/") if creds["api_url"] else ""
+        if not api_url:
+            return []
 
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{self.vikunja_api_url}/tasks/all",
-                    headers={"Authorization": f"Bearer {self.vikunja_api_token}"},
+                    f"{api_url}/tasks/all",
+                    headers={"Authorization": f"Bearer {creds['api_token']}"},
                     params={
                         "filter": "done = false",
                         "sort_by": "due_date",
@@ -157,7 +162,6 @@ class BriefingGenerator:
         """Fetch daily weather data from Open-Meteo. Returns parsed dict or None."""
         if not self.weather_latitude or not self.weather_longitude:
             return None
-        import httpx
 
         params = {
             "latitude": self.weather_latitude,
@@ -288,7 +292,7 @@ class BriefingGenerator:
     # Briefing generation
     # -----------------------------------------------------------------
 
-    async def generate_daily(self) -> str:
+    async def generate_daily(self, user_id: int | None = None) -> str:
         """Generate the daily morning briefing message."""
         now = datetime.now(tz=self.tz)
         weekday = self._weekday_de(now)
@@ -299,8 +303,8 @@ class BriefingGenerator:
         day_end = day_start.replace(hour=23, minute=59, second=59)
         events = await self._get_events_for_range(day_start, day_end)
 
-        # Open tasks (all, not just today) — single API call
-        tasks = await self._get_open_tasks()
+        # Open tasks (all, not just today) — single API call, per-user
+        tasks = await self._get_open_tasks(user_id)
         overdue = self._filter_overdue(tasks)
 
         # Tasks due today (compare in local timezone, not UTC string slicing)
@@ -367,7 +371,7 @@ class BriefingGenerator:
 
         return "\n".join(lines)
 
-    async def generate_weekly(self) -> str:
+    async def generate_weekly(self, user_id: int | None = None) -> str:
         """Generate the weekly overview message (sent on Mondays, Mo-Fr only)."""
         now = datetime.now(tz=self.tz)
         week_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -378,7 +382,7 @@ class BriefingGenerator:
         )
 
         events = await self._get_events_for_range(week_start, week_end)
-        tasks = await self._get_open_tasks()
+        tasks = await self._get_open_tasks(user_id)
 
         # Group events by day
         events_by_day: dict[str, list[dict]] = {}

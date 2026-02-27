@@ -76,7 +76,7 @@
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Aufgaben (Vikunja)</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Verknuepfe deinen Vikunja-Account fuer persoenliche Aufgabenverwaltung.</p>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Vikunja-Account wird automatisch beim Login erstellt.</p>
     <div id="vikunja-container"
          hx-get="/ui/api/vikunja/status"
          hx-trigger="load"
@@ -89,18 +89,6 @@
             Status wird geladen...
         </div>
     </div>
-    {% if user and user.is_admin %}
-    <form hx-post="/ui/api/settings/feature_vikunja"
-          hx-target="#toast-container" hx-swap="innerHTML"
-          class="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-700">
-        <input type="hidden" name="value" value="{{ 'true' if feature_vikunja else 'false' }}">
-        <span class="text-sm text-zinc-700 dark:text-zinc-300">Vikunja aktivieren</span>
-        <label class="toggle-switch">
-            <input type="checkbox" {% if feature_vikunja %}checked{% endif %} data-flag-toggle>
-            <span class="toggle-track"></span>
-        </label>
-    </form>
-    {% endif %}
 </div>
 
 {# === Wetter === #}
