@@ -299,14 +299,6 @@ def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> 
 
 def _safe_settings_dict(settings) -> dict:
     """Build a safe dict of settings values for templates (no __dict__ access)."""
-    feature_flags = {}
-    for key in [
-        "feature_whatsapp_send_others",
-        "feature_signal",
-        "feature_signal_send_others",
-    ]:
-        feature_flags[key] = getattr(settings, key)
-
     text_settings = {}
     for key in ["llm_base_url", "llm_model"]:
         text_settings[key] = getattr(settings, key)
@@ -341,7 +333,13 @@ def _safe_settings_dict(settings) -> dict:
     }
 
     return {
-        "feature_flags": feature_flags,
+        "feature_whatsapp_send_others": getattr(
+            settings, "feature_whatsapp_send_others", False
+        ),
+        "feature_signal_send_others": getattr(
+            settings, "feature_signal_send_others", False
+        ),
+        "feature_vikunja": getattr(settings, "feature_vikunja", False),
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
@@ -648,7 +646,7 @@ async def chat_page(
         wa_session = await wa_store.get_session(user["uid"])
 
     settings = request.app.state.settings
-    signal_phone = settings.signal_phone_number if settings.feature_signal else ""
+    signal_phone = settings.signal_phone_number if settings.signal_api_url else ""
     chat_id, readonly = await _resolve_channel(
         user, channel, wa_store, wa_session, signal_phone=signal_phone
     )
@@ -710,7 +708,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
             "user": user,
             "google_configured": _google_configured(request),
             "calendar_error": error_msg,
-            "feature_signal": request.app.state.settings.feature_signal,
+            "signal_api_url": bool(request.app.state.settings.signal_api_url),
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -1535,9 +1533,9 @@ async def signal_status(request: Request):
         return error
 
     settings = request.app.state.settings
-    if not settings.feature_signal:
+    if not settings.signal_api_url:
         return HTMLResponse(
-            '<p class="text-sm text-zinc-500 py-2">Signal nicht aktiviert.</p>'
+            '<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>'
         )
 
     signal_action = getattr(request.app.state, "signal_action", None)
