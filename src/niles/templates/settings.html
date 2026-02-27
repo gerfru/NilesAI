@@ -279,14 +279,7 @@
     </div>
 </div>
 
-{# === ADMINISTRATION === #}
-
-{% if user and user.is_admin %}
-<div class="flex items-center gap-3 mt-8 mb-4">
-    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
-    <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Administration</span>
-    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
-</div>
+{# === Kontakte === #}
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kontakte (CardDAV)</h3>
@@ -303,6 +296,15 @@
             Status wird geladen...
         </div>
     </div>
+</div>
+
+{# === ADMINISTRATION === #}
+
+{% if user and user.is_admin %}
+<div class="flex items-center gap-3 mt-8 mb-4">
+    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
+    <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Administration</span>
+    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
 </div>
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
