@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-02-26
+> **Updated:** 2026-02-27
 
 ---
 
@@ -156,31 +156,34 @@ python -m pytest tests/ -v
 
 ```text
 tests/
-├── conftest.py                  # Shared Fixtures (environment variables)
-├── test_config.py               # Settings validation
-├── test_contacts.py             # ContactsAction, normalize_phone, multi-phone
-├── test_core.py                 # NilesAgent, tool-call pipeline, text-tool-call fallback
-├── test_health.py               # GET /health endpoint
-├── test_memory.py               # MemoryStore, ConversationHistory
-├── test_features.py             # Feature flags (send_others, self-check) + webhook auth
-├── test_self_chat.py            # WhatsApp self-chat (trigger, strip, webhook integration)
-├── test_signal.py               # Signal action, listener, echo guard, triggers
-├── test_carddav.py              # CardDAV sync
-├── test_caldav.py               # CalDAV sync
-├── test_ical_parser.py          # iCalendar parser
-├── test_rrule_expansion.py      # RRULE expansion (recurring events)
-├── test_calendar_manager.py     # CalendarSourceManager (CRUD, sync, migration)
+├── conftest.py                   # Shared Fixtures (environment variables)
+├── test_config.py                # Settings validation
+├── test_contacts.py              # ContactsAction, normalize_phone, multi-phone
+├── test_core.py                  # NilesAgent, tool-call pipeline, text-tool-call fallback
+├── test_health.py                # GET /health endpoint
+├── test_memory.py                # MemoryStore, ConversationHistory
+├── test_features.py              # Feature flags (send_others, self-check) + webhook auth
+├── test_self_chat.py             # WhatsApp self-chat (trigger, strip, webhook integration)
+├── test_signal.py                # Signal action, listener, echo guard, triggers
+├── test_carddav.py               # CardDAV sync
+├── test_caldav.py                # CalDAV sync
+├── test_ical_parser.py           # iCalendar parser
+├── test_rrule_expansion.py       # RRULE expansion (recurring events)
+├── test_calendar_manager.py      # CalendarSourceManager (CRUD, sync, migration)
 ├── test_calendar_improvements.py # Calendar query improvements
-├── test_google_auth.py          # Google Calendar OAuth (token refresh)
-├── test_mcp.py                  # MCP integration
-├── test_security.py             # API auth, rate limiting
-├── test_settings_store.py       # Runtime settings store
-├── test_web.py                  # Web UI, Google OAuth, sessions, CSRF
-├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
-├── test_tasks.py                # Vikunja task management
-├── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
-├── test_briefing.py             # BriefingGenerator + time parsing + channel routing
-└── test_logging.py              # Structured logging + Prometheus metrics
+├── test_google_auth.py           # Google Calendar OAuth (token refresh)
+├── test_mcp.py                   # MCP integration
+├── test_migrations.py            # Alembic migration chain validation
+├── test_security.py              # API auth, rate limiting
+├── test_settings_store.py        # Runtime settings store
+├── test_web.py                   # Web UI, Google OAuth, sessions, CSRF
+├── test_weather_mcp.py           # Weather MCP server integration
+├── test_whatsapp_sessions.py     # Per-user WhatsApp sessions
+├── test_tasks.py                 # Vikunja task management
+├── test_vikunja_store.py         # Per-user Vikunja credentials + agent resolution
+├── test_vikunja_provisioning.py  # Vikunja auto-provisioning (register, login, token)
+├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
+└── test_logging.py               # Structured logging + Prometheus metrics
 ```
 
 ### Conventions
@@ -225,7 +228,81 @@ For faster iteration, use `./scripts/dev.sh` (local uvicorn with `--reload`).
 
 ---
 
-## 7. Adding New Components
+## 7. Database Migrations (Alembic)
+
+Schema changes are managed by [Alembic](https://alembic.sqlalchemy.org/) with raw SQL migrations (`op.execute()`). No SQLAlchemy ORM -- Niles uses `asyncpg` directly.
+
+### Architecture
+
+- Alembic runs as a standalone CLI tool with a sync connection (via `psycopg2`)
+- Niles Core runs async (via `asyncpg`) -- the two never share a connection
+- Schema version is tracked in the `alembic_version` table
+- Store `initialize()` methods contain only business logic, no `CREATE TABLE`
+
+### Creating a New Migration
+
+```bash
+# 1. Create migration file
+DATABASE_URL="postgresql://evolution:password@localhost:5432/evolution_db" \
+    alembic revision -m "add_email_integration"
+
+# 2. Edit the generated file in alembic/versions/
+#    - Write upgrade() with raw SQL via op.execute()
+#    - Write downgrade() with reverse SQL
+
+# 3. Test locally
+DATABASE_URL="..." alembic upgrade head
+DATABASE_URL="..." alembic downgrade -1
+DATABASE_URL="..." alembic upgrade head
+
+# 4. Commit migration file
+```
+
+### Migration File Convention
+
+All migrations use `op.execute()` with raw SQL. No SQLAlchemy Table objects.
+
+```python
+"""Short description of the change."""
+from alembic import op
+
+revision = "003"
+down_revision = "002"
+
+def upgrade():
+    op.execute("""
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT
+    """)
+
+def downgrade():
+    op.execute("""
+        ALTER TABLE users DROP COLUMN IF EXISTS phone
+    """)
+```
+
+### Rollback
+
+```bash
+# Roll back one migration
+DATABASE_URL="..." alembic downgrade -1
+
+# Show current version
+DATABASE_URL="..." alembic current
+
+# Show migration history
+DATABASE_URL="..." alembic history
+```
+
+### Existing Migrations
+
+| File | Description |
+|------|-------------|
+| `001_baseline.py` | Initial schema (all 11 tables + indexes) |
+| `002_migrate_contact_phones.py` | Data migration: legacy phone columns → contact_phones |
+
+---
+
+## 8. Adding New Components
 
 ### New Tool (Agent Capability)
 
@@ -251,7 +328,7 @@ For faster iteration, use `./scripts/dev.sh` (local uvicorn with `--reload`).
 
 ---
 
-## 8. Conventions
+## 9. Conventions
 
 ### Language
 
@@ -320,7 +397,7 @@ Niles uses APScheduler for automatic background jobs. All jobs are registered in
 
 ---
 
-## 9. Further Documentation
+## 10. Further Documentation
 
 - [Deployment Guide](Deployment.md) -- Setup, configuration, backup, troubleshooting
 - [Technical Specification](Niles-Core-Spec.md) -- Architecture, components, configuration

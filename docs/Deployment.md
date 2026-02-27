@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-02-26
+> **Updated:** 2026-02-27
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -389,9 +389,9 @@ The old `CALDAV_*` variables from `.env` are automatically migrated to the datab
 
 ## 9. Tasks (Vikunja)
 
-[Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it.
+[Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it. Vikunja accounts are **auto-provisioned** -- each Niles user automatically gets a Vikunja account and API token on first login.
 
-### Initial Setup
+### Setup
 
 #### 1. Generate JWT Secret
 
@@ -405,18 +405,16 @@ Enter in `.env`:
 VIKUNJA_JWT_SECRET=<generated-hex-string>
 ```
 
-#### 2. Set Additional .env Variables
+#### 2. Set .env Variables
 
 ```bash
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
-VIKUNJA_API_TOKEN=               # comes in step 5
-FEATURE_VIKUNJA=true
 
-# For Tailscale/remote access: Set external URL (for email links etc.)
-#VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
+# For Tailscale/remote access: external URL for nav link + Vikunja web UI
+VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
 ```
 
-**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` however must be the **externally reachable** URL.
+**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` must be the **externally reachable** URL (port 3457).
 
 #### 3. Start Containers
 
@@ -426,48 +424,24 @@ FEATURE_VIKUNJA=true
 
 Automatically creates the `vikunja_db` database.
 
-#### 4. Create Admin Account
+### Auto-Provisioning
 
-1. Open `https://localhost:3457` (or `https://<tailscale-ip>:3457`)
-2. **Create Account** -- Choose username and password
-3. Create a default project (e.g., "Inbox")
+When a user logs in to Niles (via Google OAuth or API key), a Vikunja account is automatically created:
 
-Then **disable registration** in `docker/docker-compose.yml`:
+1. Niles registers a Vikunja user (username derived from email, password derived via HMAC)
+2. Niles logs in to obtain a JWT
+3. Niles creates a persistent API token (`tk_...`)
+4. The token is stored in `vikunja_credentials` (per-user)
 
-```yaml
-VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
-```
-
-> **Security note:** As long as `ENABLEREGISTRATION=true`, **anyone with network access** to port 3457 can create a Vikunja account. On Tailscale-only setups, this is protected by network ACLs. If the host is reachable from the internet, disable registration after account creation.
-
-#### 5. Generate API Token
-
-1. Log in to Vikunja
-2. Settings > API Tokens > **Create Token**
-3. Permissions: at least `tasks` (Read + Write)
-4. Enter token in `.env`:
-
-```bash
-VIKUNJA_API_TOKEN=<token-from-vikunja>
-```
-
-#### 6. Restart Niles
-
-```bash
-./scripts/start.sh
-```
-
-### Per-User Tokens
-
-Each user can store their own Vikunja token (Settings > Tasks). This gives each user their own task lists. The token from `.env` serves as fallback.
+No manual account creation or token generation required. The Vikunja web UI (`https://<host>:3457`) is available for direct task management.
 
 ### Verification
 
-Ask in chat: "What's on my todo list?" -- Niles calls `list_tasks`.
+Ask in chat: "What's on my todo list?" -- Niles calls `list_tasks` with the user's auto-provisioned credentials.
 
-### Disable
+### Vikunja Web UI
 
-Set `FEATURE_VIKUNJA=false` in `.env`. Task tools will then not be sent to the LLM.
+The nav bar shows a "Vikunja" link when `VIKUNJA_PUBLIC_URL` is set. Users can manage tasks directly in the Vikunja web UI using the same credentials that Niles auto-provisioned.
 
 ---
 
@@ -689,8 +663,8 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Symptom | Cause | Solution |
 | ------- | ----- | -------- |
 | 400 Bad Request | `due_date` without time | Niles normalizes automatically since v0.8. For older versions: update |
-| 401 Unauthorized | Token expired or wrong | Generate new token in Vikunja, enter in `.env` |
-| "tasks" tool not available | Feature disabled | Set `FEATURE_VIKUNJA=true` in `.env` |
+| "tasks" tool not available | No Vikunja credentials | Check if `VIKUNJA_API_URL` is set; log in again to trigger auto-provisioning |
+| Provisioning failed | Vikunja unreachable | Check container: `docker ps`, check logs: `docker logs vikunja` |
 | Database error | `vikunja_db` doesn't exist | `docker exec niles_evolution_postgres createdb -U evolution vikunja_db` |
 
 ---
@@ -737,9 +711,8 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 | Variable | Description |
 | -------- | ----------- |
-| `FEATURE_VIKUNJA` | `true` to enable (default: `false`) |
 | `VIKUNJA_API_URL` | API endpoint (`http://vikunja:3456/api/v1`) |
-| `VIKUNJA_API_TOKEN` | API token (fallback, per-user tokens via Settings UI) |
+| `VIKUNJA_PUBLIC_URL` | External URL for nav link + web UI (`https://<host>:3457`) |
 | `VIKUNJA_JWT_SECRET` | JWT secret for the Vikunja container |
 
 **Signal (optional, configured via Settings UI):**
