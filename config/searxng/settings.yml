@@ -1,0 +1,26 @@
+general:
+  instance_name: "Niles Search"
+  debug: false
+
+search:
+  safe_search: 0
+  default_lang: "de"
+  formats:
+    - html
+    - json
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "${SEARXNG_SECRET_KEY}"
+
+doi_resolvers:
+  oadoi.org: 'https://oadoi.org/'
+  doi.org: 'https://doi.org/'
+
+default_doi_resolver: 'oadoi.org'
+
+# All default engines stay active except those explicitly disabled below.
+engines:
+  - name: duckduckgo
+    disabled: true    # CAPTCHA-Blockaden bei automatisierten Anfragen

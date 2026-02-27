@@ -8,9 +8,11 @@ A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsA
 
 - **WhatsApp Integration** -- Self-chat via "Hey Niles" trigger, message history, contact lookup.
 - **Calendar** -- Multi-source sync (CalDAV, Google Calendar, ICS), event search and creation.
-- **Tasks** -- Vikunja integration (list, create, complete), per-user tokens.
+- **Tasks** -- Vikunja integration (list, create, complete), auto-provisioned per-user accounts.
 - **Contacts** -- CardDAV sync with multi-phone support.
 - **Memory** -- Persistent key-value store, injected into every conversation.
+- **Web Search** -- SearXNG meta search (Google, Bing, DuckDuckGo), privacy-first, self-hosted.
+- **Web Fetch** -- Extract and summarize web page content (trafilatura, SSRF-protected).
 - **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
 - **Web UI** -- Chat with SSE streaming, settings dashboard, calendar/contact management.
 - **MCP** -- Extend Niles with community tools via Model Context Protocol.
@@ -81,9 +83,12 @@ src/niles/                     Python Backend
   sources/                     Webhook Handler, Web-UI (SSE Streaming)
   sync/                        CardDAV, CalDAV, Google Calendar, iCal Parser
   mcp/                         MCP Server Manager
+  vikunja_store.py             Per-user Vikunja credentials (PostgreSQL)
+  vikunja_provisioning.py      Auto-provision Vikunja accounts on login
   templates/                   Jinja2 Templates (Tailwind CSS)
   static/                      CSS, JavaScript
-tests/                         455 tests (pytest + pytest-asyncio)
+alembic/                       Database migrations (Alembic)
+tests/                         586 tests (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
 docker/                        Dockerfile, docker-compose.yml, Caddyfile
 scripts/                       start, stop, status, dev, test, backup
@@ -104,6 +109,8 @@ docs/                          Technical Documentation
 | Logging       | structlog (JSON to stdout)         |
 | Metrics       | Prometheus (prometheus-client)     |
 | Scheduling    | APScheduler                        |
+| Web Search    | SearXNG (self-hosted, optional)    |
+| Web Fetch     | trafilatura (HTML text extraction) |
 | Extensions    | MCP (Model Context Protocol)       |
 
 ## Agent Tools
@@ -121,8 +128,13 @@ The LLM can invoke these tools during conversations:
 | `create_task`           | Create a new task                        |
 | `complete_task`         | Mark a task as done                      |
 | `remember` / `recall`   | Persistent key-value memory              |
+| `send_signal`           | Send Signal message (by name or number)  |
+| `get_signal_messages`   | Read Signal chat history (last 30 days)  |
+| `mcp__fetch__fetch_url` | Fetch and extract text from a web page   |
+| `mcp__searxng__search`  | Web search via SearXNG (when enabled)    |
+| `mcp__weather__*`       | Weather data (current + forecast)        |
 
-MCP tools from external servers are automatically discovered and added.
+Additional MCP tools from external servers are automatically discovered and added.
 
 ## Development
 

@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-02-26
+> **Updated:** 2026-02-27
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -20,10 +20,11 @@ For technical details on architecture and development, see [Development.md](Deve
 8. [Calendar (CalDAV + Google Calendar)](#8-calendar-caldav--google-calendar)
 9. [Tasks (Vikunja)](#9-tasks-vikunja)
 10. [Briefing (Daily/Weekly)](#10-briefing-dailyweekly)
-11. [HTTPS & Remote Access (Tailscale + Caddy)](#11-https--remote-access-tailscale--caddy)
-12. [Backup & Maintenance](#12-backup--maintenance)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Reference](#14-reference)
+11. [Web Search & Fetch](#11-web-search--fetch)
+12. [HTTPS & Remote Access (Tailscale + Caddy)](#12-https--remote-access-tailscale--caddy)
+13. [Backup & Maintenance](#13-backup--maintenance)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Reference](#15-reference)
 
 ---
 
@@ -101,14 +102,6 @@ curl -sk https://localhost/health
 ```
 
 Web UI: `https://localhost/ui/login` (self-signed certificate -- accept browser warning)
-
-### Alternative: Interactive Setup
-
-```bash
-./scripts/setup-interactive.sh
-```
-
-Guides step by step through the setup with status checks.
 
 ---
 
@@ -389,9 +382,9 @@ The old `CALDAV_*` variables from `.env` are automatically migrated to the datab
 
 ## 9. Tasks (Vikunja)
 
-[Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it.
+[Vikunja](https://vikunja.io/docs/) is an open-source task manager. Niles can create, list, and complete tasks through it. Vikunja accounts are **auto-provisioned** -- each Niles user automatically gets a Vikunja account and API token on first login.
 
-### Initial Setup
+### Setup
 
 #### 1. Generate JWT Secret
 
@@ -405,18 +398,16 @@ Enter in `.env`:
 VIKUNJA_JWT_SECRET=<generated-hex-string>
 ```
 
-#### 2. Set Additional .env Variables
+#### 2. Set .env Variables
 
 ```bash
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
-VIKUNJA_API_TOKEN=               # comes in step 5
-FEATURE_VIKUNJA=true
 
-# For Tailscale/remote access: Set external URL (for email links etc.)
-#VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
+# For Tailscale/remote access: external URL for nav link + Vikunja web UI
+VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
 ```
 
-**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` however must be the **externally reachable** URL.
+**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` must be the **externally reachable** URL (port 3457).
 
 #### 3. Start Containers
 
@@ -426,48 +417,24 @@ FEATURE_VIKUNJA=true
 
 Automatically creates the `vikunja_db` database.
 
-#### 4. Create Admin Account
+### Auto-Provisioning
 
-1. Open `https://localhost:3457` (or `https://<tailscale-ip>:3457`)
-2. **Create Account** -- Choose username and password
-3. Create a default project (e.g., "Inbox")
+When a user logs in to Niles (via Google OAuth or API key), a Vikunja account is automatically created:
 
-Then **disable registration** in `docker/docker-compose.yml`:
+1. Niles registers a Vikunja user (username derived from email, password derived via HMAC)
+2. Niles logs in to obtain a JWT
+3. Niles creates a persistent API token (`tk_...`)
+4. The token is stored in `vikunja_credentials` (per-user)
 
-```yaml
-VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
-```
-
-> **Security note:** As long as `ENABLEREGISTRATION=true`, **anyone with network access** to port 3457 can create a Vikunja account. On Tailscale-only setups, this is protected by network ACLs. If the host is reachable from the internet, disable registration after account creation.
-
-#### 5. Generate API Token
-
-1. Log in to Vikunja
-2. Settings > API Tokens > **Create Token**
-3. Permissions: at least `tasks` (Read + Write)
-4. Enter token in `.env`:
-
-```bash
-VIKUNJA_API_TOKEN=<token-from-vikunja>
-```
-
-#### 6. Restart Niles
-
-```bash
-./scripts/start.sh
-```
-
-### Per-User Tokens
-
-Each user can store their own Vikunja token (Settings > Tasks). This gives each user their own task lists. The token from `.env` serves as fallback.
+No manual account creation or token generation required. The Vikunja web UI (`https://<host>:3457`) is available for direct task management.
 
 ### Verification
 
-Ask in chat: "What's on my todo list?" -- Niles calls `list_tasks`.
+Ask in chat: "What's on my todo list?" -- Niles calls `list_tasks` with the user's auto-provisioned credentials.
 
-### Disable
+### Vikunja Web UI
 
-Set `FEATURE_VIKUNJA=false` in `.env`. Task tools will then not be sent to the LLM.
+The nav bar shows a "Vikunja" link when `VIKUNJA_PUBLIC_URL` is set. Users can manage tasks directly in the Vikunja web UI using the same credentials that Niles auto-provisioned.
 
 ---
 
@@ -533,7 +500,89 @@ Set `FEATURE_BRIEFING_DAILY=false` and `FEATURE_BRIEFING_WEEKLY=false` in `.env`
 
 ---
 
-## 11. HTTPS & Remote Access (Tailscale + Caddy)
+## 11. Web Search & Fetch
+
+Niles can search the web and read web pages via two MCP tools.
+
+### Web Search (SearXNG)
+
+[SearXNG](https://docs.searxng.org/) is a self-hosted meta search engine that aggregates results from Google, Bing, DuckDuckGo, and Wikipedia. It runs as a Docker container and requires no API keys.
+
+#### Setup
+
+1. Set in `.env`:
+
+```bash
+FEATURE_SEARCH=true
+#SEARXNG_URL=http://searxng:8080     # default, usually no change needed
+#SEARXNG_SECRET_KEY=<openssl rand -hex 32>  # optional, has a default
+```
+
+2. Start with the `search` profile:
+
+```bash
+./scripts/start.sh
+```
+
+The start script automatically detects `FEATURE_SEARCH=true` and activates the SearXNG Docker profile.
+
+#### How It Works
+
+- SearXNG runs in the Docker network (port 8080, not externally exposed)
+- The MCP server `searxng-simple-mcp` runs as a stdio process inside `niles_core`
+- The agent uses the `mcp__searxng__search` tool when the user asks to research something
+- Results include title, URL, and snippet
+
+#### Verification
+
+```bash
+# Check SearXNG is running
+docker ps | grep searxng
+
+# Test search (from inside Docker network)
+docker exec niles_core python -c "import httpx; print(httpx.get('http://searxng:8080/healthz').status_code)"
+```
+
+In chat: "Recherchiere aktuelle Nachrichten zu Apple" -- Niles should call the search tool and return results with source URLs.
+
+### Web Fetch
+
+The Web Fetch MCP server extracts clean text from web pages. It is **always active** (no feature flag, no external container).
+
+#### How It Works
+
+- Runs as a Python MCP server (`niles.mcp.fetch`) inside `niles_core`
+- Uses `trafilatura` to extract main content (strips navigation, ads, footer)
+- SSRF protection: private/internal IP addresses are blocked
+- Supports HTML and plain text only (PDFs, images, etc. are rejected)
+- Automatic truncation at 8000 characters (configurable via `FETCH_MAX_CHARS`)
+
+#### Use Cases
+
+- User shares a URL: "What does this page say?"
+- After a web search: agent reads full article from a search result
+- "Summarize this article: https://..."
+
+#### Combined Research Flow
+
+When both search and fetch are active, the agent can perform deep research:
+
+1. Search with `mcp__searxng__search` for a topic
+2. Read 1-2 relevant results with `mcp__fetch__fetch_url`
+3. Summarize findings with source URLs
+
+### Search & Fetch Troubleshooting
+
+| Problem | Solution |
+| ------- | -------- |
+| Search tool not available | Check `FEATURE_SEARCH=true` in `.env`, restart |
+| SearXNG container not starting | Run `docker compose -f docker/docker-compose.yml --profile search up -d` |
+| "Zugriff auf interne Adressen nicht erlaubt" | SSRF protection working correctly -- internal URLs are blocked by design |
+| Fetch returns "Content-Type" error | Only HTML/text pages are supported (no PDFs, images) |
+
+---
+
+## 12. HTTPS & Remote Access (Tailscale + Caddy)
 
 ### Caddy (Reverse Proxy)
 
@@ -587,7 +636,7 @@ Niles is now accessible from any device on the Tailscale network.
 
 ---
 
-## 12. Backup & Maintenance
+## 13. Backup & Maintenance
 
 ### Create Backup
 
@@ -638,7 +687,7 @@ Deletes all containers and Docker volumes (PostgreSQL data). WhatsApp sessions (
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 ### Service Won't Start
 
@@ -689,13 +738,13 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Symptom | Cause | Solution |
 | ------- | ----- | -------- |
 | 400 Bad Request | `due_date` without time | Niles normalizes automatically since v0.8. For older versions: update |
-| 401 Unauthorized | Token expired or wrong | Generate new token in Vikunja, enter in `.env` |
-| "tasks" tool not available | Feature disabled | Set `FEATURE_VIKUNJA=true` in `.env` |
+| "tasks" tool not available | No Vikunja credentials | Check if `VIKUNJA_API_URL` is set; log in again to trigger auto-provisioning |
+| Provisioning failed | Vikunja unreachable | Check container: `docker ps`, check logs: `docker logs vikunja` |
 | Database error | `vikunja_db` doesn't exist | `docker exec niles_evolution_postgres createdb -U evolution vikunja_db` |
 
 ---
 
-## 14. Reference
+## 15. Reference
 
 ### Environment Variables
 
@@ -737,9 +786,8 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 | Variable | Description |
 | -------- | ----------- |
-| `FEATURE_VIKUNJA` | `true` to enable (default: `false`) |
 | `VIKUNJA_API_URL` | API endpoint (`http://vikunja:3456/api/v1`) |
-| `VIKUNJA_API_TOKEN` | API token (fallback, per-user tokens via Settings UI) |
+| `VIKUNJA_PUBLIC_URL` | External URL for nav link + web UI (`https://<host>:3457`) |
 | `VIKUNJA_JWT_SECRET` | JWT secret for the Vikunja container |
 
 **Signal (optional, configured via Settings UI):**
@@ -759,12 +807,21 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `BRIEFING_DAILY_TIME` | `07:30` | Time for daily briefing (HH:MM) |
 | `BRIEFING_WEEKLY_TIME` | `07:15` | Time for weekly overview (HH:MM) |
 
+**Web Search (optional):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `FEATURE_SEARCH` | `false` | Enable SearXNG web search |
+| `SEARXNG_URL` | `http://searxng:8080` | SearXNG endpoint (Docker-internal) |
+| `SEARXNG_SECRET_KEY` | `niles-local-default` | SearXNG secret key (generate with `openssl rand -hex 32`) |
+
 **Feature Flags:**
 
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
+| `FEATURE_SEARCH` | `false` | Enable SearXNG web search (requires Docker profile `search`) |
 
 Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
 
@@ -779,6 +836,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | 8000 | Niles Core (internal) | HTTP (not directly accessible) |
 | 8080 | Evolution API (internal) | HTTP (not directly accessible) |
 | 8080 | signal-cli-rest-api (internal, profile: signal) | HTTP (not directly accessible) |
+| 8080 | SearXNG (internal, profile: search) | HTTP (not directly accessible) |
 
 ### Scripts
 
@@ -792,7 +850,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | `./scripts/cleanup.sh` | Delete all containers and volumes (reset) |
 | `./scripts/dev.sh` | Local dev server without Docker |
 | `./scripts/test.sh` | Run tests |
-| `./scripts/setup-interactive.sh` | Interactive setup wizard |
+| `./scripts/check-pii.sh` | Scan code for PII leaks |
 
 ### Further Documentation
 
