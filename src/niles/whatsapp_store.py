@@ -13,25 +13,6 @@ class WhatsAppSessionStore:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def initialize(self) -> None:
-        """Create whatsapp_sessions table if it doesn't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS whatsapp_sessions (
-                user_id INTEGER PRIMARY KEY REFERENCES users(id),
-                instance_name TEXT UNIQUE NOT NULL,
-                phone_number TEXT,
-                status TEXT NOT NULL DEFAULT 'disconnected'
-                    CHECK (status IN ('disconnected', 'connecting', 'connected')),
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS whatsapp_sessions_phone_idx
-            ON whatsapp_sessions (phone_number)
-        """)
-        logger.info("WhatsApp session store initialized")
-
     async def get_session(self, user_id: int) -> dict | None:
         """Get WhatsApp session for a user."""
         row = await self.pool.fetchrow(
