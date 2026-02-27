@@ -1,6 +1,7 @@
 """MCP client manager -- starts MCP servers and exposes their tools."""
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -65,7 +66,12 @@ class MCPManager:
         self._openai_tools: list[dict] = []
 
     def _load_config(self) -> dict:
-        """Load and parse the YAML config file."""
+        """Load and parse the YAML config file.
+
+        Servers with ``enabled: "false"`` (or env-var expansion resolving to
+        a falsy value) are filtered out.  Default is ``"true"`` so existing
+        entries without an ``enabled`` key keep working.
+        """
         if not self._config_path.exists():
             logger.info(
                 "MCP config not found at %s, no servers to start", self._config_path
@@ -75,7 +81,19 @@ class MCPManager:
         with open(self._config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        return data.get("servers", {}) or {}
+        servers = data.get("servers", {}) or {}
+
+        active: dict = {}
+        for name, config in servers.items():
+            enabled = config.pop("enabled", "true")
+            if isinstance(enabled, str):
+                enabled = _expand_env(enabled)
+            if str(enabled).lower() not in ("true", "1", "yes"):
+                logger.info("MCP server '%s' disabled via config", name)
+                continue
+            active[name] = config
+
+        return active
 
     async def start_all(self) -> None:
         """Start all configured MCP servers and discover their tools."""
@@ -168,6 +186,7 @@ class MCPManager:
         server_name, tool_name = self._tool_map[prefixed_name]
         session = self._sessions[server_name]
 
+        arguments = _coerce_arguments(arguments)
         result = await session.call_tool(name=tool_name, arguments=arguments)
 
         texts = []
@@ -191,13 +210,84 @@ class MCPManager:
         logger.info("MCP: all servers stopped")
 
 
+def _coerce_arguments(arguments: dict) -> dict:
+    """Fix argument types that local LLMs get wrong.
+
+    Small models sometimes deliver values as strings instead of the correct
+    type (e.g. ``"10"`` instead of ``10``, or ``"['a', 'b']"`` instead of
+    ``["a", "b"]``).  This function attempts to recover the intended type.
+    """
+    result = {}
+    for key, value in arguments.items():
+        if not isinstance(value, str):
+            result[key] = value
+            continue
+        # Try to parse stringified JSON (lists, objects, numbers, booleans, null)
+        try:
+            parsed = json.loads(value)
+            # Only accept container types and None — plain strings that happen
+            # to be valid JSON (e.g. "true", "null") are converted too.
+            if isinstance(parsed, (list, dict, int, float, bool)) or parsed is None:
+                result[key] = parsed
+                continue
+        except (json.JSONDecodeError, ValueError):
+            pass
+        # Python-style list literal: "['general', 'history']" → try with
+        # double quotes so json.loads can handle it.
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                result[key] = json.loads(value.replace("'", '"'))
+                continue
+            except (json.JSONDecodeError, ValueError):
+                pass
+        result[key] = value
+    return result
+
+
+def _simplify_schema(schema: dict) -> dict:
+    """Simplify a JSON Schema for better compatibility with local LLMs.
+
+    Small models (e.g. llama3.1:8b) struggle with advanced JSON Schema
+    features like ``anyOf`` nullable patterns and ``exclusiveMinimum``.
+    This function flattens them into simple types that Ollama handles
+    reliably.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    result = {}
+    for key, value in schema.items():
+        if key == "anyOf" and isinstance(value, list):
+            # anyOf: [{type: "string"}, {type: "null"}] → {type: "string"}
+            non_null = [v for v in value if v.get("type") != "null"]
+            if len(non_null) == 1:
+                result.update(_simplify_schema(non_null[0]))
+            else:
+                result[key] = [_simplify_schema(v) for v in value]
+        elif key == "exclusiveMinimum":
+            # Replace exclusiveMinimum with minimum (broadly supported)
+            result["minimum"] = value + 1 if isinstance(value, int) else value
+        elif key == "properties" and isinstance(value, dict):
+            result[key] = {k: _simplify_schema(v) for k, v in value.items()}
+        elif isinstance(value, dict):
+            result[key] = _simplify_schema(value)
+        elif isinstance(value, list):
+            result[key] = [
+                _simplify_schema(v) if isinstance(v, dict) else v for v in value
+            ]
+        else:
+            result[key] = value
+    return result
+
+
 def _mcp_tool_to_openai(prefixed_name: str, tool: Tool) -> dict:
     """Convert an MCP Tool to OpenAI function-calling format."""
+    schema = tool.inputSchema or {"type": "object", "properties": {}}
     return {
         "type": "function",
         "function": {
             "name": prefixed_name,
             "description": tool.description or "",
-            "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+            "parameters": _simplify_schema(schema),
         },
     }

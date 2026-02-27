@@ -7,6 +7,7 @@
 #     <name>:
 #       command: <executable>
 #       args: [<arg1>, <arg2>, ...]
+#       enabled: "${FEATURE_FLAG}"    # optional, default "true"
 #       env:                          # optional
 #         KEY: "${ENV_VAR}"           # ${VAR} expands from environment
 
@@ -18,6 +19,26 @@ servers:
       WEATHER_LATITUDE: "${WEATHER_LATITUDE}"
       WEATHER_LONGITUDE: "${WEATHER_LONGITUDE}"
       WEATHER_TIMEZONE: "${WEATHER_TIMEZONE}"
+
+  # Web Search via SearXNG (enabled when FEATURE_SEARCH=true)
+  searxng:
+    command: python
+    args: ["-m", "searxng_simple_mcp.server"]
+    enabled: "${FEATURE_SEARCH}"
+    env:
+      SEARXNG_MCP_SEARXNG_URL: "${SEARXNG_URL}"
+      SEARXNG_MCP_DEFAULT_RESULT_COUNT: "10"
+      SEARXNG_MCP_DEFAULT_LANGUAGE: "de"
+      SEARXNG_MCP_DEFAULT_FORMAT: "text"
+
+  # Web Fetch — extract text from URLs (always active, no external container)
+  fetch:
+    command: python
+    args: ["-m", "niles.mcp.fetch"]
+    env:
+      FETCH_MAX_CHARS: "8000"
+      FETCH_TIMEOUT: "15"
+      FETCH_USER_AGENT: "Niles AI/1.0 (local assistant)"
 
 # Weitere Beispiele:
 #
