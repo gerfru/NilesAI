@@ -14,12 +14,10 @@ if ! command -v docker &>/dev/null; then
     exit 1
 fi
 
-# Load environment variables if .env exists
-if [ -f .env ]; then
-    set -a
-    source .env
-    set +a
-fi
+# Read specific values from .env (don't source — values may contain
+# URLs or commas that bash would misinterpret as commands).
+EVOLUTION_API_KEY=$(grep -s '^EVOLUTION_API_KEY=' .env | head -1 | cut -d= -f2-)
+export EVOLUTION_API_KEY
 
 echo "Niles AI - Status Check"
 echo ""
