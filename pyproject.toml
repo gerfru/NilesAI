@@ -56,6 +56,10 @@ dependencies = [
     "websockets>=14.0",
 
     # MCP Web Search (SearXNG client — only active when feature_search=true)
+    # Pin fastmcp<3: searxng-simple-mcp 1.2.0 passes log_level to FastMCP(),
+    # which was removed in fastmcp 3.0.0. Niles' own MCP servers use mcp.server.fastmcp
+    # (from the 'mcp' package), not the 'fastmcp' package, so no conflict.
+    "fastmcp>=2.0,<3.0",
     "searxng-simple-mcp>=0.3.0",
 
     # HTML text extraction for web fetch MCP server
