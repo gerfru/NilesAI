@@ -295,6 +295,35 @@
     <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
 </div>
 
+{# === Web Search (SearXNG) === #}
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Web Search (SearXNG)</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Websuche via selbst-gehostete SearXNG-Instanz. Aenderungen werden nach Neustart wirksam.</p>
+
+    <form hx-post="/ui/api/settings/feature_search"
+          hx-target="#toast-container" hx-swap="innerHTML"
+          class="flex items-center justify-between mb-4">
+        <input type="hidden" name="value" value="{{ 'true' if feature_search else 'false' }}">
+        <span class="text-sm text-zinc-700 dark:text-zinc-300">Web Search aktivieren</span>
+        <label class="toggle-switch">
+            <input type="checkbox" {% if feature_search %}checked{% endif %} data-flag-toggle>
+            <span class="toggle-track"></span>
+        </label>
+    </form>
+
+    <form hx-post="/ui/api/settings/searxng_url" hx-target="#toast-container" hx-swap="innerHTML">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">SearXNG URL</label>
+        <div class="flex gap-2">
+            <input type="url" name="value" value="{{ searxng_url }}"
+                   maxlength="512" required
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+</div>
+
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>

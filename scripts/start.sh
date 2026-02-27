@@ -33,9 +33,16 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Build docker compose command with optional profiles
+COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
+if grep -qsE '^FEATURE_SEARCH\s*=\s*true' .env 2>/dev/null; then
+    COMPOSE_CMD="$COMPOSE_CMD --profile search"
+    echo "Web Search (SearXNG) profile enabled."
+fi
+
 # Start Docker services
 echo "Starting Docker containers..."
-docker compose -f docker/docker-compose.yml --env-file .env up -d --build
+$COMPOSE_CMD up -d --build
 
 # Wait for services to be ready
 echo "Waiting for services to start..."
@@ -60,19 +67,7 @@ echo "  - Vikunja (Todos):   https://localhost:3457"
 echo "  - Ollama API:        http://localhost:11434/v1"
 echo ""
 
-# Vikunja setup hint (first-time only)
-VIKUNJA_TOKEN=$(grep -s '^VIKUNJA_API_TOKEN=' .env | cut -d= -f2-)
-FEATURE_VIKUNJA=$(grep -s '^FEATURE_VIKUNJA=' .env | cut -d= -f2-)
-if [ "${FEATURE_VIKUNJA:-}" = "true" ] && [ -z "${VIKUNJA_TOKEN:-}" ]; then
-    echo "Note: FEATURE_VIKUNJA=true but VIKUNJA_API_TOKEN is not set."
-    echo "  1. Open https://localhost:3457 and create an admin account"
-    echo "  2. Go to Settings > API Tokens > Create Token"
-    echo "  3. Add token to .env as VIKUNJA_API_TOKEN"
-    echo "  4. Restart: ./scripts/start.sh"
-    echo ""
-fi
-
 echo "Hint: Ollama must be running externally for chat to work (ollama serve)."
-echo "MCP tools (e.g. weather) start automatically with Niles Core."
+echo "MCP tools (e.g. weather, search) start automatically with Niles Core."
 echo ""
 echo "Niles AI is ready."
