@@ -771,8 +771,9 @@ class NilesAgent:
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
+                _all_names = frozenset(t["function"]["name"] for t in all_tools)
                 parsed = (
-                    self._try_parse_text_tool_call(full_content)
+                    self._try_parse_text_tool_call(full_content, _all_names)
                     if full_content
                     else None
                 )
@@ -914,7 +915,12 @@ class NilesAgent:
             # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
                 content = choice.message.content or ""
-                parsed = self._try_parse_text_tool_call(content) if content else None
+                _all_names = frozenset(t["function"]["name"] for t in all_tools)
+                parsed = (
+                    self._try_parse_text_tool_call(content, _all_names)
+                    if content
+                    else None
+                )
                 if parsed:
                     logger.info("Detected text-based tool call: %s", parsed["name"])
                     tc_dict, assistant_msg = self._synthetic_tool_call(parsed)

@@ -323,6 +323,24 @@ class TestTextToolCallParsing:
         assert result is not None
         assert result["name"] == "find_contact"
 
+    def test_mcp_tool_recognized_when_in_known_tools(self):
+        """MCP tools like mcp__searxng__web_search are recognized when passed in known_tools."""
+        tools_with_mcp = frozenset(
+            [*self._TOOLS, "mcp__searxng__web_search", "mcp__fetch__fetch_url"]
+        )
+        text = '{"type":"function","name":"mcp__searxng__web_search","parameters":{"query":"Geschichte Wien"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, tools_with_mcp)
+        assert result is not None
+        assert result["name"] == "mcp__searxng__web_search"
+        args = json.loads(result["arguments"])
+        assert args["query"] == "Geschichte Wien"
+
+    def test_mcp_tool_rejected_when_not_in_known_tools(self):
+        """MCP tools are NOT recognized when only built-in tools are in known_tools."""
+        text = '{"name":"mcp__searxng__web_search","parameters":{"query":"test"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
 
 class TestTextToolCallStreamIntegration:
     """Integration test: text-based tool call in streaming pipeline."""
