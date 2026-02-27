@@ -28,6 +28,10 @@
                    class="no-underline transition-colors duration-150 {% if active_page == 'chat' %}text-blue-500 dark:text-blue-400 font-semibold{% else %}text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white{% endif %}">Chat</a>
                 <a href="/ui/settings"
                    class="no-underline transition-colors duration-150 {% if active_page == 'settings' %}text-blue-500 dark:text-blue-400 font-semibold{% else %}text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white{% endif %}">Settings</a>
+                {% if vikunja_url %}
+                <a href="{{ vikunja_url }}" target="_blank" rel="noopener"
+                   class="no-underline transition-colors duration-150 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white">Aufgaben ↗</a>
+                {% endif %}
                 {% if user %}
                 <div class="flex items-center gap-1.5">
                     {% if user.avatar_url %}

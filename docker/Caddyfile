@@ -40,7 +40,7 @@
 	reverse_proxy evolution_api:8080
 }
 
-# Vikunja (Todos) (:3457)
+# Vikunja (Todos) — Port 3457
 {$CADDY_HOSTS_3457:https://localhost:3457} {
 	tls internal
 	import security_headers
