@@ -75,9 +75,9 @@ def upgrade() -> None:
             full_name TEXT NOT NULL,
             first_name TEXT,
             last_name TEXT,
-            phone_primary TEXT,
-            phone_mobile TEXT,
-            phone_work TEXT,
+            phone_primary TEXT,   -- TODO: remove after 002 normalizes into contact_phones
+            phone_mobile TEXT,    -- TODO: remove after 002 normalizes into contact_phones
+            phone_work TEXT,      -- TODO: remove after 002 normalizes into contact_phones
             email TEXT,
             cardav_uid TEXT UNIQUE,
             cardav_url TEXT,
@@ -223,15 +223,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop in reverse FK order
-    op.execute("DROP TABLE IF EXISTS settings_overrides")
-    op.execute("DROP TABLE IF EXISTS signal_messages")
-    op.execute("DROP TABLE IF EXISTS conversations")
-    op.execute("DROP TABLE IF EXISTS memory")
-    op.execute("DROP TABLE IF EXISTS events")
-    op.execute("DROP TABLE IF EXISTS calendar_sources")
-    op.execute("DROP TABLE IF EXISTS contact_phones")
-    op.execute("DROP TABLE IF EXISTS contacts")
-    op.execute("DROP TABLE IF EXISTS vikunja_credentials")
-    op.execute("DROP TABLE IF EXISTS whatsapp_sessions")
-    op.execute("DROP TABLE IF EXISTS users")
+    # Drop in reverse FK order; CASCADE for safety against external FKs
+    op.execute("DROP TABLE IF EXISTS settings_overrides CASCADE")
+    op.execute("DROP TABLE IF EXISTS signal_messages CASCADE")
+    op.execute("DROP TABLE IF EXISTS conversations CASCADE")
+    op.execute("DROP TABLE IF EXISTS memory CASCADE")
+    op.execute("DROP TABLE IF EXISTS events CASCADE")
+    op.execute("DROP TABLE IF EXISTS calendar_sources CASCADE")
+    op.execute("DROP TABLE IF EXISTS contact_phones CASCADE")
+    op.execute("DROP TABLE IF EXISTS contacts CASCADE")
+    op.execute("DROP TABLE IF EXISTS vikunja_credentials CASCADE")
+    op.execute("DROP TABLE IF EXISTS whatsapp_sessions CASCADE")
+    op.execute("DROP TABLE IF EXISTS users CASCADE")

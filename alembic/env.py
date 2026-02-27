@@ -20,7 +20,12 @@ target_metadata = None
 
 def get_database_url() -> str:
     """Build PostgreSQL URL from environment variables."""
-    password = os.environ["EVOLUTION_POSTGRES_PASSWORD"]
+    password = os.environ.get("EVOLUTION_POSTGRES_PASSWORD", "")
+    if not password:
+        raise RuntimeError(
+            "EVOLUTION_POSTGRES_PASSWORD environment variable is not set. "
+            "Set it before running Alembic migrations."
+        )
     host = os.environ.get("POSTGRES_HOST", "evolution_postgres")
     port = os.environ.get("POSTGRES_PORT", "5432")
     db = os.environ.get("POSTGRES_DB", "evolution_db")
@@ -52,14 +57,17 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations against a live database."""
     engine = create_engine(_resolve_url())
-    with engine.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            transaction_per_migration=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    try:
+        with engine.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                transaction_per_migration=True,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        engine.dispose()
 
 
 if context.is_offline_mode():
