@@ -509,9 +509,10 @@ class NilesAgent:
         try:
             obj = json.loads(cleaned)
         except json.JSONDecodeError:
-            # llama3.1 sometimes merges key and opening brace:
-            #   "parameters{"query":...  instead of  "parameters": {"query":...
-            repaired = re.sub(r'"(parameters|arguments)\{', r'"\1":{', cleaned)
+            # llama3.1 produces various malformed separators between key and
+            # opening brace:  "parameters{"  "parameters>{"  "parameters:{"
+            # Normalise them all to  "parameters": {
+            repaired = re.sub(r'"(parameters|arguments)[^"]*\{', r'"\1":{', cleaned)
             if repaired != cleaned:
                 try:
                     obj = json.loads(repaired)

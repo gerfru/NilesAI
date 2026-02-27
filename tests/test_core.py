@@ -360,6 +360,23 @@ class TestTextToolCallParsing:
         args = json.loads(result["arguments"])
         assert args["title"] == "Test"
 
+    def test_malformed_parameters_gt_brace_repaired(self):
+        """llama3.1 variant: 'parameters>{'."""
+        tools_with_mcp = frozenset([*self._TOOLS, "mcp__searxng__web_search"])
+        text = '{"type":"function","name":"mcp__searxng__web_search", "parameters>{"query": "Graz im 15. Jahrhundert"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, tools_with_mcp)
+        assert result is not None
+        assert result["name"] == "mcp__searxng__web_search"
+        args = json.loads(result["arguments"])
+        assert args["query"] == "Graz im 15. Jahrhundert"
+
+    def test_malformed_parameters_colon_brace_repaired(self):
+        """llama3.1 variant: 'parameters:{'."""
+        text = '{"name":"create_task","parameters:{"title":"Test"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+
 
 class TestTextToolCallStreamIntegration:
     """Integration test: text-based tool call in streaming pipeline."""
