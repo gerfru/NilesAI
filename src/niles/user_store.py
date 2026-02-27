@@ -14,29 +14,10 @@ class UserStore:
         self.pool = pool
 
     async def initialize(self) -> None:
-        """Create users table and run migrations."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                avatar_url TEXT,
-                created_at TIMESTAMP DEFAULT NOW(),
-                last_login TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        # Migration: add password_hash, auth_method, is_admin columns
-        await self.pool.execute("""
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT
-        """)
-        await self.pool.execute("""
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_method TEXT
-                NOT NULL DEFAULT 'google'
-        """)
-        await self.pool.execute("""
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN
-                NOT NULL DEFAULT FALSE
-        """)
+        """Run post-migration business logic.
+
+        Schema creation is handled by Alembic (see alembic/versions/).
+        """
         # Auto-promote: if exactly one user exists and no admin, make them admin
         admin_count = await self.pool.fetchval(
             "SELECT COUNT(*) FROM users WHERE is_admin = TRUE"

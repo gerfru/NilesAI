@@ -18,13 +18,6 @@ class TestMemoryStore:
     def store(self, pool):
         return MemoryStore(pool)
 
-    async def test_initialize_creates_table_and_index(self, store, pool):
-        await store.initialize()
-        assert pool.execute.call_count == 2
-        calls = [c[0][0] for c in pool.execute.call_args_list]
-        assert "CREATE TABLE IF NOT EXISTS memory" in calls[0]
-        assert "CREATE INDEX IF NOT EXISTS idx_memory_updated" in calls[1]
-
     async def test_get_returns_value(self, store, pool):
         pool.fetchrow.return_value = {"value": json.dumps("hello")}
         result = await store.get("test_key")
@@ -88,13 +81,6 @@ class TestConversationHistory:
     @pytest.fixture
     def history(self, pool):
         return ConversationHistory(pool)
-
-    async def test_initialize_creates_table_and_index(self, history, pool):
-        await history.initialize()
-        assert pool.execute.call_count == 2
-        calls = [c[0][0] for c in pool.execute.call_args_list]
-        assert "CREATE TABLE IF NOT EXISTS conversations" in calls[0]
-        assert "CREATE INDEX IF NOT EXISTS" in calls[1]
 
     async def test_add_message(self, history, pool):
         await history.add_message("user123", "user", "Hello")
