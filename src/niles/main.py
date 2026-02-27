@@ -200,6 +200,8 @@ async def lifespan(app: FastAPI):
         timezone=settings.timezone,
         vikunja_api_url=settings.vikunja_api_url,
         vikunja_api_token=settings.vikunja_api_token,
+        weather_latitude=settings.weather_latitude,
+        weather_longitude=settings.weather_longitude,
     )
 
     # Daily briefing: Mo-Fr (number auto-detected at runtime)
@@ -260,7 +262,7 @@ async def lifespan(app: FastAPI):
     signal_action = None
     signal_store = None
     signal_task = None
-    if settings.feature_signal and settings.signal_api_url:
+    if settings.signal_api_url:
         signal_action = SignalAction(settings)
         signal_store = SignalMessageStore(pool)
         await signal_store.initialize()
