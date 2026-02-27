@@ -20,20 +20,5 @@ doi_resolvers:
 
 default_doi_resolver: 'oadoi.org'
 
-engines:
-  - name: google
-    engine: google
-    shortcut: g
-    disabled: false
-  - name: duckduckgo
-    engine: duckduckgo
-    shortcut: ddg
-    disabled: false
-  - name: wikipedia
-    engine: wikipedia
-    shortcut: wp
-    disabled: false
-  - name: bing
-    engine: bing
-    shortcut: bi
-    disabled: false
+# No 'engines' section — SearXNG uses its defaults (92 engines including
+# Google, Bing, DuckDuckGo, Wikipedia, Brave, Qwant, Startpage, etc.)
