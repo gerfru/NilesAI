@@ -31,6 +31,15 @@ servers:
       SEARXNG_MCP_DEFAULT_LANGUAGE: "de"
       SEARXNG_MCP_DEFAULT_FORMAT: "text"
 
+  # Web Fetch — extract text from URLs (always active, no external container)
+  fetch:
+    command: python
+    args: ["-m", "niles.mcp.fetch"]
+    env:
+      FETCH_MAX_CHARS: "8000"
+      FETCH_TIMEOUT: "15"
+      FETCH_USER_AGENT: "Niles AI/1.0 (local assistant)"
+
 # Weitere Beispiele:
 #
 #   filesystem:

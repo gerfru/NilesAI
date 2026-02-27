@@ -57,6 +57,9 @@ dependencies = [
 
     # MCP Web Search (SearXNG client — only active when feature_search=true)
     "searxng-simple-mcp>=0.3.0",
+
+    # HTML text extraction for web fetch MCP server
+    "trafilatura>=2.0.0",
 ]
 
 [project.optional-dependencies]
