@@ -67,7 +67,7 @@ services:
       VIKUNJA_DATABASE_USER: evolution
       VIKUNJA_DATABASE_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
       VIKUNJA_DATABASE_DATABASE: vikunja_db
-      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://localhost:3457}
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://vikunja.localhost}
       VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
@@ -102,11 +102,10 @@ services:
     ports:
       - "443:443"
       - "8443:8443"
-      - "3457:3457"
     environment:
       - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
       - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
-      - CADDY_HOSTS_3457=${CADDY_HOSTS_3457:-https://localhost:3457}
+      - CADDY_HOSTS_VIKUNJA=${CADDY_HOSTS_VIKUNJA:-https://vikunja.localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -149,8 +148,7 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS:-}
       - VIKUNJA_API_URL=${VIKUNJA_API_URL:-}
-      - VIKUNJA_API_TOKEN=${VIKUNJA_API_TOKEN:-}
-      - FEATURE_VIKUNJA=${FEATURE_VIKUNJA:-false}
+      - VIKUNJA_PUBLIC_URL=${VIKUNJA_PUBLIC_URL:-}
       - FEATURE_WHATSAPP_SEND_OTHERS=${FEATURE_WHATSAPP_SEND_OTHERS:-true}
       - SIGNAL_API_URL=${SIGNAL_API_URL:-http://signal_api:8080}
       - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER:-}

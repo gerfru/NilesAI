@@ -87,8 +87,7 @@ class TestGenerateDaily:
         gen = BriefingGenerator.__new__(BriefingGenerator)
         gen.tz = TZ
         gen.pool = AsyncMock()
-        gen.vikunja_api_url = ""
-        gen.vikunja_api_token = ""
+        gen.vikunja_store = None
         gen.weather_latitude = ""
         gen.weather_longitude = ""
         return gen
@@ -150,8 +149,7 @@ class TestGenerateWeekly:
         gen = BriefingGenerator.__new__(BriefingGenerator)
         gen.tz = TZ
         gen.pool = AsyncMock()
-        gen.vikunja_api_url = ""
-        gen.vikunja_api_token = ""
+        gen.vikunja_store = None
         gen.weather_latitude = ""
         gen.weather_longitude = ""
         gen.timezone = "Europe/Vienna"
@@ -217,11 +215,18 @@ class TestGetOpenTasks:
 
     @pytest.mark.asyncio
     async def test_no_vikunja_configured(self):
-        """Without Vikunja URL/token, returns empty list."""
+        """Without vikunja_store, returns empty list."""
         gen = BriefingGenerator.__new__(BriefingGenerator)
-        gen.vikunja_api_url = ""
-        gen.vikunja_api_token = ""
+        gen.vikunja_store = None
         result = await gen._get_open_tasks()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_no_user_id_returns_empty(self):
+        """Without user_id, returns empty list."""
+        gen = BriefingGenerator.__new__(BriefingGenerator)
+        gen.vikunja_store = AsyncMock()
+        result = await gen._get_open_tasks(user_id=None)
         assert result == []
 
     @pytest.mark.asyncio
@@ -229,9 +234,13 @@ class TestGetOpenTasks:
         """If Vikunja is unreachable, returns empty list (no crash)."""
         gen = BriefingGenerator.__new__(BriefingGenerator)
         gen.tz = TZ
-        gen.vikunja_api_url = "http://localhost:99999/api/v1"
-        gen.vikunja_api_token = "test-token"
-        result = await gen._get_open_tasks()
+        store = AsyncMock()
+        store.get_credentials.return_value = {
+            "api_token": "test-token",
+            "api_url": "http://localhost:99999/api/v1",
+        }
+        gen.vikunja_store = store
+        result = await gen._get_open_tasks(user_id=1)
         assert result == []
 
 
@@ -291,8 +300,7 @@ class TestOverdueTodayDeduplication:
         gen = BriefingGenerator.__new__(BriefingGenerator)
         gen.tz = TZ
         gen.pool = AsyncMock()
-        gen.vikunja_api_url = "http://vikunja/api/v1"
-        gen.vikunja_api_token = "test"
+        gen.vikunja_store = AsyncMock()
         gen.weather_latitude = ""
         gen.weather_longitude = ""
         return gen
@@ -427,6 +435,7 @@ class TestSendBriefingReturnValue:
             return_value={
                 "phone_number": "4366012345678",
                 "instance_name": "niles-wa-1",
+                "user_id": 1,
             }
         )
         briefing_gen = AsyncMock()
@@ -502,6 +511,7 @@ class TestSendBriefingReturnValue:
             return_value={
                 "phone_number": "4366012345678",
                 "instance_name": "niles-wa-1",
+                "user_id": 1,
             }
         )
         briefing_gen = AsyncMock()
