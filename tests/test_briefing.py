@@ -89,6 +89,8 @@ class TestGenerateDaily:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = ""
         gen.vikunja_api_token = ""
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
         return gen
 
     @pytest.mark.asyncio
@@ -150,6 +152,9 @@ class TestGenerateWeekly:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = ""
         gen.vikunja_api_token = ""
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
+        gen.timezone = "Europe/Vienna"
         return gen
 
     @pytest.mark.asyncio
@@ -288,6 +293,8 @@ class TestOverdueTodayDeduplication:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = "http://vikunja/api/v1"
         gen.vikunja_api_token = "test"
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
         return gen
 
     @pytest.mark.asyncio
@@ -365,7 +372,12 @@ class TestSendBriefingReturnValue:
     """Test that send_daily/weekly_briefing return bool correctly."""
 
     def _make_settings(self, channel="whatsapp"):
-        return SimpleNamespace(briefing_channel=channel, signal_phone_number="")
+        return SimpleNamespace(
+            briefing_channel=channel,
+            signal_phone_number="",
+            weather_latitude="",
+            weather_longitude="",
+        )
 
     @pytest.mark.asyncio
     async def test_daily_returns_false_no_session(self):
@@ -463,6 +475,8 @@ class TestSendBriefingReturnValue:
         settings = SimpleNamespace(
             briefing_channel="signal",
             signal_phone_number="+436601234567",
+            weather_latitude="",
+            weather_longitude="",
         )
         app_state = SimpleNamespace(
             pool=AsyncMock(),
@@ -497,6 +511,8 @@ class TestSendBriefingReturnValue:
         settings = SimpleNamespace(
             briefing_channel="both",
             signal_phone_number="+436601234567",
+            weather_latitude="",
+            weather_longitude="",
         )
         app_state = SimpleNamespace(
             pool=pool,
@@ -510,3 +526,136 @@ class TestSendBriefingReturnValue:
         assert result is True
         whatsapp.send_message.assert_called_once()
         signal_action.send_message.assert_called_once()
+
+
+# Mock Open-Meteo response for weather tests
+_MOCK_DAILY_RESPONSE = {
+    "daily": {
+        "time": ["2026-02-27"],
+        "weather_code": [3],
+        "temperature_2m_min": [2.1],
+        "temperature_2m_max": [8.5],
+        "precipitation_sum": [1.2],
+        "precipitation_probability_max": [65],
+    }
+}
+
+_MOCK_FORECAST_RESPONSE = {
+    "daily": {
+        "time": ["2026-02-23", "2026-02-24", "2026-02-25"],
+        "weather_code": [0, 61, 3],
+        "temperature_2m_min": [-1.0, 3.0, 5.0],
+        "temperature_2m_max": [6.0, 9.0, 11.0],
+        "precipitation_sum": [0, 4.5, 0],
+        "precipitation_probability_max": [5, 80, 10],
+    }
+}
+
+
+class TestGetWeatherToday:
+    """Test _get_weather_today."""
+
+    def _make_gen(self, lat="48.2", lon="16.4"):
+        gen = BriefingGenerator.__new__(BriefingGenerator)
+        gen.tz = TZ
+        gen.timezone = "Europe/Vienna"
+        gen.weather_latitude = lat
+        gen.weather_longitude = lon
+        return gen
+
+    @pytest.mark.asyncio
+    async def test_no_coordinates_returns_none(self):
+        gen = self._make_gen(lat="", lon="")
+        result = await gen._get_weather_today()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_happy_path(self):
+        gen = self._make_gen()
+        gen._fetch_daily_weather = AsyncMock(return_value=_MOCK_DAILY_RESPONSE["daily"])
+        result = await gen._get_weather_today()
+
+        assert result is not None
+        assert "Bedeckt" in result
+        assert "2.1" in result
+        assert "8.5" in result
+        assert "1.2mm" in result
+
+    @pytest.mark.asyncio
+    async def test_api_error_returns_none(self):
+        gen = self._make_gen()
+        gen._fetch_daily_weather = AsyncMock(return_value=None)
+        result = await gen._get_weather_today()
+        assert result is None
+
+
+class TestGetWeatherForecast:
+    """Test _get_weather_forecast."""
+
+    def _make_gen(self, lat="48.2", lon="16.4"):
+        gen = BriefingGenerator.__new__(BriefingGenerator)
+        gen.tz = TZ
+        gen.timezone = "Europe/Vienna"
+        gen.weather_latitude = lat
+        gen.weather_longitude = lon
+        return gen
+
+    @pytest.mark.asyncio
+    async def test_no_coordinates_returns_none(self):
+        gen = self._make_gen(lat="", lon="")
+        result = await gen._get_weather_forecast(days=3)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_happy_path(self):
+        gen = self._make_gen()
+        gen._fetch_daily_weather = AsyncMock(
+            return_value=_MOCK_FORECAST_RESPONSE["daily"]
+        )
+        result = await gen._get_weather_forecast(days=3)
+
+        assert result is not None
+        assert len(result) == 4  # header + 3 days
+        assert "Wetter" in result[0]
+        assert "Klar" in result[1]  # code 0
+        assert "Leichter Regen" in result[2]  # code 61
+        assert "4.5mm" in result[2]
+
+    @pytest.mark.asyncio
+    async def test_api_error_returns_none(self):
+        gen = self._make_gen()
+        gen._fetch_daily_weather = AsyncMock(return_value=None)
+        result = await gen._get_weather_forecast(days=3)
+        assert result is None
+
+
+class TestFetchDailyWeather:
+    """Test _fetch_daily_weather HTTP interaction."""
+
+    def _make_gen(self, lat="48.2", lon="16.4"):
+        gen = BriefingGenerator.__new__(BriefingGenerator)
+        gen.tz = TZ
+        gen.timezone = "Europe/Vienna"
+        gen.weather_latitude = lat
+        gen.weather_longitude = lon
+        return gen
+
+    @pytest.mark.asyncio
+    async def test_no_coordinates_returns_none(self):
+        gen = self._make_gen(lat="", lon="")
+        result = await gen._fetch_daily_weather(days=1)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_none(self):
+        import httpx
+
+        gen = self._make_gen()
+        with patch("httpx.AsyncClient") as mock_cls:
+            client = AsyncMock()
+            client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            result = await gen._fetch_daily_weather(days=1)
+
+        assert result is None
