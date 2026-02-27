@@ -28,6 +28,7 @@ from niles.sources.web import (
     chat_stream,
     login_submit,
     logout,
+    ollama_models,
     settings_page,
     update_setting,
 )
@@ -550,6 +551,74 @@ class TestSettingsEndpoints:
 
         body = response.body.decode()
         assert "(not set)" in body
+
+
+class TestOllamaModelsEndpoint:
+    def _admin_user_store(self):
+        """User store that returns an admin user for get_by_id."""
+        store = AsyncMock()
+        store.get_by_id.return_value = {"is_admin": True}
+        return store
+
+    async def test_returns_options_from_ollama(self):
+        settings = _make_settings(llm_model="llama3.1:8b")
+        request = _make_request(
+            cookies=_auth_cookies(),
+            settings=settings,
+            user_store=self._admin_user_store(),
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "models": [
+                {"name": "llama3.1:8b"},
+                {"name": "mistral:7b"},
+                {"name": "qwen2.5:7b"},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("niles.sources.web.httpx.AsyncClient") as mock_client:
+            instance = AsyncMock()
+            instance.get.return_value = mock_resp
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__ = AsyncMock(return_value=False)
+            mock_client.return_value = instance
+
+            response = await ollama_models(request)
+
+        body = response.body.decode()
+        assert "llama3.1:8b" in body
+        assert "mistral:7b" in body
+        assert "qwen2.5:7b" in body
+        assert "selected" in body  # current model should be selected
+
+    async def test_returns_current_model_when_ollama_unreachable(self):
+        settings = _make_settings(llm_model="llama3.1:8b")
+        request = _make_request(
+            cookies=_auth_cookies(),
+            settings=settings,
+            user_store=self._admin_user_store(),
+        )
+
+        with patch("niles.sources.web.httpx.AsyncClient") as mock_client:
+            instance = AsyncMock()
+            instance.get.side_effect = Exception("Connection refused")
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__ = AsyncMock(return_value=False)
+            mock_client.return_value = instance
+
+            response = await ollama_models(request)
+
+        body = response.body.decode()
+        assert "llama3.1:8b" in body
+        assert "nicht erreichbar" in body
+
+    async def test_rejects_unauthenticated(self):
+        request = _make_request(cookies={})
+        response = await ollama_models(request)
+        assert response.status_code == 303  # redirect to login
 
 
 class TestChatStreamEndpoint:

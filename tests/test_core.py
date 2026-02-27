@@ -290,10 +290,12 @@ class TestTextToolCallParsing:
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is None
 
-    def test_partial_json_returns_none(self):
+    def test_partial_json_repaired_by_json_repair(self):
+        """Partial JSON is completed by json-repair (title defaults to empty)."""
         text = '{"name": "create_task", "parameters": {"title":'
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
-        assert result is None
+        assert result is not None
+        assert result["name"] == "create_task"
 
     def test_empty_string_returns_none(self):
         result = NilesAgent._try_parse_text_tool_call("", self._TOOLS)
@@ -376,6 +378,58 @@ class TestTextToolCallParsing:
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is not None
         assert result["name"] == "create_task"
+
+    # --- Text-with-prefix detection ---
+
+    def test_text_prefix_before_json(self):
+        """LLM outputs explanation text before JSON tool call."""
+        text = 'Ich rufe find_contact auf, um die Telefonnummer von Mama zu finden.\n\n{"name": "find_contact", "parameters": {"query":"Mama"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "find_contact"
+        args = json.loads(result["arguments"])
+        assert args["query"] == "Mama"
+
+    def test_text_prefix_with_inline_json(self):
+        """LLM outputs explanation and JSON on same line."""
+        text = 'Suche nach Kontakt: {"name": "find_contact", "parameters": {"name":"Papa"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "find_contact"
+
+    def test_text_prefix_no_json_returns_none(self):
+        """Pure text without any JSON returns None."""
+        text = "Ich suche nach Mama in den Kontakten, aber es gibt kein JSON."
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    def test_text_prefix_with_curly_brace_in_text(self):
+        """Text with a '{' that is NOT a valid tool call returns None."""
+        text = "Die Formel ist {x + y} = z"
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
+    # --- json-repair fallback ---
+
+    def test_json_repair_trailing_comma(self):
+        """Trailing comma in JSON is repaired."""
+        text = '{"name":"create_task","parameters":{"title":"Test",}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+
+    def test_json_repair_single_quotes(self):
+        """Single-quoted JSON is repaired."""
+        text = "{'name':'create_task','parameters':{'title':'Test'}}"
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+
+    def test_json_repair_still_rejects_nonsense(self):
+        """Complete nonsense is not repaired into a valid tool call."""
+        text = "{hello world this is not json}"
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
 
 
 class TestTextToolCallStreamIntegration:

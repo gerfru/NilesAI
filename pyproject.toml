@@ -64,6 +64,9 @@ dependencies = [
 
     # HTML text extraction for web fetch MCP server
     "trafilatura>=2.0.0",
+
+    # Robust JSON repair for malformed LLM tool-call output
+    "json-repair>=0.58.0",
 ]
 
 [project.optional-dependencies]
