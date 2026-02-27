@@ -351,6 +351,8 @@ def _safe_settings_dict(settings) -> dict:
         "infra": infra,
         "briefing": briefing,
         "weather": weather,
+        "feature_search": getattr(settings, "feature_search", False),
+        "searxng_url": getattr(settings, "searxng_url", "http://searxng:8888"),
     }
 
 
@@ -728,6 +730,62 @@ async def settings_page(request: Request, error: str = Query(default="")):
 
 
 # --- htmx fragment endpoints ---
+
+
+@router.get("/api/settings/ollama_models", response_class=HTMLResponse)
+async def ollama_models(request: Request):
+    """Return <option> elements for all locally available Ollama models."""
+    _user, error = await _require_admin_page(request)
+    if error:
+        return error
+
+    settings = request.app.state.settings
+    # Strip /v1 suffix to get Ollama's native API base
+    base = settings.llm_base_url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+
+    current_model = settings.llm_model
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{base}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        # Ollama unreachable — return single option with current value
+        return HTMLResponse(
+            f'<option value="{_html.escape(current_model)}" selected>'
+            f"{_html.escape(current_model)} (Ollama nicht erreichbar)</option>"
+        )
+
+    models = sorted(
+        (m["name"] for m in data.get("models", [])),
+        key=str.lower,
+    )
+
+    if not models:
+        return HTMLResponse(
+            f'<option value="{_html.escape(current_model)}" selected>'
+            f"{_html.escape(current_model)}</option>"
+        )
+
+    options = []
+    for name in models:
+        selected = " selected" if name == current_model else ""
+        options.append(
+            f'<option value="{_html.escape(name)}"{selected}>'
+            f"{_html.escape(name)}</option>"
+        )
+
+    # If current model is not in the list (e.g. deleted), add it at top
+    if current_model and current_model not in models:
+        options.insert(
+            0,
+            f'<option value="{_html.escape(current_model)}" selected>'
+            f"{_html.escape(current_model)} (nicht installiert)</option>",
+        )
+
+    return HTMLResponse("\n".join(options))
 
 
 @router.get("/api/chat/history", response_class=HTMLResponse)

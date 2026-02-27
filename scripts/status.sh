@@ -14,19 +14,21 @@ if ! command -v docker &>/dev/null; then
     exit 1
 fi
 
-# Load environment variables if .env exists
-if [ -f .env ]; then
-    set -a
-    source .env
-    set +a
-fi
+# Read specific values from .env (don't source — values may contain
+# URLs or commas that bash would misinterpret as commands).
+EVOLUTION_API_KEY=$(grep -s '^EVOLUTION_API_KEY=' .env | head -1 | cut -d= -f2-)
+export EVOLUTION_API_KEY
 
 echo "Niles AI - Status Check"
 echo ""
 
 # Check Docker
 echo "Docker Services:"
-docker compose -f docker/docker-compose.yml ps
+COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
+if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
+    COMPOSE_CMD="$COMPOSE_CMD --profile search"
+fi
+$COMPOSE_CMD ps
 echo ""
 
 # Check Niles Core (via Caddy HTTPS)

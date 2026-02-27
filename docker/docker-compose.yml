@@ -94,6 +94,24 @@ services:
     networks:
       - niles_network
 
+  # SearXNG (Privacy-focused meta search engine) — activate via --profile search
+  searxng:
+    image: searxng/searxng:2025.5.10-1b787ed35
+    container_name: niles_searxng
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+      # Set SEARXNG_SECRET_KEY in .env for production (openssl rand -hex 32).
+      # Fallback is safe: SearXNG is only reachable inside the Docker network.
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-niles-local-only}
+    volumes:
+      - searxng_data:/etc/searxng
+      - ../config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - niles_network
+    profiles:
+      - search
+
   # Caddy Reverse Proxy (HTTPS termination)
   caddy:
     container_name: niles_caddy
@@ -157,6 +175,8 @@ services:
       - FEATURE_SIGNAL_SEND_OTHERS=${FEATURE_SIGNAL_SEND_OTHERS:-false}
       - BRIEFING_CHANNEL=${BRIEFING_CHANNEL:-whatsapp}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FEATURE_SEARCH=${FEATURE_SEARCH:-false}
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
     volumes:
       - ../config:/app/config:ro
     networks:
@@ -171,6 +191,7 @@ volumes:
   caddy_data:
   caddy_config:
   signal_cli_config:
+  searxng_data:
 
 networks:
   niles_network:
