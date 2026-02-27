@@ -83,7 +83,6 @@ class Settings(BaseSettings):
     # Signal (signal-cli-rest-api)
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""  # e.g. +436601234567
-    feature_signal: bool = True
     feature_signal_send_others: bool = False
 
     # Briefing / Digest
