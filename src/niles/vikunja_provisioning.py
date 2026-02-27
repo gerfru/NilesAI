@@ -85,8 +85,8 @@ class VikunjaProvisioner:
         prefix = email.split("@")[0].replace(".", "").replace("+", "")[:20]
         return f"{prefix}_{user_id}"
 
-    async def _register(self, username: str, email: str, password: str) -> bool:
-        """POST /register. Returns True on success or user-already-exists."""
+    async def _register(self, username: str, email: str, password: str) -> None:
+        """POST /register. Logs result; 400 (user exists) is expected and tolerated."""
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
@@ -100,19 +100,16 @@ class VikunjaProvisioner:
                 )
                 if resp.status_code == 200:
                     logger.info("Vikunja user registered: %s", username)
-                    return True
-                if resp.status_code == 400:
+                elif resp.status_code == 400:
                     logger.debug("Vikunja user already exists: %s", username)
-                    return True
-                logger.warning(
-                    "Vikunja register unexpected status %d: %s",
-                    resp.status_code,
-                    resp.text[:200],
-                )
-                return False
+                else:
+                    logger.warning(
+                        "Vikunja register unexpected status %d: %s",
+                        resp.status_code,
+                        resp.text[:200],
+                    )
         except Exception:
             logger.exception("Vikunja register failed for %s", username)
-            return False
 
     async def _login(self, username: str, password: str) -> str | None:
         """POST /login → JWT token string, or None on failure."""
