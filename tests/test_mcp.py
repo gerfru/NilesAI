@@ -8,6 +8,7 @@ from niles.mcp.client import (
     _VALID_TOOL_NAME,
     _expand_env,
     _mcp_tool_to_openai,
+    _simplify_schema,
 )
 
 
@@ -70,6 +71,92 @@ class TestMCPToolToOpenAI:
 
         result = _mcp_tool_to_openai("mcp__s__t", mock_tool)
         assert result["function"]["parameters"] == {"type": "object", "properties": {}}
+
+
+class TestSimplifySchema:
+    def test_anyof_nullable_flattened(self):
+        """anyOf with null type → simple type."""
+        schema = {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": None,
+            "description": "Optional param",
+        }
+        result = _simplify_schema(schema)
+        assert result["type"] == "string"
+        assert "anyOf" not in result
+
+    def test_anyof_non_nullable_kept(self):
+        """anyOf with multiple non-null types stays as anyOf."""
+        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+        result = _simplify_schema(schema)
+        assert "anyOf" in result
+        assert len(result["anyOf"]) == 2
+
+    def test_exclusive_minimum_replaced(self):
+        """exclusiveMinimum → minimum."""
+        schema = {"type": "integer", "exclusiveMinimum": 0}
+        result = _simplify_schema(schema)
+        assert result["minimum"] == 1
+        assert "exclusiveMinimum" not in result
+
+    def test_nested_properties_simplified(self):
+        """Properties containing anyOf patterns are simplified recursively."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "language": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": "de",
+                },
+                "query": {"type": "string"},
+            },
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        assert result["properties"]["language"]["type"] == "string"
+        assert result["properties"]["query"]["type"] == "string"
+        assert result["required"] == ["query"]
+
+    def test_simple_schema_unchanged(self):
+        """Simple schema passes through without modification."""
+        schema = {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        assert result == schema
+
+    def test_real_searxng_schema(self):
+        """Full SearXNG-style schema is simplified correctly."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "result_count": {
+                    "type": "integer",
+                    "default": 10,
+                    "exclusiveMinimum": 0,
+                },
+                "categories": {
+                    "anyOf": [
+                        {"items": {"type": "string"}, "type": "array"},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                },
+            },
+            "required": ["query"],
+        }
+        result = _simplify_schema(schema)
+        # query unchanged
+        assert result["properties"]["query"]["type"] == "string"
+        # exclusiveMinimum → minimum
+        assert result["properties"]["result_count"]["minimum"] == 1
+        assert "exclusiveMinimum" not in result["properties"]["result_count"]
+        # anyOf nullable → array type
+        assert result["properties"]["categories"]["type"] == "array"
+        assert "anyOf" not in result["properties"]["categories"]
 
 
 class TestMCPManagerConfig:

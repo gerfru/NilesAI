@@ -208,13 +208,50 @@ class MCPManager:
         logger.info("MCP: all servers stopped")
 
 
+def _simplify_schema(schema: dict) -> dict:
+    """Simplify a JSON Schema for better compatibility with local LLMs.
+
+    Small models (e.g. llama3.1:8b) struggle with advanced JSON Schema
+    features like ``anyOf`` nullable patterns and ``exclusiveMinimum``.
+    This function flattens them into simple types that Ollama handles
+    reliably.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    result = {}
+    for key, value in schema.items():
+        if key == "anyOf" and isinstance(value, list):
+            # anyOf: [{type: "string"}, {type: "null"}] → {type: "string"}
+            non_null = [v for v in value if v.get("type") != "null"]
+            if len(non_null) == 1:
+                result.update(_simplify_schema(non_null[0]))
+            else:
+                result[key] = [_simplify_schema(v) for v in value]
+        elif key == "exclusiveMinimum":
+            # Replace exclusiveMinimum with minimum (broadly supported)
+            result["minimum"] = value + 1 if isinstance(value, int) else value
+        elif key == "properties" and isinstance(value, dict):
+            result[key] = {k: _simplify_schema(v) for k, v in value.items()}
+        elif isinstance(value, dict):
+            result[key] = _simplify_schema(value)
+        elif isinstance(value, list):
+            result[key] = [
+                _simplify_schema(v) if isinstance(v, dict) else v for v in value
+            ]
+        else:
+            result[key] = value
+    return result
+
+
 def _mcp_tool_to_openai(prefixed_name: str, tool: Tool) -> dict:
     """Convert an MCP Tool to OpenAI function-calling format."""
+    schema = tool.inputSchema or {"type": "object", "properties": {}}
     return {
         "type": "function",
         "function": {
             "name": prefixed_name,
             "description": tool.description or "",
-            "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+            "parameters": _simplify_schema(schema),
         },
     }
