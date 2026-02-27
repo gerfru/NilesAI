@@ -33,7 +33,6 @@ EDITABLE_SETTINGS = {
     "carddav_user",
     "carddav_password",
     "feature_vikunja",
-    "feature_signal",
     "feature_signal_send_others",
     "signal_api_url",
     "signal_phone_number",

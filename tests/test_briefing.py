@@ -89,6 +89,8 @@ class TestGenerateDaily:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = ""
         gen.vikunja_api_token = ""
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
         return gen
 
     @pytest.mark.asyncio
@@ -150,6 +152,9 @@ class TestGenerateWeekly:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = ""
         gen.vikunja_api_token = ""
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
+        gen.timezone = "Europe/Vienna"
         return gen
 
     @pytest.mark.asyncio
@@ -288,6 +293,8 @@ class TestOverdueTodayDeduplication:
         gen.pool = AsyncMock()
         gen.vikunja_api_url = "http://vikunja/api/v1"
         gen.vikunja_api_token = "test"
+        gen.weather_latitude = ""
+        gen.weather_longitude = ""
         return gen
 
     @pytest.mark.asyncio
