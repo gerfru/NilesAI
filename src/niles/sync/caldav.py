@@ -161,32 +161,6 @@ class CalDAVSync:
         self._collections_cache: list[dict] | None = None
         self._collections_cache_time: float = 0
 
-    async def initialize(self) -> None:
-        """Create events table and indexes if they don't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                id SERIAL PRIMARY KEY,
-                summary TEXT NOT NULL,
-                dtstart TIMESTAMP WITH TIME ZONE NOT NULL,
-                dtend TIMESTAMP WITH TIME ZONE,
-                all_day BOOLEAN DEFAULT FALSE,
-                description TEXT,
-                location TEXT,
-                transp TEXT DEFAULT 'OPAQUE',
-                caldav_uid TEXT UNIQUE,
-                caldav_url TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_events_dtstart ON events (dtstart)
-        """)
-        await self.pool.execute("""
-            CREATE INDEX IF NOT EXISTS idx_events_summary ON events (summary)
-        """)
-        logger.info("Events table initialized")
-
     async def sync_events(self) -> int:
         """Run a CalDAV sync using REPORT with time-range filter.
 

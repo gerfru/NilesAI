@@ -121,16 +121,6 @@ def _make_root_sync(pool, caldav_calendars=""):
     )
 
 
-class TestInitialize:
-    async def test_creates_table_and_indexes(self, sync, pool):
-        await sync.initialize()
-        assert pool.execute.call_count == 3
-        calls = [c[0][0] for c in pool.execute.call_args_list]
-        assert "CREATE TABLE IF NOT EXISTS events" in calls[0]
-        assert "idx_events_dtstart" in calls[1]
-        assert "idx_events_summary" in calls[2]
-
-
 class TestGetSyncCollections:
     async def test_direct_calendar_url(self, sync):
         """When URL has .ics files directly, return that URL."""
