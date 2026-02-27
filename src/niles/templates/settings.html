@@ -108,7 +108,7 @@
 {% if user and user.is_admin %}
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Wetter</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Standort fuer Wetterdaten (Open-Meteo). Aenderungen werden nach Neustart wirksam.</p>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Standort fuer Wetterdaten (Open-Meteo). Koordinaten werden beim naechsten Briefing uebernommen.</p>
     <div id="weather-location-container">
         {% include "fragments/weather_location.html" %}
     </div>
