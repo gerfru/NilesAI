@@ -68,17 +68,6 @@ class SettingsStore:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def initialize(self) -> None:
-        """Create settings_overrides table if it doesn't exist."""
-        await self.pool.execute("""
-            CREATE TABLE IF NOT EXISTS settings_overrides (
-                key TEXT PRIMARY KEY,
-                value JSONB NOT NULL,
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        logger.info("Settings store initialized")
-
     async def get_all(self) -> dict[str, Any]:
         """Load all persisted overrides."""
         rows = await self.pool.fetch("SELECT key, value FROM settings_overrides")
