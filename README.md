@@ -8,7 +8,7 @@ A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsA
 
 - **WhatsApp Integration** -- Self-chat via "Hey Niles" trigger, message history, contact lookup.
 - **Calendar** -- Multi-source sync (CalDAV, Google Calendar, ICS), event search and creation.
-- **Tasks** -- Vikunja integration (list, create, complete), per-user tokens.
+- **Tasks** -- Vikunja integration (list, create, complete), auto-provisioned per-user accounts.
 - **Contacts** -- CardDAV sync with multi-phone support.
 - **Memory** -- Persistent key-value store, injected into every conversation.
 - **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
@@ -81,9 +81,12 @@ src/niles/                     Python Backend
   sources/                     Webhook Handler, Web-UI (SSE Streaming)
   sync/                        CardDAV, CalDAV, Google Calendar, iCal Parser
   mcp/                         MCP Server Manager
+  vikunja_store.py             Per-user Vikunja credentials (PostgreSQL)
+  vikunja_provisioning.py      Auto-provision Vikunja accounts on login
   templates/                   Jinja2 Templates (Tailwind CSS)
   static/                      CSS, JavaScript
-tests/                         455 tests (pytest + pytest-asyncio)
+alembic/                       Database migrations (Alembic)
+tests/                         535 tests (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
 docker/                        Dockerfile, docker-compose.yml, Caddyfile
 scripts/                       start, stop, status, dev, test, backup

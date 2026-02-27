@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 7.3
-> **Updated:** 2026-02-26
+> **Version:** 7.4
+> **Updated:** 2026-02-27
 
 ---
 
@@ -104,6 +104,8 @@ Niles/
 │       ├── settings_store.py         # Runtime settings overrides (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-user WhatsApp sessions (PostgreSQL)
 │       ├── signal_store.py          # Signal message store (PostgreSQL)
+│       ├── vikunja_store.py         # Per-user Vikunja credentials (PostgreSQL)
+│       ├── vikunja_provisioning.py  # Auto-provision Vikunja accounts on login
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, tool definitions
 │       │   └── prompts.py            # System prompt loading/building
@@ -170,10 +172,18 @@ Niles/
 │   ├── test_web.py                  # Web UI, Google OAuth, sessions, CSRF
 │   ├── test_whatsapp_sessions.py    # Per-user WhatsApp sessions
 │   ├── test_tasks.py                # Vikunja task management
+│   ├── test_vikunja_store.py        # Per-user Vikunja credentials + agent resolution
+│   ├── test_vikunja_provisioning.py # Vikunja auto-provisioning
+│   ├── test_migrations.py          # Alembic migration chain validation
+│   ├── test_weather_mcp.py         # Weather MCP server integration
 │   ├── test_self_chat.py            # WhatsApp self-chat trigger
 │   ├── test_signal.py               # Signal action, listener, echo guard, triggers
 │   ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
 │   └── test_logging.py              # Structured logging + Prometheus metrics
+├── alembic/
+│   ├── env.py                       # Alembic environment (sync connection)
+│   ├── script.py.mako               # Migration template
+│   └── versions/                    # Migration files (001_baseline, 002_...)
 ├── config/
 │   └── soul.md                       # Agent personality
 ├── docker/
@@ -332,14 +342,16 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_allowed_emails: str = ""
-    # Vikunja (Todo/Task Management)
+    # Weather (configured via Settings UI, stored as strings for env-var pass-through)
+    weather_latitude: str = ""
+    weather_longitude: str = ""
+    weather_location_name: str = ""
+    # Vikunja (Todo/Task Management) — tokens are per-user (auto-provisioned)
     vikunja_api_url: str = ""
-    vikunja_api_token: str = ""
-    feature_vikunja: bool = False
-    # Signal (optional)
+    vikunja_public_url: str = ""
+    # Signal (signal-cli-rest-api)
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""
-    feature_signal: bool = False
     feature_signal_send_others: bool = False
     # Briefing / Digest
     briefing_channel: str = "whatsapp"        # whatsapp | signal | both
@@ -363,7 +375,7 @@ Complete settings table with defaults and env variables: see #6.1.
 class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
                  mcp_manager, calendar, calendar_manager, wa_store,
-                 tasks=None, vikunja_store=None,
+                 vikunja_store=None,
                  signal=None, signal_store=None): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
@@ -462,11 +474,11 @@ EDITABLE_SETTINGS = {
     "feature_whatsapp_send_others",
     "caldav_calendars",
     "carddav_url", "carddav_user", "carddav_password",
-    "feature_vikunja",
+    "feature_signal_send_others",
+    "signal_api_url", "signal_phone_number", "signal_disabled",
     "feature_briefing_daily", "feature_briefing_weekly",
-    "briefing_daily_time", "briefing_weekly_time",
-    "feature_signal", "feature_signal_send_others",
-    "signal_phone_number", "briefing_channel",
+    "briefing_daily_time", "briefing_weekly_time", "briefing_channel",
+    "weather_latitude", "weather_longitude", "weather_location_name",
 }
 
 class SettingsStore:
@@ -668,7 +680,7 @@ MCP server manager for external tool integrations. Configuration via `config/mcp
 
 ### 3.20 Task Management (`src/niles/actions/tasks.py`)
 
-Interface to the Vikunja REST API. Feature-flag controlled (`feature_vikunja`). Task tools are only sent to the LLM when Vikunja is configured.
+Interface to the Vikunja REST API. Task tools are sent to the LLM when per-user Vikunja credentials exist (auto-provisioned on login via `vikunja_provisioning.py`). No global feature flag required.
 
 ```python
 class TasksAction:
@@ -690,9 +702,10 @@ Automatic daily and weekly overview via WhatsApp. No LLM -- pure DB queries + te
 
 ```python
 class BriefingGenerator:
-    def __init__(self, pool, timezone, vikunja_api_url, vikunja_api_token): ...
-    async def generate_daily(self) -> str    # Mon-Fri: Appointments + Tasks
-    async def generate_weekly(self) -> str   # Mon: Week by days (Mon-Fri)
+    def __init__(self, pool, timezone, vikunja_store=None,
+                 weather_latitude="", weather_longitude=""): ...
+    async def generate_daily(self, user_id=None) -> str    # Mon-Fri: Appointments + Tasks + Weather
+    async def generate_weekly(self, user_id=None) -> str   # Mon: Week by days (Mon-Fri)
 ```
 
 - **Daily (Mon-Fri):** Today's appointments, overdue tasks, tasks due today, open tasks summary
@@ -710,7 +723,7 @@ class BriefingGenerator:
 
 ## 4. Database Schema
 
-All tables reside in database `evolution_db` (user `evolution`). Tables are automatically created on startup (`CREATE TABLE IF NOT EXISTS`).
+All tables reside in database `evolution_db` (user `evolution`). Schema is managed by **Alembic** (see `alembic/versions/`). Migrations run automatically on container start via `scripts/start.sh`. Store `initialize()` methods contain only business logic, no `CREATE TABLE`.
 
 ### users
 
@@ -986,12 +999,13 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `google_client_id` | `""` | `GOOGLE_CLIENT_ID` | No\*\* |
 | `google_client_secret` | `""` | `GOOGLE_CLIENT_SECRET` | No\*\* |
 | `google_allowed_emails` | `""` | `GOOGLE_ALLOWED_EMAILS` | No |
+| `weather_latitude` | `""` | `WEATHER_LATITUDE` | No |
+| `weather_longitude` | `""` | `WEATHER_LONGITUDE` | No |
+| `weather_location_name` | `""` | `WEATHER_LOCATION_NAME` | No |
 | `vikunja_api_url` | `""` | `VIKUNJA_API_URL` | No\*\*\* |
-| `vikunja_api_token` | `""` | `VIKUNJA_API_TOKEN` | No\*\*\* |
-| `feature_vikunja` | `false` | `FEATURE_VIKUNJA` | No |
+| `vikunja_public_url` | `""` | `VIKUNJA_PUBLIC_URL` | No |
 | `signal_api_url` | `"http://signal_api:8080"` | `SIGNAL_API_URL` | No\*\*\*\* |
 | `signal_phone_number` | `""` | `SIGNAL_PHONE_NUMBER` | No |
-| `feature_signal` | `false` | `FEATURE_SIGNAL` | No |
 | `feature_signal_send_others` | `false` | `FEATURE_SIGNAL_SEND_OTHERS` | No |
 | `briefing_channel` | `"whatsapp"` | `BRIEFING_CHANNEL` | No |
 | `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | No |
@@ -1003,9 +1017,9 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 
 \*\* Required if Google OAuth is desired. Without Google OAuth, API key login is used.
 
-\*\*\* Required if Vikunja integration is desired. Additionally requires `FEATURE_VIKUNJA=true`.
+\*\*\* Required if Vikunja integration is desired. Accounts are auto-provisioned on login (no manual token needed).
 
-\*\*\*\* Required if Signal integration is desired. Additionally requires `FEATURE_SIGNAL=true`. Phone number is auto-discovered after QR linking.
+\*\*\*\* Required if Signal integration is desired. Phone number is auto-discovered after QR linking.
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
@@ -1024,36 +1038,27 @@ Feature flags and selected text settings (see `EDITABLE_SETTINGS` in #3.7) can b
 EVOLUTION_POSTGRES_PASSWORD=<password>
 EVOLUTION_API_KEY=<api-key>
 
-# Session (recommended for stable sessions across container restarts)
+# Recommended
 SESSION_SECRET=<random-string>
-BASE_URL=https://niles.example.com
+NILES_API_KEY=<api-key>
+BASE_URL=https://niles.example.ts.net
 
 # Google OAuth (optional)
 GOOGLE_CLIENT_ID=<client-id>
 GOOGLE_CLIENT_SECRET=<client-secret>
 GOOGLE_ALLOWED_EMAILS=user1@gmail.com,user2@gmail.com
 
-# Vikunja (optional)
+# Vikunja (optional, accounts auto-provisioned)
+VIKUNJA_JWT_SECRET=<openssl rand -hex 32>
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
-VIKUNJA_API_TOKEN=<api-token>
-FEATURE_VIKUNJA=false
-
-# Signal (optional)
-SIGNAL_API_URL=http://signal_api:8080
-FEATURE_SIGNAL=false
-
-# Optional
-NILES_API_KEY=<api-key>
-CARDDAV_USER=<user>
-CARDDAV_PASSWORD=<password>
-LOG_LEVEL=INFO
+VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
 ```
 
 ### 6.4 Environment Variables
 
 **Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_API_TOKEN`, `FEATURE_VIKUNJA`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_PUBLIC_URL`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
 
 See `.env.example` for complete documentation.
 
