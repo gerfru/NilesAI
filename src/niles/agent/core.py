@@ -374,7 +374,6 @@ class NilesAgent:
         calendar: CalendarAction | None = None,
         calendar_manager: CalendarSourceManager | None = None,
         wa_store: WhatsAppSessionStore | None = None,
-        tasks: TasksAction | None = None,
         vikunja_store: VikunjaCredentialStore | None = None,
         signal: SignalAction | None = None,
         signal_store: SignalMessageStore | None = None,
@@ -393,7 +392,6 @@ class NilesAgent:
         self.calendar = calendar
         self.calendar_manager = calendar_manager
         self.wa_store = wa_store
-        self.tasks = tasks
         self.vikunja_store = vikunja_store
         self.signal = signal
         self.signal_store = signal_store
@@ -466,15 +464,18 @@ class NilesAgent:
         return None
 
     async def _resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:
-        """Resolve per-user Vikunja credentials, falling back to global."""
+        """Resolve per-user Vikunja credentials."""
         if self.vikunja_store:
             uid = await self._resolve_user_id(chat_id)
             if uid is not None:
                 creds = await self.vikunja_store.get_credentials(uid)
                 if creds and creds["api_token"]:
                     api_url = creds["api_url"] or self.config.vikunja_api_url
-                    return TasksAction(api_url=api_url, api_token=creds["api_token"])
-        return self.tasks  # Global fallback (or None)
+                    if api_url:
+                        return TasksAction(
+                            api_url=api_url, api_token=creds["api_token"]
+                        )
+        return None
 
     # Known tool names for text-based tool call detection
     _TOOL_NAMES = frozenset(t["function"]["name"] for t in TOOLS)
@@ -617,8 +618,8 @@ class NilesAgent:
         messages.append({"role": "user", "content": event["content"]})
 
         all_tools = [t for t in TOOLS]
-        # Remove task tools when Vikunja feature is disabled
-        if not self.config.feature_vikunja:
+        # Remove task tools when Vikunja is not configured
+        if not self.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _task_tools

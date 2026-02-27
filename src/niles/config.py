@@ -75,10 +75,10 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_allowed_emails: str = ""  # Comma-separated, empty = all allowed
 
-    # Vikunja (Todo/Task Management)
+    # Vikunja (Todo/Task Management) — tokens are per-user (auto-provisioned)
     vikunja_api_url: str = ""
-    vikunja_api_token: str = ""
-    feature_vikunja: bool = False
+    # Public URL for Vikunja web UI (shown as nav link, e.g. https://vikunja.niles.example.ts.net)
+    vikunja_public_url: str = ""
 
     # Signal (signal-cli-rest-api)
     signal_api_url: str = "http://signal_api:8080"

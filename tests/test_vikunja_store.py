@@ -87,7 +87,6 @@ class TestAgentPerUserVikunja:
 
         agent = NilesAgent(
             config=_make_settings(
-                feature_vikunja=True,
                 vikunja_api_url="http://vikunja:3456/api/v1",
             ),
             contacts=AsyncMock(),
@@ -114,7 +113,6 @@ class TestAgentPerUserVikunja:
 
         agent = NilesAgent(
             config=_make_settings(
-                feature_vikunja=True,
                 vikunja_api_url="http://vikunja:3456/api/v1",
             ),
             contacts=AsyncMock(),
@@ -128,41 +126,15 @@ class TestAgentPerUserVikunja:
         assert result is not None
         assert result.api_url == "http://custom:9999/api/v1"
 
-    async def test_task_falls_back_to_global(self):
-        """User without stored token uses global TasksAction."""
-        from niles.actions.tasks import TasksAction
-        from niles.agent.core import NilesAgent
-
-        vikunja_store = AsyncMock()
-        vikunja_store.get_credentials.return_value = None
-
-        global_tasks = TasksAction(
-            api_url="http://vikunja:3456/api/v1",
-            api_token="global-tok",
-        )
-
-        agent = NilesAgent(
-            config=_make_settings(feature_vikunja=True),
-            contacts=AsyncMock(),
-            whatsapp=AsyncMock(),
-            memory=AsyncMock(),
-            history=AsyncMock(),
-            tasks=global_tasks,
-            vikunja_store=vikunja_store,
-        )
-
-        result = await agent._resolve_vikunja_tasks("web-user-99")
-        assert result is global_tasks
-
-    async def test_task_no_credentials_returns_none(self):
-        """No per-user token and no global → returns None."""
+    async def test_no_credentials_returns_none(self):
+        """User without stored token gets None (no global fallback)."""
         from niles.agent.core import NilesAgent
 
         vikunja_store = AsyncMock()
         vikunja_store.get_credentials.return_value = None
 
         agent = NilesAgent(
-            config=_make_settings(feature_vikunja=True),
+            config=_make_settings(vikunja_api_url="http://vikunja:3456/api/v1"),
             contacts=AsyncMock(),
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
@@ -173,29 +145,23 @@ class TestAgentPerUserVikunja:
         result = await agent._resolve_vikunja_tasks("web-user-99")
         assert result is None
 
-    async def test_whatsapp_chat_id_uses_global_fallback(self):
-        """WhatsApp users (wa-* chat_id) always get global fallback."""
-        from niles.actions.tasks import TasksAction
+    async def test_whatsapp_chat_id_returns_none(self):
+        """WhatsApp users (wa-* chat_id) get None without per-user creds."""
         from niles.agent.core import NilesAgent
 
         vikunja_store = AsyncMock()
-        global_tasks = TasksAction(
-            api_url="http://vikunja:3456/api/v1",
-            api_token="global-tok",
-        )
 
         agent = NilesAgent(
-            config=_make_settings(feature_vikunja=True),
+            config=_make_settings(vikunja_api_url="http://vikunja:3456/api/v1"),
             contacts=AsyncMock(),
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
             history=AsyncMock(),
-            tasks=global_tasks,
             vikunja_store=vikunja_store,
         )
 
         result = await agent._resolve_vikunja_tasks("wa-436601234567")
-        assert result is global_tasks
+        assert result is None
         # vikunja_store should NOT be queried for wa-* chat_ids
         vikunja_store.get_credentials.assert_not_called()
 
@@ -205,7 +171,6 @@ class TestAgentPerUserVikunja:
 
         agent = NilesAgent(
             config=_make_settings(
-                feature_vikunja=True,
                 vikunja_api_url="http://vikunja:3456/api/v1",
             ),
             contacts=AsyncMock(),
@@ -239,7 +204,7 @@ class TestAgentPerUserVikunja:
         vikunja_store.get_credentials.return_value = None
 
         agent = NilesAgent(
-            config=_make_settings(feature_vikunja=True),
+            config=_make_settings(vikunja_api_url="http://vikunja:3456/api/v1"),
             contacts=AsyncMock(),
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
@@ -256,12 +221,12 @@ class TestAgentPerUserVikunja:
         assert "error" in result
         assert "Einstellungen" in result["error"]
 
-    async def test_task_tools_hidden_when_feature_disabled(self):
-        """feature_vikunja=False removes task tools from tool list."""
+    async def test_task_tools_hidden_when_no_api_url(self):
+        """No vikunja_api_url removes task tools from tool list."""
         from niles.agent.core import NilesAgent, TOOLS
 
         agent = NilesAgent(
-            config=_make_settings(feature_vikunja=False),
+            config=_make_settings(vikunja_api_url=""),
             contacts=AsyncMock(),
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
@@ -270,7 +235,7 @@ class TestAgentPerUserVikunja:
 
         # Build tool list using the same logic as _prepare_messages
         all_tools = [t for t in TOOLS]
-        if not agent.config.feature_vikunja:
+        if not agent.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _task_tools
@@ -281,12 +246,12 @@ class TestAgentPerUserVikunja:
         assert "create_task" not in tool_names
         assert "complete_task" not in tool_names
 
-    async def test_task_tools_visible_when_feature_enabled(self):
-        """feature_vikunja=True shows task tools even without global token."""
+    async def test_task_tools_visible_when_api_url_set(self):
+        """vikunja_api_url set shows task tools even without global token."""
         from niles.agent.core import NilesAgent, TOOLS
 
         agent = NilesAgent(
-            config=_make_settings(feature_vikunja=True),
+            config=_make_settings(vikunja_api_url="http://vikunja:3456/api/v1"),
             contacts=AsyncMock(),
             whatsapp=AsyncMock(),
             memory=AsyncMock(),
@@ -294,7 +259,7 @@ class TestAgentPerUserVikunja:
         )
 
         all_tools = [t for t in TOOLS]
-        if not agent.config.feature_vikunja:
+        if not agent.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _task_tools
