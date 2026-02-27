@@ -522,7 +522,7 @@ Niles can search the web and read web pages via two MCP tools.
 
 ```bash
 FEATURE_SEARCH=true
-#SEARXNG_URL=http://searxng:8888     # default, usually no change needed
+#SEARXNG_URL=http://searxng:8080     # default, usually no change needed
 #SEARXNG_SECRET_KEY=<openssl rand -hex 32>  # optional, has a default
 ```
 
@@ -536,7 +536,7 @@ The start script automatically detects `FEATURE_SEARCH=true` and activates the S
 
 #### How It Works
 
-- SearXNG runs in the Docker network (port 8888, not externally exposed)
+- SearXNG runs in the Docker network (port 8080, not externally exposed)
 - The MCP server `searxng-simple-mcp` runs as a stdio process inside `niles_core`
 - The agent uses the `mcp__searxng__search` tool when the user asks to research something
 - Results include title, URL, and snippet
@@ -548,7 +548,7 @@ The start script automatically detects `FEATURE_SEARCH=true` and activates the S
 docker ps | grep searxng
 
 # Test search (from inside Docker network)
-docker exec niles_core python -c "import httpx; print(httpx.get('http://searxng:8888/healthz').status_code)"
+docker exec niles_core python -c "import httpx; print(httpx.get('http://searxng:8080/healthz').status_code)"
 ```
 
 In chat: "Recherchiere aktuelle Nachrichten zu Apple" -- Niles should call the search tool and return results with source URLs.
@@ -820,7 +820,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `FEATURE_SEARCH` | `false` | Enable SearXNG web search |
-| `SEARXNG_URL` | `http://searxng:8888` | SearXNG endpoint (Docker-internal) |
+| `SEARXNG_URL` | `http://searxng:8080` | SearXNG endpoint (Docker-internal) |
 | `SEARXNG_SECRET_KEY` | `niles-local-default` | SearXNG secret key (generate with `openssl rand -hex 32`) |
 
 **Feature Flags:**
@@ -844,7 +844,7 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 | 8000 | Niles Core (internal) | HTTP (not directly accessible) |
 | 8080 | Evolution API (internal) | HTTP (not directly accessible) |
 | 8080 | signal-cli-rest-api (internal, profile: signal) | HTTP (not directly accessible) |
-| 8888 | SearXNG (internal, profile: search) | HTTP (not directly accessible) |
+| 8080 | SearXNG (internal, profile: search) | HTTP (not directly accessible) |
 
 ### Scripts
 
