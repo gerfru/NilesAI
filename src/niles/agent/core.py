@@ -471,7 +471,10 @@ class NilesAgent:
                 creds = await self.vikunja_store.get_credentials(uid)
                 if creds and creds["api_token"]:
                     api_url = creds["api_url"] or self.config.vikunja_api_url
-                    return TasksAction(api_url=api_url, api_token=creds["api_token"])
+                    if api_url:
+                        return TasksAction(
+                            api_url=api_url, api_token=creds["api_token"]
+                        )
         return None
 
     # Known tool names for text-based tool call detection

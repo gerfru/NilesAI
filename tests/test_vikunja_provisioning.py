@@ -1,6 +1,6 @@
 """Tests for Vikunja auto-provisioning."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -79,7 +79,9 @@ class TestEnsureProvisioned:
         assert result is True
         provisioner._register.assert_called_once()
         provisioner._login.assert_called_once()
-        provisioner._create_api_token.assert_called_once_with("jwt-token-123")
+        provisioner._create_api_token.assert_called_once()
+        # Verify the JWT was passed (second arg after client)
+        assert provisioner._create_api_token.call_args[0][1] == "jwt-token-123"
         store.upsert_credentials.assert_called_once_with(
             1, "tk_new_token", "http://vikunja:3456/api/v1"
         )
@@ -105,6 +107,14 @@ class TestEnsureProvisioned:
         assert result is False
         store.upsert_credentials.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_in_flight_guard(self, provisioner, store):
+        """Concurrent provisioning for the same user is skipped."""
+        provisioner._in_flight.add(1)
+        result = await provisioner.ensure_provisioned(1, "user@example.com")
+        assert result is False
+        store.upsert_credentials.assert_not_called()
+
 
 class TestRegister:
     @pytest.mark.asyncio
@@ -112,12 +122,10 @@ class TestRegister:
         """Successful registration completes without raising."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
+        client = AsyncMock()
+        client.post.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = (
-                mock_resp
-            )
-            await provisioner._register("user_1", "user@example.com", "pass")
+        await provisioner._register(client, "user_1", "user@example.com", "pass")
 
     @pytest.mark.asyncio
     async def test_user_exists(self, provisioner):
@@ -125,21 +133,18 @@ class TestRegister:
         mock_resp = MagicMock()
         mock_resp.status_code = 400
         mock_resp.text = "user already exists"
+        client = AsyncMock()
+        client.post.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = (
-                mock_resp
-            )
-            await provisioner._register("user_1", "user@example.com", "pass")
+        await provisioner._register(client, "user_1", "user@example.com", "pass")
 
     @pytest.mark.asyncio
     async def test_connection_error(self, provisioner):
         """Network error is swallowed (logged, not raised)."""
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.side_effect = (
-                ConnectionError("unreachable")
-            )
-            await provisioner._register("user_1", "user@example.com", "pass")
+        client = AsyncMock()
+        client.post.side_effect = ConnectionError("unreachable")
+
+        await provisioner._register(client, "user_1", "user@example.com", "pass")
 
 
 class TestLogin:
@@ -149,13 +154,11 @@ class TestLogin:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"token": "jwt-abc-123"}
+        client = AsyncMock()
+        client.post.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = (
-                mock_resp
-            )
-            result = await provisioner._login("user_1", "pass")
-            assert result == "jwt-abc-123"
+        result = await provisioner._login(client, "user_1", "pass")
+        assert result == "jwt-abc-123"
 
     @pytest.mark.asyncio
     async def test_bad_credentials(self, provisioner):
@@ -163,13 +166,11 @@ class TestLogin:
         mock_resp = MagicMock()
         mock_resp.status_code = 403
         mock_resp.text = "Invalid credentials"
+        client = AsyncMock()
+        client.post.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = (
-                mock_resp
-            )
-            result = await provisioner._login("user_1", "wrong-pass")
-            assert result is None
+        result = await provisioner._login(client, "user_1", "wrong-pass")
+        assert result is None
 
 
 class TestCreateApiToken:
@@ -183,13 +184,11 @@ class TestCreateApiToken:
             "token": "tk_new_persistent_token",
             "title": "Niles Auto-Provisioned",
         }
+        client = AsyncMock()
+        client.put.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.put.return_value = (
-                mock_resp
-            )
-            result = await provisioner._create_api_token("jwt-123")
-            assert result == "tk_new_persistent_token"
+        result = await provisioner._create_api_token(client, "jwt-123")
+        assert result == "tk_new_persistent_token"
 
     @pytest.mark.asyncio
     async def test_failure(self, provisioner):
@@ -197,10 +196,8 @@ class TestCreateApiToken:
         mock_resp = MagicMock()
         mock_resp.status_code = 401
         mock_resp.text = "Unauthorized"
+        client = AsyncMock()
+        client.put.return_value = mock_resp
 
-        with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.put.return_value = (
-                mock_resp
-            )
-            result = await provisioner._create_api_token("expired-jwt")
-            assert result is None
+        result = await provisioner._create_api_token(client, "expired-jwt")
+        assert result is None
