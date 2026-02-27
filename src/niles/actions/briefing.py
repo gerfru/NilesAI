@@ -11,9 +11,38 @@ logger = logging.getLogger(__name__)
 # Priority labels (matching Vikunja convention)
 _PRIORITY = {1: "⬇️", 2: "➡️", 3: "⬆️", 4: "🔴"}
 
+_OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+# WMO weather codes → German (subset for briefing)
+_WEATHER_CODES: dict[int, str] = {
+    0: "Klar",
+    1: "Ueberwiegend klar",
+    2: "Teilweise bewoelkt",
+    3: "Bedeckt",
+    45: "Nebel",
+    48: "Nebel mit Reifbildung",
+    51: "Leichter Nieselregen",
+    53: "Maessiger Nieselregen",
+    55: "Starker Nieselregen",
+    61: "Leichter Regen",
+    63: "Maessiger Regen",
+    65: "Starker Regen",
+    71: "Leichter Schneefall",
+    73: "Maessiger Schneefall",
+    75: "Starker Schneefall",
+    80: "Leichte Regenschauer",
+    81: "Maessige Regenschauer",
+    82: "Starke Regenschauer",
+    95: "Gewitter",
+    96: "Gewitter mit leichtem Hagel",
+    99: "Gewitter mit starkem Hagel",
+}
+
+_WEEKDAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
 
 class BriefingGenerator:
-    """Generates formatted briefing messages from calendar + tasks."""
+    """Generates formatted briefing messages from calendar + tasks + weather."""
 
     def __init__(
         self,
@@ -21,11 +50,16 @@ class BriefingGenerator:
         timezone: str = "Europe/Vienna",
         vikunja_api_url: str = "",
         vikunja_api_token: str = "",
+        weather_latitude: str = "",
+        weather_longitude: str = "",
     ):
         self.pool = pool
         self.tz = ZoneInfo(timezone)
+        self.timezone = timezone
         self.vikunja_api_url = vikunja_api_url.rstrip("/") if vikunja_api_url else ""
         self.vikunja_api_token = vikunja_api_token
+        self.weather_latitude = weather_latitude
+        self.weather_longitude = weather_longitude
 
     # -----------------------------------------------------------------
     # Data queries
@@ -106,6 +140,118 @@ class BriefingGenerator:
                 except (ValueError, TypeError):
                     pass
         return overdue
+
+    # -----------------------------------------------------------------
+    # Weather
+    # -----------------------------------------------------------------
+
+    async def _get_weather_today(self) -> str | None:
+        """Fetch today's weather from Open-Meteo. Returns formatted string or None."""
+        if not self.weather_latitude or not self.weather_longitude:
+            return None
+        import httpx
+
+        params = {
+            "latitude": self.weather_latitude,
+            "longitude": self.weather_longitude,
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max",
+            "timezone": self.timezone,
+            "forecast_days": "1",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(_OPEN_METEO_URL, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning("Briefing: Wetter nicht abrufbar: %s", e)
+            return None
+
+        daily = data.get("daily", {})
+        code = (daily.get("weather_code") or [0])[0]
+        t_min = (daily.get("temperature_2m_min") or ["?"])[0]
+        t_max = (daily.get("temperature_2m_max") or ["?"])[0]
+        precip = (daily.get("precipitation_sum") or [0])[0]
+        prob = (daily.get("precipitation_probability_max") or [0])[0]
+
+        desc = _WEATHER_CODES.get(code, f"Unbekannt ({code})")
+        line = f"🌤 *Wetter heute:* {desc}, {t_min}–{t_max}°C"
+        if precip and float(precip) > 0:
+            line += f", {precip}mm Niederschlag ({prob}%)"
+        elif prob and int(prob) > 20:
+            line += f", Regenwahrscheinlichkeit {prob}%"
+        return line
+
+    async def _get_weather_forecast(self, days: int = 5) -> list[str] | None:
+        """Fetch multi-day forecast from Open-Meteo. Returns formatted lines or None."""
+        if not self.weather_latitude or not self.weather_longitude:
+            return None
+        import httpx
+
+        params = {
+            "latitude": self.weather_latitude,
+            "longitude": self.weather_longitude,
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max",
+            "timezone": self.timezone,
+            "forecast_days": str(days),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(_OPEN_METEO_URL, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning("Briefing: Wettervorhersage nicht abrufbar: %s", e)
+            return None
+
+        daily = data.get("daily", {})
+        dates = daily.get("time", [])
+        if not dates:
+            return None
+
+        lines = ["🌤 *Wetter*"]
+        for i, date_str in enumerate(dates):
+            try:
+                dt = datetime.fromisoformat(date_str)
+                day_label = f"{_WEEKDAYS_SHORT[dt.weekday()]} {dt.strftime('%d.%m.')}"
+            except (ValueError, TypeError):
+                day_label = date_str
+
+            code = (
+                (daily.get("weather_code") or [])[i]
+                if i < len(daily.get("weather_code") or [])
+                else 0
+            )
+            t_min = (
+                (daily.get("temperature_2m_min") or [])[i]
+                if i < len(daily.get("temperature_2m_min") or [])
+                else "?"
+            )
+            t_max = (
+                (daily.get("temperature_2m_max") or [])[i]
+                if i < len(daily.get("temperature_2m_max") or [])
+                else "?"
+            )
+            precip = (
+                (daily.get("precipitation_sum") or [])[i]
+                if i < len(daily.get("precipitation_sum") or [])
+                else 0
+            )
+            prob = (
+                (daily.get("precipitation_probability_max") or [])[i]
+                if i < len(daily.get("precipitation_probability_max") or [])
+                else 0
+            )
+
+            desc = _WEATHER_CODES.get(code, f"Unbekannt ({code})")
+            detail = f"  {day_label}: {desc}, {t_min}–{t_max}°C"
+            if precip and float(precip) > 0:
+                detail += f", {precip}mm ({prob}%)"
+            elif prob and int(prob) > 20:
+                detail += f", Regen {prob}%"
+            lines.append(detail)
+
+        return lines
 
     # -----------------------------------------------------------------
     # Formatting
@@ -224,6 +370,12 @@ class BriefingGenerator:
             lines.append(f"📋 +{remaining} weitere offene Aufgabe(n)")
             lines.append("")
 
+        # Weather
+        weather_line = await self._get_weather_today()
+        if weather_line:
+            lines.append(weather_line)
+            lines.append("")
+
         # Closing
         lines.append("Schönen Tag! 👋")
 
@@ -292,6 +444,12 @@ class BriefingGenerator:
             lines.append(f"📋 *Offene Aufgaben:* {total_open}")
             if tasks_this_week:
                 lines.append(f"  ↳ davon {len(tasks_this_week)} diese Woche fällig")
+            lines.append("")
+
+        # Weather forecast (Mo-Fr = 5 days)
+        weather_lines = await self._get_weather_forecast(days=5)
+        if weather_lines:
+            lines.extend(weather_lines)
             lines.append("")
 
         lines.append("Gute Woche! 💪")

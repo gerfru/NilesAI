@@ -10,35 +10,7 @@
 </div>
 <div id="toast-container"></div>
 
-{% if user and user.is_admin %}
-{% set flag_labels = {
-    "feature_whatsapp_send_others": "WhatsApp: Nachrichten an andere senden",
-    "feature_signal": "Signal Integration",
-    "feature_signal_send_others": "Signal: Nachrichten an andere senden",
-    "feature_vikunja": "Aufgabenverwaltung (Vikunja)",
-    "feature_briefing_daily": "Taegliches Briefing (Mo-Fr)",
-    "feature_briefing_weekly": "Woechentliche Uebersicht (Montag)",
-} %}
-<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Feature Flags</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
-    {% for key, enabled in feature_flags.items() %}
-    <form hx-post="/ui/api/settings/{{ key }}"
-          hx-target="#toast-container" hx-swap="innerHTML"
-          class="flex items-center justify-between py-2 border-b border-zinc-100 dark:border-zinc-700 last:border-0">
-        <input type="hidden" name="value"
-               value="{{ 'true' if enabled else 'false' }}">
-        <span class="text-sm text-zinc-700 dark:text-zinc-300">{{ flag_labels.get(key, key) }}</span>
-        <label class="toggle-switch">
-            <input type="checkbox"
-                   {% if enabled %}checked{% endif %}
-                   data-flag-toggle>
-            <span class="toggle-track"></span>
-        </label>
-    </form>
-    {% endfor %}
-</div>
-{% endif %}
+{# === WhatsApp === #}
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">WhatsApp</h3>
@@ -55,9 +27,23 @@
             Status wird geladen...
         </div>
     </div>
+    {% if user and user.is_admin %}
+    <form hx-post="/ui/api/settings/feature_whatsapp_send_others"
+          hx-target="#toast-container" hx-swap="innerHTML"
+          class="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-700">
+        <input type="hidden" name="value" value="{{ 'true' if feature_whatsapp_send_others else 'false' }}">
+        <span class="text-sm text-zinc-700 dark:text-zinc-300">Nachrichten an andere senden</span>
+        <label class="toggle-switch">
+            <input type="checkbox" {% if feature_whatsapp_send_others %}checked{% endif %} data-flag-toggle>
+            <span class="toggle-track"></span>
+        </label>
+    </form>
+    {% endif %}
 </div>
 
-{% if user and user.is_admin and feature_signal %}
+{# === Signal === #}
+
+{% if user and user.is_admin and signal_api_url %}
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Signal</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Verknuepfe Signal mit Niles (Linked Device).</p>
@@ -73,8 +59,20 @@
             Status wird geladen...
         </div>
     </div>
+    <form hx-post="/ui/api/settings/feature_signal_send_others"
+          hx-target="#toast-container" hx-swap="innerHTML"
+          class="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-700">
+        <input type="hidden" name="value" value="{{ 'true' if feature_signal_send_others else 'false' }}">
+        <span class="text-sm text-zinc-700 dark:text-zinc-300">Nachrichten an andere senden</span>
+        <label class="toggle-switch">
+            <input type="checkbox" {% if feature_signal_send_others %}checked{% endif %} data-flag-toggle>
+            <span class="toggle-track"></span>
+        </label>
+    </form>
 </div>
 {% endif %}
+
+{# === Aufgaben (Vikunja) === #}
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Aufgaben (Vikunja)</h3>
@@ -91,7 +89,33 @@
             Status wird geladen...
         </div>
     </div>
+    {% if user and user.is_admin %}
+    <form hx-post="/ui/api/settings/feature_vikunja"
+          hx-target="#toast-container" hx-swap="innerHTML"
+          class="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-700">
+        <input type="hidden" name="value" value="{{ 'true' if feature_vikunja else 'false' }}">
+        <span class="text-sm text-zinc-700 dark:text-zinc-300">Vikunja aktivieren</span>
+        <label class="toggle-switch">
+            <input type="checkbox" {% if feature_vikunja %}checked{% endif %} data-flag-toggle>
+            <span class="toggle-track"></span>
+        </label>
+    </form>
+    {% endif %}
 </div>
+
+{# === Wetter === #}
+
+{% if user and user.is_admin %}
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Wetter</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Standort fuer Wetterdaten (Open-Meteo). Aenderungen werden nach Neustart wirksam.</p>
+    <div id="weather-location-container">
+        {% include "fragments/weather_location.html" %}
+    </div>
+</div>
+{% endif %}
+
+{# === Briefing === #}
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Briefing</h3>
@@ -179,60 +203,7 @@
     </div>
 </div>
 
-{% if user and user.is_admin %}
-<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Wetter</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Standort fuer Wetterdaten (Open-Meteo). Aenderungen werden nach Neustart wirksam.</p>
-    <div id="weather-location-container">
-        {% include "fragments/weather_location.html" %}
-    </div>
-</div>
-
-<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
-    {% for key, current_value in text_settings.items() %}
-    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML"
-          class="mb-4">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">{{ key }}</label>
-        <div class="flex gap-2">
-            <input type="text" name="value" value="{{ current_value }}"
-                   maxlength="512" pattern="[^\x00-\x1f]*" required
-                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-            <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
-        </div>
-    </form>
-    {% endfor %}
-</div>
-
-<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
-    <h3 class="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">General</h3>
-    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
-          class="mb-4">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
-        <div class="flex gap-2">
-            <input type="text" name="value" value="{{ general.timezone }}"
-                   maxlength="64" pattern="[A-Za-z/_-]+" required
-                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-            <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
-        </div>
-    </form>
-    <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">log_level</label>
-        <div class="flex gap-2">
-            <select name="value"
-                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
-                <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit"
-                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
-        </div>
-    </form>
-</div>
+{# === Kalenderquellen === #}
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kalenderquellen</h3>
@@ -308,6 +279,15 @@
     </div>
 </div>
 
+{# === ADMINISTRATION === #}
+
+{% if user and user.is_admin %}
+<div class="flex items-center gap-3 mt-8 mb-4">
+    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
+    <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Administration</span>
+    <div class="flex-1 h-px bg-zinc-300 dark:bg-zinc-600"></div>
+</div>
+
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kontakte (CardDAV)</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Synchronisiere Kontakte von einem CardDAV-Server.</p>
@@ -326,6 +306,52 @@
 </div>
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">LLM Configuration</h3>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Aenderungen werden gespeichert, wirken aber erst nach einem Container-Neustart.</p>
+    {% for key, current_value in text_settings.items() %}
+    <form hx-post="/ui/api/settings/{{ key }}" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">{{ key }}</label>
+        <div class="flex gap-2">
+            <input type="text" name="value" value="{{ current_value }}"
+                   maxlength="512" pattern="[^\x00-\x1f]*" required
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+    {% endfor %}
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
+    <h3 class="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">General</h3>
+    <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
+          class="mb-4">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
+        <div class="flex gap-2">
+            <input type="text" name="value" value="{{ general.timezone }}"
+                   maxlength="64" pattern="[A-Za-z/_-]+" required
+                   class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+    <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
+        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">log_level</label>
+        <div class="flex gap-2">
+            <select name="value"
+                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
+                <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-blue-500 dark:text-blue-400 border border-blue-500 dark:border-blue-400 rounded-lg bg-transparent hover:bg-blue-50 dark:hover:bg-zinc-700 cursor-pointer">Save</button>
+        </div>
+    </form>
+</div>
+
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Infrastructure (read-only)</h3>
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Diese Werte koennen nur in der <code class="bg-zinc-100 dark:bg-zinc-700 px-1 py-0.5 rounded text-xs">.env</code> Datei geaendert werden (Container-Neustart noetig).</p>
     <div class="overflow-x-auto">
@@ -341,5 +367,6 @@
         </table>
     </div>
 </div>
+
 {% endif %}
 {% endblock %}
