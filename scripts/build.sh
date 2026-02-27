@@ -26,11 +26,17 @@ print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])
 export NILES_VERSION="$VERSION"
 echo "Building Niles AI v${VERSION}..."
 
+COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
+if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
+    COMPOSE_CMD="$COMPOSE_CMD --profile search"
+    echo "Web Search (SearXNG) profile included."
+fi
+
 if [ "${1:-}" = "--clean" ]; then
     echo "Clean rebuild (no cache)..."
-    docker compose -f docker/docker-compose.yml --env-file .env build --no-cache
+    $COMPOSE_CMD build --no-cache
 else
-    docker compose -f docker/docker-compose.yml --env-file .env build
+    $COMPOSE_CMD build
 fi
 
 echo ""

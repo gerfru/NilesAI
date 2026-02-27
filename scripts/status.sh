@@ -26,7 +26,11 @@ echo ""
 
 # Check Docker
 echo "Docker Services:"
-docker compose -f docker/docker-compose.yml ps
+COMPOSE_CMD="docker compose -f docker/docker-compose.yml"
+if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
+    COMPOSE_CMD="$COMPOSE_CMD --profile search"
+fi
+$COMPOSE_CMD ps
 echo ""
 
 # Check Niles Core (via Caddy HTTPS)
