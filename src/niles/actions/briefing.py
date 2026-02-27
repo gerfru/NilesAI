@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import asyncpg
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,6 @@ class BriefingGenerator:
         if not api_url:
             return []
 
-        import httpx
-
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
@@ -163,7 +162,6 @@ class BriefingGenerator:
         """Fetch daily weather data from Open-Meteo. Returns parsed dict or None."""
         if not self.weather_latitude or not self.weather_longitude:
             return None
-        import httpx
 
         params = {
             "latitude": self.weather_latitude,

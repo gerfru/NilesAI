@@ -297,7 +297,6 @@ async def lifespan(app: FastAPI):
         calendar=calendar,
         calendar_manager=calendar_manager,
         wa_store=wa_store,
-        tasks=None,
         vikunja_store=vikunja_store,
         signal=signal_action,
         signal_store=signal_store,

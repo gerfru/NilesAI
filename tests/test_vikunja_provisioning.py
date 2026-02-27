@@ -71,7 +71,7 @@ class TestEnsureProvisioned:
     @pytest.mark.asyncio
     async def test_full_provisioning_flow(self, provisioner, store):
         """Register → Login → Create Token → Store."""
-        provisioner._register = AsyncMock(return_value=True)
+        provisioner._register = AsyncMock()
         provisioner._login = AsyncMock(return_value="jwt-token-123")
         provisioner._create_api_token = AsyncMock(return_value="tk_new_token")
 
@@ -87,7 +87,7 @@ class TestEnsureProvisioned:
     @pytest.mark.asyncio
     async def test_login_fails_returns_false(self, provisioner, store):
         """If login fails, return False."""
-        provisioner._register = AsyncMock(return_value=True)
+        provisioner._register = AsyncMock()
         provisioner._login = AsyncMock(return_value=None)
 
         result = await provisioner.ensure_provisioned(1, "user@example.com")
@@ -97,7 +97,7 @@ class TestEnsureProvisioned:
     @pytest.mark.asyncio
     async def test_token_creation_fails_returns_false(self, provisioner, store):
         """If token creation fails, return False."""
-        provisioner._register = AsyncMock(return_value=True)
+        provisioner._register = AsyncMock()
         provisioner._login = AsyncMock(return_value="jwt-123")
         provisioner._create_api_token = AsyncMock(return_value=None)
 
@@ -109,7 +109,7 @@ class TestEnsureProvisioned:
 class TestRegister:
     @pytest.mark.asyncio
     async def test_success(self, provisioner):
-        """Successful registration returns True."""
+        """Successful registration completes without raising."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
 
@@ -117,12 +117,11 @@ class TestRegister:
             mock_client.return_value.__aenter__.return_value.post.return_value = (
                 mock_resp
             )
-            result = await provisioner._register("user_1", "user@example.com", "pass")
-            assert result is True
+            await provisioner._register("user_1", "user@example.com", "pass")
 
     @pytest.mark.asyncio
     async def test_user_exists(self, provisioner):
-        """400 (user exists) also returns True."""
+        """400 (user exists) is tolerated without raising."""
         mock_resp = MagicMock()
         mock_resp.status_code = 400
         mock_resp.text = "user already exists"
@@ -131,18 +130,16 @@ class TestRegister:
             mock_client.return_value.__aenter__.return_value.post.return_value = (
                 mock_resp
             )
-            result = await provisioner._register("user_1", "user@example.com", "pass")
-            assert result is True
+            await provisioner._register("user_1", "user@example.com", "pass")
 
     @pytest.mark.asyncio
     async def test_connection_error(self, provisioner):
-        """Network error returns False."""
+        """Network error is swallowed (logged, not raised)."""
         with patch("niles.vikunja_provisioning.httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.post.side_effect = (
                 ConnectionError("unreachable")
             )
-            result = await provisioner._register("user_1", "user@example.com", "pass")
-            assert result is False
+            await provisioner._register("user_1", "user@example.com", "pass")
 
 
 class TestLogin:
