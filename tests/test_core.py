@@ -341,6 +341,25 @@ class TestTextToolCallParsing:
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is None
 
+    def test_malformed_parameters_brace_repaired(self):
+        """llama3.1 merges key and brace: 'parameters{' → repaired to 'parameters':{."""
+        tools_with_mcp = frozenset([*self._TOOLS, "mcp__searxng__web_search"])
+        text = '{"type":"function","name":"mcp__searxng__web_search","parameters{"query":"Schlossberg Graz","categories":["general"],"language":"de","result_count":10,"result_format":"text"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, tools_with_mcp)
+        assert result is not None
+        assert result["name"] == "mcp__searxng__web_search"
+        args = json.loads(result["arguments"])
+        assert args["query"] == "Schlossberg Graz"
+
+    def test_malformed_arguments_brace_repaired(self):
+        """Same repair works for 'arguments{' variant."""
+        text = '{"name":"create_task","arguments{"title":"Test"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is not None
+        assert result["name"] == "create_task"
+        args = json.loads(result["arguments"])
+        assert args["title"] == "Test"
+
 
 class TestTextToolCallStreamIntegration:
     """Integration test: text-based tool call in streaming pipeline."""
