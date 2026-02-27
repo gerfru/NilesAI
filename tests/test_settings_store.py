@@ -18,7 +18,6 @@ class TestEditableWhitelist:
             "carddav_url",
             "carddav_user",
             "carddav_password",
-            "feature_vikunja",
             "feature_signal_send_others",
             "signal_api_url",
             "signal_phone_number",

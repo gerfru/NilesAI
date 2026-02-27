@@ -466,7 +466,7 @@ class NilesAgent:
         return None
 
     async def _resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:
-        """Resolve per-user Vikunja credentials, falling back to global."""
+        """Resolve per-user Vikunja credentials."""
         if self.vikunja_store:
             uid = await self._resolve_user_id(chat_id)
             if uid is not None:
@@ -474,7 +474,7 @@ class NilesAgent:
                 if creds and creds["api_token"]:
                     api_url = creds["api_url"] or self.config.vikunja_api_url
                     return TasksAction(api_url=api_url, api_token=creds["api_token"])
-        return self.tasks  # Global fallback (or None)
+        return None
 
     # Known tool names for text-based tool call detection
     _TOOL_NAMES = frozenset(t["function"]["name"] for t in TOOLS)
@@ -617,8 +617,8 @@ class NilesAgent:
         messages.append({"role": "user", "content": event["content"]})
 
         all_tools = [t for t in TOOLS]
-        # Remove task tools when Vikunja feature is disabled
-        if not self.config.feature_vikunja:
+        # Remove task tools when Vikunja is not configured
+        if not self.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _task_tools

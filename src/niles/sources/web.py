@@ -339,7 +339,6 @@ def _safe_settings_dict(settings) -> dict:
         "feature_signal_send_others": getattr(
             settings, "feature_signal_send_others", False
         ),
-        "feature_vikunja": getattr(settings, "feature_vikunja", False),
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,
@@ -421,6 +420,14 @@ async def login_submit(
 
     # Update last_login
     await user_store.update_last_login(user["id"])
+
+    # Auto-provision Vikunja account
+    provisioner = getattr(request.app.state, "vikunja_provisioner", None)
+    if provisioner:
+        try:
+            await provisioner.ensure_provisioned(user["id"], user["email"])
+        except Exception:
+            logger.warning("Vikunja provisioning failed for user %d", user["id"])
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
@@ -607,6 +614,14 @@ async def callback_google(
     )
     logger.info("Google login: %s (user_id=%d)", email, user["id"])
 
+    # Auto-provision Vikunja account
+    provisioner = getattr(request.app.state, "vikunja_provisioner", None)
+    if provisioner:
+        try:
+            await provisioner.ensure_provisioned(user["id"], email)
+        except Exception:
+            logger.warning("Vikunja provisioning failed for user %d", user["id"])
+
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
     _set_csrf_cookie(request, response)
@@ -679,6 +694,7 @@ async def chat_page(
             else "web",
             "readonly": readonly,
             "available_channels": available_channels,
+            "vikunja_url": settings.vikunja_public_url or "",
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -709,6 +725,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
             "google_configured": _google_configured(request),
             "calendar_error": error_msg,
             "signal_api_url": bool(request.app.state.settings.signal_api_url),
+            "vikunja_url": request.app.state.settings.vikunja_public_url or "",
         },
     )
     _ensure_csrf_cookie(request, response)

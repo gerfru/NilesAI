@@ -137,6 +137,18 @@ async def lifespan(app: FastAPI):
     # Vikunja credential store (per-user API tokens)
     vikunja_store = VikunjaCredentialStore(pool)
 
+    # Vikunja auto-provisioning (register + token on first login)
+    vikunja_provisioner = None
+    if settings.vikunja_api_url:
+        from .vikunja_provisioning import VikunjaProvisioner
+
+        vikunja_provisioner = VikunjaProvisioner(
+            api_url=settings.vikunja_api_url,
+            session_secret=settings.session_secret,
+            store=vikunja_store,
+        )
+        logger.info("Vikunja auto-provisioning enabled (%s)", settings.vikunja_api_url)
+
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool)
     overrides = await settings_store.get_all()
@@ -206,8 +218,7 @@ async def lifespan(app: FastAPI):
     briefing_generator = BriefingGenerator(
         pool=pool,
         timezone=settings.timezone,
-        vikunja_api_url=settings.vikunja_api_url,
-        vikunja_api_token=settings.vikunja_api_token,
+        vikunja_store=vikunja_store,
         weather_latitude=settings.weather_latitude,
         weather_longitude=settings.weather_longitude,
     )
@@ -275,18 +286,7 @@ async def lifespan(app: FastAPI):
         signal_store = SignalMessageStore(pool)
         logger.info("Signal integration enabled (%s)", settings.signal_phone_number)
 
-    # Vikunja (Todo/Task Management)
-    tasks_action = None
-    if settings.feature_vikunja and settings.vikunja_api_url:
-        from .actions.tasks import TasksAction
-
-        tasks_action = TasksAction(
-            api_url=settings.vikunja_api_url,
-            api_token=settings.vikunja_api_token,
-        )
-        logger.info("Vikunja task management enabled")
-
-    # Agent
+    # Agent (Vikunja tasks resolved per-user via vikunja_store, no global fallback)
     agent = NilesAgent(
         config=settings,
         contacts=contacts,
@@ -297,7 +297,7 @@ async def lifespan(app: FastAPI):
         calendar=calendar,
         calendar_manager=calendar_manager,
         wa_store=wa_store,
-        tasks=tasks_action,
+        tasks=None,
         vikunja_store=vikunja_store,
         signal=signal_action,
         signal_store=signal_store,
@@ -316,6 +316,7 @@ async def lifespan(app: FastAPI):
     app.state.wa_store = wa_store
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
+    app.state.vikunja_provisioner = vikunja_provisioner
     app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
     app.state.signal_action = signal_action
