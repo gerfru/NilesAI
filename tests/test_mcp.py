@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from niles.mcp.client import (
     MCPManager,
     _VALID_TOOL_NAME,
+    _coerce_arguments,
     _expand_env,
     _mcp_tool_to_openai,
     _simplify_schema,
@@ -157,6 +158,47 @@ class TestSimplifySchema:
         # anyOf nullable → array type
         assert result["properties"]["categories"]["type"] == "array"
         assert "anyOf" not in result["properties"]["categories"]
+
+
+class TestCoerceArguments:
+    def test_string_int_converted(self):
+        assert _coerce_arguments({"count": "10"}) == {"count": 10}
+
+    def test_actual_int_unchanged(self):
+        assert _coerce_arguments({"count": 10}) == {"count": 10}
+
+    def test_json_list_string_converted(self):
+        result = _coerce_arguments({"categories": '["general", "history"]'})
+        assert result == {"categories": ["general", "history"]}
+
+    def test_python_list_string_converted(self):
+        """Python-style list literal with single quotes."""
+        result = _coerce_arguments({"categories": "['general', 'history']"})
+        assert result == {"categories": ["general", "history"]}
+
+    def test_null_string_converted(self):
+        assert _coerce_arguments({"time_range": "null"}) == {"time_range": None}
+
+    def test_plain_string_unchanged(self):
+        assert _coerce_arguments({"query": "Geschichte Graz"}) == {
+            "query": "Geschichte Graz"
+        }
+
+    def test_mixed_types(self):
+        """Real-world example from llama3.1 searxng call."""
+        args = {
+            "query": "Geschichte von Graz",
+            "categories": "['general', 'history']",
+            "language": "de",
+            "result_count": "10",
+            "result_format": "text",
+        }
+        result = _coerce_arguments(args)
+        assert result["query"] == "Geschichte von Graz"
+        assert result["categories"] == ["general", "history"]
+        assert result["language"] == "de"
+        assert result["result_count"] == 10
+        assert result["result_format"] == "text"
 
 
 class TestMCPManagerConfig:
