@@ -1,6 +1,7 @@
 """MCP client manager -- starts MCP servers and exposes their tools."""
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -185,6 +186,7 @@ class MCPManager:
         server_name, tool_name = self._tool_map[prefixed_name]
         session = self._sessions[server_name]
 
+        arguments = _coerce_arguments(arguments)
         result = await session.call_tool(name=tool_name, arguments=arguments)
 
         texts = []
@@ -206,6 +208,40 @@ class MCPManager:
         self._tool_map.clear()
         self._openai_tools.clear()
         logger.info("MCP: all servers stopped")
+
+
+def _coerce_arguments(arguments: dict) -> dict:
+    """Fix argument types that local LLMs get wrong.
+
+    Small models sometimes deliver values as strings instead of the correct
+    type (e.g. ``"10"`` instead of ``10``, or ``"['a', 'b']"`` instead of
+    ``["a", "b"]``).  This function attempts to recover the intended type.
+    """
+    result = {}
+    for key, value in arguments.items():
+        if not isinstance(value, str):
+            result[key] = value
+            continue
+        # Try to parse stringified JSON (lists, objects, numbers, booleans, null)
+        try:
+            parsed = json.loads(value)
+            # Only accept container types and None — plain strings that happen
+            # to be valid JSON (e.g. "true", "null") are converted too.
+            if isinstance(parsed, (list, dict, int, float, bool)) or parsed is None:
+                result[key] = parsed
+                continue
+        except (json.JSONDecodeError, ValueError):
+            pass
+        # Python-style list literal: "['general', 'history']" → try with
+        # double quotes so json.loads can handle it.
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                result[key] = json.loads(value.replace("'", '"'))
+                continue
+            except (json.JSONDecodeError, ValueError):
+                pass
+        result[key] = value
+    return result
 
 
 def _simplify_schema(schema: dict) -> dict:
