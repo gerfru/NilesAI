@@ -20,5 +20,7 @@ doi_resolvers:
 
 default_doi_resolver: 'oadoi.org'
 
-# No 'engines' section — SearXNG uses its defaults (92 engines including
-# Google, Bing, DuckDuckGo, Wikipedia, Brave, Qwant, Startpage, etc.)
+# All default engines stay active except those explicitly disabled below.
+engines:
+  - name: duckduckgo
+    disabled: true    # CAPTCHA-Blockaden bei automatisierten Anfragen
