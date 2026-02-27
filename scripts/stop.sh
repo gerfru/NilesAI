@@ -12,8 +12,12 @@ cd "$(dirname "$0")/.."
 # Stop Docker services
 echo "Stopping Docker containers..."
 
-# Stop containers from current docker-compose.yml
-docker compose -f docker/docker-compose.yml --env-file .env stop 2>/dev/null || true
+# Stop containers from current docker-compose.yml (all profiles)
+COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
+if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
+    COMPOSE_CMD="$COMPOSE_CMD --profile search"
+fi
+$COMPOSE_CMD stop 2>/dev/null || true
 
 echo "All Niles containers stopped."
 
