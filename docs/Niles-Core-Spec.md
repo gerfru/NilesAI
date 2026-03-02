@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 7.4
-> **Updated:** 2026-02-27
+> **Version:** 7.5
+> **Updated:** 2026-03-02
 
 ---
 
@@ -59,7 +59,7 @@ WhatsApp --- Webhook --> |  sources/whatsapp.py           |
                          |                                |
 Signal --- WebSocket --> |  sources/signal.py             |
                          |         |                      |
-Browser --- /ui/* -----> |  sources/web.py (htmx/Jinja2)  |
+Browser --- /ui/* -----> |  sources/web/ (htmx/Jinja2)    |
                          |    | Google OAuth + Sessions   |
                          |    |                           |
                          |         v                      |
@@ -108,8 +108,18 @@ Niles/
 │       ├── vikunja_store.py         # Per-user Vikunja credentials (PostgreSQL)
 │       ├── vikunja_provisioning.py  # Auto-provision Vikunja accounts on login
 │       ├── agent/
-│       │   ├── core.py               # NilesAgent, tool definitions
-│       │   └── prompts.py            # System prompt loading/building
+│       │   ├── core.py               # NilesAgent, tool definitions, pipeline
+│       │   ├── prompts.py            # System prompt loading/building
+│       │   └── tools/                # Tool handler registry (decorator-based)
+│       │       ├── __init__.py       # TOOL_REGISTRY, @register_tool, ToolContext
+│       │       ├── calendar.py       # find_event, create_event
+│       │       ├── contacts.py       # find_contact
+│       │       ├── formatting.py     # Tool-result formatting helpers
+│       │       ├── mcp.py            # MCP tool fallback handler
+│       │       ├── memory.py         # remember, recall
+│       │       ├── signal.py         # send_signal, get_signal_messages
+│       │       ├── tasks.py          # list_tasks, create_task, complete_task
+│       │       └── whatsapp.py       # send_whatsapp, get_whatsapp_messages
 │       ├── memory/
 │       │   ├── store.py              # Key-value memory (PostgreSQL)
 │       │   └── history.py            # Conversation history
@@ -126,7 +136,20 @@ Niles/
 │       │   ├── whatsapp.py           # Webhook handler (token auth)
 │       │   ├── signal.py             # WebSocket listener (background task)
 │       │   ├── triggers.py           # Shared trigger detection (Hey Niles)
-│       │   └── web.py                # Web UI router (OAuth, htmx, sessions)
+│       │   └── web/                  # Web UI package (feature-based modules)
+│       │       ├── __init__.py       # Re-exports for backward compatibility
+│       │       ├── _core.py          # Router, templates, auth guards, shared helpers
+│       │       ├── _auth.py          # Login, Google OAuth, logout
+│       │       ├── _chat.py          # Chat page, SSE streaming, history, clear
+│       │       ├── _settings.py      # Settings page, update_setting, Ollama models
+│       │       ├── _briefing.py      # Briefing test endpoint
+│       │       ├── _calendar.py      # CalDAV, calendar sources, Google Calendar OAuth
+│       │       ├── _whatsapp.py      # WhatsApp status/connect/disconnect
+│       │       ├── _signal.py        # Signal status/QR/link/disconnect
+│       │       ├── _weather.py       # Weather location search/set/remove
+│       │       ├── _contacts.py      # CardDAV status/connect/disconnect/sync
+│       │       ├── _vikunja.py       # Vikunja status/connect/disconnect
+│       │       └── _admin.py         # User management: list/create/reset/delete
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV contact sync
 │       │   ├── caldav.py             # CalDAV calendar sync
@@ -250,13 +273,13 @@ Niles/
 
 ```text
 1. User opens /ui/chat (GET)
-2. sources/web.py checks signed session cookie (itsdangerous)
+2. sources/web/_core.py checks signed session cookie (itsdangerous)
 3. Loads per-user chat history (chat_id = "web-user-{uid}")
 4. Renders chat.html with Jinja2, sets CSRF cookie
 5. User sends message (Enter/Send button)
 6. JavaScript: Display user bubble immediately, clear input, show "Niles is thinking..."
 7. fetch() POST to /ui/api/chat/stream (SSE)
-8. sources/web.py checks session + CSRF (Double-Submit Pattern)
+8. sources/web/_chat.py checks session + CSRF (Double-Submit Pattern)
 9. Creates event: {"type": "web", "from": "web-user-1", "content": "..."}
 10. Calls agent.process_event_stream(event)
     10a. Tool calls run non-streaming (yield status updates)
@@ -405,6 +428,8 @@ class NilesAgent:
 
 `process_event_stream()` is an async generator for SSE streaming. Tool calls run non-streaming (yield `{"type": "status"}`), the final response is streamed word by word (yield `{"type": "chunk"}`). At the end yield `{"type": "done"}`.
 
+**Tool handler registry (`agent/tools/`):** Tool execution logic is organized into feature-based handler modules. Each handler is registered via the `@register_tool("name")` decorator, which adds it to `TOOL_REGISTRY`. On tool call, `_execute_tool_call()` looks up the handler in the registry; if not found, falls back to the MCP handler. Tool definitions (OpenAI function calling format) remain in `core.py` as the `TOOLS` list. A `ToolContext` dataclass bundles all dependencies (config, actions, stores, helper callables) and is passed to each handler.
+
 **Event format:**
 
 ```json
@@ -482,9 +507,11 @@ class UserStore:
     async def get_by_email(self, email: str) -> dict | None
     async def create_or_update(self, email, display_name, avatar_url) -> dict
     async def get_by_id(self, user_id: int) -> dict | None
+    async def verify_password(self, email: str, password: str) -> dict | None
+    async def update_password(self, user_id: int, password_hash: str) -> bool
 ```
 
-Users are automatically created on first Google login (INSERT ON CONFLICT UPDATE).
+Users are automatically created on first Google login (INSERT ON CONFLICT UPDATE). Password-based login is supported: admins can set passwords via the admin panel, and `update_password()` also sets `auth_method='password'`.
 
 ### 3.7 Settings Store (`src/niles/settings_store.py`)
 
@@ -549,9 +576,9 @@ def build_system_prompt(
 3. **Available calendars** (list of calendar source names, if any)
 4. **Memory** section (all key-value entries)
 
-### 3.10 Web UI (`src/niles/sources/web.py`)
+### 3.10 Web UI (`src/niles/sources/web/`)
 
-Web interface with Jinja2 templates, Tailwind CSS, and htmx. Chat uses SSE streaming (custom JavaScript), settings/history/calendar use htmx:
+Web interface with Jinja2 templates, Tailwind CSS, and htmx. Chat uses SSE streaming (custom JavaScript), settings/history/calendar use htmx. The web UI is organized as a feature-based package with 12 modules (auth, chat, settings, calendar, etc.), each registering routes on a shared `router` via side-effect imports. Shared infrastructure (auth guards, session helpers, CSRF, templates) lives in `_core.py`:
 
 **Authentication (two parallel systems):**
 
@@ -635,7 +662,7 @@ async def _handle_envelope(app_state, data: dict): ...
 
 > **Known Limitation:** Self-chat via "Note to Self" does not work due to an upstream signal-cli bug ([#1930](https://github.com/AsamK/signal-cli/issues/1930)). As a linked device, signal-cli cannot parse SyncMessage envelopes -- the message text is lost (`syncMessage: {}` or `InvalidMessageStructureException`). Affects all versions up to v0.13.24. The self-chat code path is implemented and tested but cannot be exercised until a fixed signal-cli release is available.
 
-**Dynamic start:** The listener can be started dynamically after QR-code linking via `_ensure_signal_listener()` in `web.py`, without requiring a container restart.
+**Dynamic start:** The listener can be started dynamically after QR-code linking via `_ensure_signal_listener()` in `web/_signal.py`, without requiring a container restart.
 
 ### 3.14 Signal Action (`src/niles/actions/signal.py`)
 
@@ -701,7 +728,7 @@ APScheduler for daily sync (03:00, when `carddav_url` configured). CardDAV crede
 
 **iCalendar Parser** (`ical_parser.py`) is a shared parser for VEVENT data, used by CalDAV and ICS sync. Supports RRULE expansion for recurring events (DAILY, WEEKLY, MONTHLY, YEARLY, BYDAY, BYMONTH, EXDATE, UNTIL, COUNT). Max 500 occurrences per event. Dependency: `python-dateutil`.
 
-**Google Calendar OAuth flow** (`web.py`): `/ui/api/calendar/google/connect` redirects to Google OAuth with calendar scope. The callback `/ui/callback/google/calendar` exchanges the code for tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries. Separate flow from login OAuth (different scope, different callback).
+**Google Calendar OAuth flow** (`web/_calendar.py`): `/ui/api/calendar/google/connect` redirects to Google OAuth with calendar scope. The callback `/ui/callback/google/calendar` exchanges the code for tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries. Separate flow from login OAuth (different scope, different callback).
 
 APScheduler for daily sync: CardDAV 03:00 (when `carddav_url` configured), calendar sources 03:20 (when sources exist). New calendar sources are managed via the web UI and synced automatically.
 
@@ -783,12 +810,15 @@ All tables reside in database `evolution_db` (user `evolution`). Schema is manag
 ### users
 
 ```sql
--- Created by UserStore (Google OAuth)
+-- Created by UserStore (Google OAuth + Password)
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
     avatar_url TEXT,
+    password_hash TEXT,
+    auth_method TEXT NOT NULL DEFAULT 'google',
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
     last_login TIMESTAMP DEFAULT NOW()
 );
