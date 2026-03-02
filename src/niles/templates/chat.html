@@ -93,6 +93,17 @@
                           data-autogrow></textarea>
                 <div class="invisible whitespace-pre-wrap break-words" aria-hidden="true" data-autogrow-mirror></div>
             </div>
+            {# --- Web Search Toggle (only when feature_search is globally enabled) --- #}
+            {% if feature_search %}
+            <button type="button" aria-label="Web-Recherche" aria-pressed="false" data-search-toggle
+                    class="w-10 h-10 flex items-center justify-center rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5"
+                    title="Web-Recherche">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clip-rule="evenodd"/>
+                </svg>
+            </button>
+            <input type="hidden" name="web_search" value="false">
+            {% endif %}
             <button type="submit" aria-label="Senden"
                     class="w-10 h-10 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
