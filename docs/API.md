@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-02-27
+> **Updated:** 2026-03-02
 
 ---
 
@@ -45,10 +45,11 @@ POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
 
 ### /ui/* -- Session Cookies (Google OAuth or API Key)
 
-The web UI uses signed session cookies (itsdangerous). Login via two methods:
+The web UI uses signed session cookies (itsdangerous). Login via three methods:
 
 1. **Google OAuth 2.0** (primary, when `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` are configured)
-2. **API Key** (fallback, when Google OAuth is not configured)
+2. **Password** (when an admin has assigned a password via the admin panel)
+3. **API Key** (fallback, when Google OAuth is not configured)
 
 Session cookies are signed with `SESSION_SECRET` (not `NILES_API_KEY`). All POST endpoints additionally require a CSRF token (Double-Submit Pattern: `niles_csrf` cookie + `X-CSRF-Token` header).
 
@@ -68,7 +69,7 @@ Every response includes an `X-Request-ID` header for request tracing. If the cli
 
 All endpoints (except `/health` and `/static`) are limited to 60 requests per minute per client IP. HTTP 429 is returned when exceeded.
 
-API key login (`POST /ui/login`) has an additional dedicated limit: max 5 attempts per IP in 5 minutes.
+Password and API key login (`POST /ui/login`) have an additional dedicated limit: max 5 attempts per IP in 5 minutes.
 
 ### Secrets Rotation
 
@@ -195,9 +196,9 @@ Login page. Shows depending on configuration:
 
 ### POST /ui/login
 
-API key login (fallback). Expects `api_key` as form field. On success, creates a local admin session (`uid=0`).
+Login via password or API key. Expects `email` + `password` (password login) or `api_key` (API key fallback). Password login resolves the user from DB and verifies against Argon2 hash. API key login creates a local admin session (`uid=0`).
 
-**Status Codes:** 303 (redirect on success), 401 (wrong key), 429 (rate limit)
+**Status Codes:** 303 (redirect on success), 401 (wrong credentials), 429 (rate limit)
 
 ### GET /ui/login/google
 
