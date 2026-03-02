@@ -349,7 +349,7 @@ class TestEnsureSignalListener:
     @pytest.mark.asyncio
     async def test_idempotent_when_running(self):
         """Second call is a no-op when listener task is already running."""
-        from niles.sources.web import _ensure_signal_listener
+        from niles.sources.web._signal import _ensure_signal_listener
 
         app = MagicMock()
         # Simulate a running task
@@ -366,7 +366,7 @@ class TestEnsureSignalListener:
     @pytest.mark.asyncio
     async def test_starts_when_no_task(self):
         """Listener is started when no prior task exists."""
-        from niles.sources.web import _ensure_signal_listener
+        from niles.sources.web._signal import _ensure_signal_listener
 
         app = MagicMock()
         app.state.signal_task = None
@@ -387,7 +387,7 @@ class TestEnsureSignalListener:
     @pytest.mark.asyncio
     async def test_sentinel_prevents_duplicate(self):
         """Sentinel Future prevents a second caller from creating a duplicate task."""
-        from niles.sources.web import _ensure_signal_listener
+        from niles.sources.web._signal import _ensure_signal_listener
 
         app = MagicMock()
         app.state.signal_task = None
