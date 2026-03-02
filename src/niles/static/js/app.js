@@ -123,6 +123,13 @@ function createAssistantBubble() {
     return div;
 }
 
+/* --- Web Search toggle --- */
+
+function _getSearchParam(form) {
+    var el = form.querySelector("[name='web_search']");
+    return el ? "&web_search=" + el.value : "";
+}
+
 /* --- Chat streaming (SSE) --- */
 
 let chatStreaming = false;
@@ -165,7 +172,7 @@ async function handleChatSubmit(form) {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "X-CSRF-Token": getCookie("niles_csrf"),
             },
-            body: "message=" + encodeURIComponent(message),
+            body: "message=" + encodeURIComponent(message) + _getSearchParam(form),
             signal: chatAbortController.signal,
         });
 
@@ -260,6 +267,24 @@ document.addEventListener("DOMContentLoaded", function() {
             e.preventDefault();
             handleChatSubmit(chatForm);
         });
+    }
+});
+
+/* Web search toggle button (CSP-safe, event delegation) */
+document.body.addEventListener("click", function(evt) {
+    var btn = evt.target.closest("[data-search-toggle]");
+    if (!btn) return;
+    var active = btn.getAttribute("aria-pressed") === "true";
+    var next = !active;
+    btn.setAttribute("aria-pressed", String(next));
+    var hidden = btn.parentNode.querySelector("[name='web_search']");
+    if (hidden) hidden.value = next ? "true" : "false";
+    if (next) {
+        btn.classList.remove("text-zinc-400");
+        btn.classList.add("text-blue-500", "bg-blue-50", "dark:bg-blue-900/30");
+    } else {
+        btn.classList.add("text-zinc-400");
+        btn.classList.remove("text-blue-500", "bg-blue-50", "dark:bg-blue-900/30");
     }
 });
 
