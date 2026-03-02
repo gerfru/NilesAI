@@ -38,7 +38,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui", tags=["web-ui"])
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+class _NilesTemplates(Jinja2Templates):
+    """Jinja2Templates with automatic CSP nonce injection."""
+
+    def TemplateResponse(self, request, name, context=None, **kwargs):  # type: ignore[override]
+        ctx = context or {}
+        ctx.setdefault("csp_nonce", getattr(request.state, "csp_nonce", ""))
+        return super().TemplateResponse(request, name, ctx, **kwargs)
+
+
+templates = _NilesTemplates(directory=str(_TEMPLATES_DIR))
 
 # --- Constants ---
 

@@ -131,11 +131,14 @@ class UserStore:
             "UPDATE users SET last_login = NOW() WHERE id = $1", user_id
         )
 
-    async def list_all(self) -> list[dict]:
-        """List all users (for admin page)."""
+    async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
+        """List all users (for admin page), with pagination."""
         rows = await self.pool.fetch(
             "SELECT id, email, display_name, auth_method, is_admin,"
             " created_at, last_login FROM users ORDER BY id"
+            " LIMIT $1 OFFSET $2",
+            limit,
+            offset,
         )
         return [dict(r) for r in rows]
 
