@@ -177,7 +177,7 @@ class TestWebAuth:
         user_store.pool = AsyncMock()
         request = _make_request(user_store=user_store, client_ip="10.1.0.1")
         _login_attempts.clear()
-        with patch("niles.sources.web._ph") as mock_ph:
+        with patch("niles.sources.web._auth._ph") as mock_ph:
             mock_ph.verify.return_value = True
             response = await login_submit(
                 request, email="test@example.com", password="correct"
@@ -201,7 +201,7 @@ class TestWebAuth:
         }
         request = _make_request(user_store=user_store, client_ip="10.1.0.2")
         _login_attempts.clear()
-        with patch("niles.sources.web._ph") as mock_ph:
+        with patch("niles.sources.web._auth._ph") as mock_ph:
             mock_ph.verify.side_effect = VerifyMismatchError()
             response = await login_submit(
                 request, email="test@example.com", password="wrong"
@@ -216,7 +216,7 @@ class TestWebAuth:
         user_store.get_with_hash.return_value = None
         request = _make_request(user_store=user_store, client_ip="10.1.0.3")
         _login_attempts.clear()
-        with patch("niles.sources.web._ph") as mock_ph:
+        with patch("niles.sources.web._auth._ph") as mock_ph:
             response = await login_submit(
                 request, email="nobody@test.com", password="test"
             )
@@ -240,7 +240,7 @@ class TestWebAuth:
         }
         request = _make_request(user_store=user_store, client_ip="10.1.0.4")
         _login_attempts.clear()
-        with patch("niles.sources.web._ph"):
+        with patch("niles.sources.web._auth._ph"):
             response = await login_submit(
                 request, email="google@example.com", password="test"
             )
@@ -254,7 +254,7 @@ class TestWebAuth:
         user_store.has_password_users.return_value = True
         user_store.get_with_hash.return_value = None
         request = _make_request(user_store=user_store, client_ip="10.0.0.99")
-        with patch("niles.sources.web._ph"):
+        with patch("niles.sources.web._auth._ph"):
             # 5 failed attempts should exhaust the limit
             for _ in range(5):
                 await login_submit(request, email="x@x.com", password="wrong")
@@ -483,7 +483,7 @@ class TestSettingsEndpoints:
             agent=agent,
         )
 
-        with patch("niles.sources.web.AsyncOpenAI") as mock_openai:
+        with patch("niles.sources.web._settings.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             await update_setting(
@@ -579,7 +579,7 @@ class TestOllamaModelsEndpoint:
         }
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("niles.sources.web.httpx.AsyncClient") as mock_client:
+        with patch("niles.sources.web._settings.httpx.AsyncClient") as mock_client:
             instance = AsyncMock()
             instance.get.return_value = mock_resp
             instance.__aenter__ = AsyncMock(return_value=instance)
@@ -602,7 +602,7 @@ class TestOllamaModelsEndpoint:
             user_store=self._admin_user_store(),
         )
 
-        with patch("niles.sources.web.httpx.AsyncClient") as mock_client:
+        with patch("niles.sources.web._settings.httpx.AsyncClient") as mock_client:
             instance = AsyncMock()
             instance.get.side_effect = Exception("Connection refused")
             instance.__aenter__ = AsyncMock(return_value=instance)
@@ -771,7 +771,7 @@ class TestGoogleCalendarCallback:
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 400
 
-        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_token_resp
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -798,7 +798,7 @@ class TestGoogleCalendarCallback:
             # no refresh_token
         }
 
-        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_token_resp
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -845,7 +845,7 @@ class TestGoogleCalendarCallback:
             ],
         }
 
-        with patch("niles.sources.web.httpx.AsyncClient") as mock_cls:
+        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_token_resp
             mock_client.get.return_value = mock_cal_resp
@@ -948,7 +948,7 @@ class TestAdminEndpoints:
             headers=_csrf_headers(),
             user_store=user_store,
         )
-        with patch("niles.sources.web._ph") as mock_ph:
+        with patch("niles.sources.web._admin._ph") as mock_ph:
             mock_ph.hash.return_value = "hashed-pw"
             response = await admin_create_user(
                 request,
@@ -1058,7 +1058,7 @@ class TestAdminEndpoints:
             headers=_csrf_headers(),
             user_store=user_store,
         )
-        with patch("niles.sources.web._ph") as mock_ph:
+        with patch("niles.sources.web._admin._ph") as mock_ph:
             mock_ph.hash.return_value = "new-hash"
             response = await admin_reset_password(
                 request, user_id=5, password="newpassword123"
