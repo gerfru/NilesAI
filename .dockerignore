@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+.venv
+__pycache__
+*.pyc
+tests/
+docs/
+node_modules/
+.pre-commit-config.yaml
+renovate.json
+*.md
+!README.md
+.ruff_cache
+.mypy_cache
+.pytest_cache

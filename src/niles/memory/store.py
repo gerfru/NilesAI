@@ -58,10 +58,12 @@ class MemoryStore:
                 logger.warning("Corrupted memory value for key: %s", row["key"])
         return results
 
-    async def list_all(self) -> list[dict]:
-        """List all memory entries (for system prompt context)."""
+    async def list_all(self, *, limit: int = 200, offset: int = 0) -> list[dict]:
+        """List all memory entries (for system prompt context), with pagination."""
         rows = await self.pool.fetch(
-            "SELECT key, value FROM memory ORDER BY updated_at DESC"
+            "SELECT key, value FROM memory ORDER BY updated_at DESC LIMIT $1 OFFSET $2",
+            limit,
+            offset,
         )
         results = []
         for row in rows:

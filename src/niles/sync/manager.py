@@ -111,14 +111,17 @@ class CalendarSourceManager:
             logger.info("Removed calendar source %d", source_id)
         return removed
 
-    async def get_sources(self) -> list[dict]:
-        """List all calendar sources."""
+    async def get_sources(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
+        """List all calendar sources, with pagination."""
         rows = await self.pool.fetch(
             """
             SELECT id, name, url, source_type, writable, enabled,
                    last_synced, last_error, created_at
             FROM calendar_sources ORDER BY created_at
-            """
+            LIMIT $1 OFFSET $2
+            """,
+            limit,
+            offset,
         )
         return [dict(r) for r in rows]
 
