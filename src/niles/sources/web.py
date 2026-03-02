@@ -895,6 +895,11 @@ async def chat_stream(
             status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
         )
 
+    # Server-side guard: ignore client flag when feature is globally disabled
+    settings = request.app.state.settings
+    if not settings.feature_search:
+        web_search = False
+
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
     agent = request.app.state.agent

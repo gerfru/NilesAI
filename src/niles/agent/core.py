@@ -661,27 +661,31 @@ class NilesAgent:
             calendar_sources=source_names,
         )
 
-        # Append recherche-mode instruction based on per-message flag
+        # Append recherche-mode instruction only when MCP search tools exist
         web_search = event.get("metadata", {}).get("web_search", False)
-        if web_search:
-            system_prompt += (
-                "\n\n## Recherche-Modus AKTIV\n"
-                "Der Benutzer hat den Recherche-Modus aktiviert. "
-                "Nutze die Web-Suche (`mcp__searxng__search`) und "
-                "Fetch-Tools (`mcp__fetch__fetch_url`) um die Anfrage "
-                "zu beantworten. Verwende KEINE lokalen Tools "
-                "(find_contact, find_event, list_tasks) — der Benutzer "
-                "will explizit eine Web-Recherche."
-            )
-        else:
-            system_prompt += (
-                "\n\n## Recherche-Modus NICHT aktiv\n"
-                "Der Benutzer hat den Recherche-Modus NICHT aktiviert. "
-                "Nutze AUSSCHLIESSLICH lokale Tools: find_contact, "
-                "find_event, list_tasks, send_whatsapp, remember, recall, "
-                "Wetter-Tools etc. Führe KEINE Web-Suche durch — die "
-                "Such-Tools stehen dir nicht zur Verfügung."
-            )
+        _has_search_mcp = self.mcp and any(
+            t["function"]["name"].startswith("mcp__searxng__")
+            for t in self.mcp.get_openai_tools()
+        )
+        if _has_search_mcp:
+            if web_search:
+                system_prompt += (
+                    "\n\n## Recherche-Modus AKTIV\n"
+                    "Der Benutzer hat den Recherche-Modus aktiviert. "
+                    "Priorisiere die Web-Suche (`mcp__searxng__search`) und "
+                    "Fetch-Tools (`mcp__fetch__fetch_url`) um die Anfrage "
+                    "zu beantworten. Lokale Tools (find_contact, find_event, "
+                    "list_tasks) nur verwenden, wenn die Anfrage eindeutig "
+                    "lokale Daten betrifft."
+                )
+            else:
+                system_prompt += (
+                    "\n\n## Recherche-Modus NICHT aktiv\n"
+                    "Nutze lokale Tools: find_contact, find_event, "
+                    "list_tasks, send_whatsapp, remember, recall, "
+                    "Wetter-Tools etc. Führe keine Web-Suche durch — die "
+                    "Such-Tools stehen nicht zur Verfügung."
+                )
 
         history_messages = await self.history.get_recent(chat_id)
         messages = [{"role": "system", "content": system_prompt}]
