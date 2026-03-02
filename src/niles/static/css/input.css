@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Search toggle (aria-pressed driven) */
+@layer components {
+    [data-search-toggle][aria-pressed="true"] {
+        @apply text-blue-500 bg-blue-100;
+    }
+    [data-search-toggle][aria-pressed="true"]:hover {
+        @apply text-blue-600 bg-blue-200;
+    }
+    .dark [data-search-toggle][aria-pressed="true"] {
+        @apply text-blue-400 bg-blue-900/40;
+    }
+    .dark [data-search-toggle][aria-pressed="true"]:hover {
+        @apply text-blue-300 bg-blue-800/40;
+    }
+}
+
 /* Toggle switch (replaces Pico CSS role="switch") */
 @layer components {
     .toggle-switch {
