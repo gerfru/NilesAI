@@ -280,11 +280,13 @@ document.body.addEventListener("click", function(evt) {
     var hidden = btn.parentNode.querySelector("[name='web_search']");
     if (hidden) hidden.value = next ? "true" : "false";
     if (next) {
-        btn.classList.remove("text-zinc-400");
-        btn.classList.add("text-blue-500", "bg-blue-50", "dark:bg-blue-900/30");
+        btn.classList.remove("text-zinc-400", "hover:text-zinc-600", "dark:hover:text-zinc-300");
+        btn.classList.add("text-blue-500", "bg-blue-100", "dark:bg-blue-800/40",
+                          "hover:bg-blue-200", "dark:hover:bg-blue-700/40");
     } else {
-        btn.classList.add("text-zinc-400");
-        btn.classList.remove("text-blue-500", "bg-blue-50", "dark:bg-blue-900/30");
+        btn.classList.remove("text-blue-500", "bg-blue-100", "dark:bg-blue-800/40",
+                             "hover:bg-blue-200", "dark:hover:bg-blue-700/40");
+        btn.classList.add("text-zinc-400", "hover:text-zinc-600", "dark:hover:text-zinc-300");
     }
 });
 
