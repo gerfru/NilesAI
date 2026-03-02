@@ -661,6 +661,28 @@ class NilesAgent:
             calendar_sources=source_names,
         )
 
+        # Append recherche-mode instruction based on per-message flag
+        web_search = event.get("metadata", {}).get("web_search", False)
+        if web_search:
+            system_prompt += (
+                "\n\n## Recherche-Modus AKTIV\n"
+                "Der Benutzer hat den Recherche-Modus aktiviert. "
+                "Nutze die Web-Suche (`mcp__searxng__search`) und "
+                "Fetch-Tools (`mcp__fetch__fetch_url`) um die Anfrage "
+                "zu beantworten. Verwende KEINE lokalen Tools "
+                "(find_contact, find_event, list_tasks) — der Benutzer "
+                "will explizit eine Web-Recherche."
+            )
+        else:
+            system_prompt += (
+                "\n\n## Recherche-Modus NICHT aktiv\n"
+                "Der Benutzer hat den Recherche-Modus NICHT aktiviert. "
+                "Nutze AUSSCHLIESSLICH lokale Tools: find_contact, "
+                "find_event, list_tasks, send_whatsapp, remember, recall, "
+                "Wetter-Tools etc. Führe KEINE Web-Suche durch — die "
+                "Such-Tools stehen dir nicht zur Verfügung."
+            )
+
         history_messages = await self.history.get_recent(chat_id)
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(
@@ -688,7 +710,6 @@ class NilesAgent:
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
             # Only include search/fetch MCP tools when web_search is active
-            web_search = event.get("metadata", {}).get("web_search", False)
             if not web_search:
                 _search_prefixes = ("mcp__searxng__", "mcp__fetch__")
                 mcp_tools = [
