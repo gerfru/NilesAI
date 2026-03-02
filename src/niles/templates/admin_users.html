@@ -111,7 +111,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function togglePwForm(userId) {
     const form = document.getElementById('pw-form-' + userId);
     if (form) form.classList.toggle('hidden');
