@@ -270,24 +270,15 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-/* Web search toggle button (CSP-safe, event delegation) */
+/* Web search toggle button (CSP-safe, event delegation).
+   Visual state is driven by CSS via [aria-pressed="true"] (see input.css). */
 document.body.addEventListener("click", function(evt) {
     var btn = evt.target.closest("[data-search-toggle]");
     if (!btn) return;
-    var active = btn.getAttribute("aria-pressed") === "true";
-    var next = !active;
+    var next = btn.getAttribute("aria-pressed") !== "true";
     btn.setAttribute("aria-pressed", String(next));
-    var hidden = btn.parentNode.querySelector("[name='web_search']");
+    var hidden = btn.closest("form").querySelector("[name='web_search']");
     if (hidden) hidden.value = next ? "true" : "false";
-    if (next) {
-        btn.classList.remove("text-zinc-400", "hover:text-zinc-600", "dark:hover:text-zinc-300");
-        btn.classList.add("text-blue-500", "bg-blue-100", "dark:bg-blue-800/40",
-                          "hover:bg-blue-200", "dark:hover:bg-blue-700/40");
-    } else {
-        btn.classList.remove("text-blue-500", "bg-blue-100", "dark:bg-blue-800/40",
-                             "hover:bg-blue-200", "dark:hover:bg-blue-700/40");
-        btn.classList.add("text-zinc-400", "hover:text-zinc-600", "dark:hover:text-zinc-300");
-    }
 });
 
 /* Dark mode toggle button (CSP-safe, event delegation) */
