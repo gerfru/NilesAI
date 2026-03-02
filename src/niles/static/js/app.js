@@ -123,6 +123,13 @@ function createAssistantBubble() {
     return div;
 }
 
+/* --- Web Search toggle --- */
+
+function _getSearchParam(form) {
+    var el = form.querySelector("[name='web_search']");
+    return el ? "&web_search=" + el.value : "";
+}
+
 /* --- Chat streaming (SSE) --- */
 
 let chatStreaming = false;
@@ -165,7 +172,7 @@ async function handleChatSubmit(form) {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "X-CSRF-Token": getCookie("niles_csrf"),
             },
-            body: "message=" + encodeURIComponent(message),
+            body: "message=" + encodeURIComponent(message) + _getSearchParam(form),
             signal: chatAbortController.signal,
         });
 
@@ -261,6 +268,17 @@ document.addEventListener("DOMContentLoaded", function() {
             handleChatSubmit(chatForm);
         });
     }
+});
+
+/* Web search toggle button (CSP-safe, event delegation).
+   Visual state is driven by CSS via [aria-pressed="true"] (see input.css). */
+document.body.addEventListener("click", function(evt) {
+    var btn = evt.target.closest("[data-search-toggle]");
+    if (!btn) return;
+    var next = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", String(next));
+    var hidden = btn.closest("form").querySelector("[name='web_search']");
+    if (hidden) hidden.value = next ? "true" : "false";
 });
 
 /* Dark mode toggle button (CSP-safe, event delegation) */
