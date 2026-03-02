@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-02-27
+> **Updated:** 2026-03-02
 
 ---
 
@@ -308,8 +308,22 @@ DATABASE_URL="..." alembic history
 ### New Tool (Agent Capability)
 
 1. Add tool definition to the `TOOLS` list in `src/niles/agent/core.py` (OpenAI function calling format)
-2. Add handler in `NilesAgent._execute_tool_call()`
-3. Add tests in `tests/test_agent.py` (or new test file)
+2. Create a handler module in `src/niles/agent/tools/<name>.py` with a `@register_tool("tool_name")` decorated async function
+3. Add the side-effect import in `src/niles/agent/tools/__init__.py`
+4. Add tests in `tests/test_core.py` (or new test file)
+
+Handler signature: `async def handle_<name>(args: dict, chat_id: str, ctx: ToolContext) -> dict`
+
+Example:
+
+```python
+from . import ToolContext, register_tool
+
+@register_tool("my_tool")
+async def handle_my_tool(args: dict, chat_id: str, ctx: ToolContext) -> dict:
+    result = await ctx.some_action.do_thing(args["param"])
+    return {"status": "ok", "data": result}
+```
 
 ### New Action (External Integration)
 

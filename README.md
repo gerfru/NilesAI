@@ -28,7 +28,7 @@ Browser / curl / WhatsApp
 +-------------------------------------------------------------+
 |  Niles Core (FastAPI :8000)                                 |
 |                                                             |
-|  /ui/*  ---- sources/web.py (htmx + Jinja2 + SSE)           |
+|  /ui/*  ---- sources/web/ (htmx + Jinja2 + SSE)              |
 |                 |  Google OAuth / API-Key Auth              |
 |                 v                                           |
 |  /chat  ---> agent/core.py (NilesAgent) --------> Ollama    |
@@ -76,11 +76,12 @@ Niles/
 src/niles/                     Python Backend
   main.py                      FastAPI + Lifespan + Middleware
   config.py                    Pydantic Settings
-  agent/                       LLM Agent, Tool-Call Pipeline, Prompts
+  agent/                       LLM Agent, Tool Definitions + Registry, Prompts
+    tools/                     Tool handler modules (registry-based)
   memory/                      Key-Value Store, Conversation History
   actions/                     WhatsApp, Contacts, Calendar, Tasks, Briefing
   jobs/                        Scheduled Jobs (Briefing)
-  sources/                     Webhook Handler, Web-UI (SSE Streaming)
+  sources/                     Webhook Handler, Web UI (feature-based package)
   sync/                        CardDAV, CalDAV, Google Calendar, iCal Parser
   mcp/                         MCP Server Manager
   vikunja_store.py             Per-user Vikunja credentials (PostgreSQL)
