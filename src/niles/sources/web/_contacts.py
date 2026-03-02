@@ -106,13 +106,16 @@ async def contacts_connect(
         await settings_store.set("carddav_url", url.strip())
         await settings_store.set("carddav_user", username.strip())
         await settings_store.set("carddav_password", password)
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to persist CardDAV credentials")
         carddav_sync.update_config(settings)
         return templates.TemplateResponse(
             request,
             "fragments/carddav_status.html",
-            {"connected": False, "carddav_error": f"Speichern fehlgeschlagen: {exc}"},
+            {
+                "connected": False,
+                "carddav_error": "Speichern fehlgeschlagen. Details siehe Logs.",
+            },
         )
 
     request.app.state.settings = new_settings
