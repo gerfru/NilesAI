@@ -12,7 +12,12 @@ def format_message_transcript(
     """Format messages into a readable chat transcript with date range.
 
     Returns dict with keys: chat_with, count, date_range, hinweis, transcript.
+
+    Raises ValueError if *messages* is empty (callers must guard).
     """
+    if not messages:
+        raise ValueError("messages must not be empty")
+
     local_tz = ZoneInfo(timezone_str)
     lines = []
     for msg in messages:
