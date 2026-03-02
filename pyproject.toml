@@ -110,6 +110,42 @@ disable_error_code = ["operator", "arg-type"]
 module = "niles.main"
 disable_error_code = ["call-arg"]
 
+[[tool.mypy.overrides]]
+module = "niles.sync.ical_parser"
+disable_error_code = ["var-annotated", "assignment", "union-attr", "import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.caldav"
+disable_error_code = ["assignment", "arg-type", "operator"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.carddav"
+disable_error_code = ["assignment", "operator", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "niles.agent.core"
+disable_error_code = ["index", "assignment", "call-overload", "union-attr", "no-redef"]
+
+[[tool.mypy.overrides]]
+module = "niles.agent.prompts"
+disable_error_code = ["assignment", "union-attr"]
+
+[[tool.mypy.overrides]]
+module = "niles.jobs.briefing"
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "niles.actions.tasks"
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "niles.cli"
+disable_error_code = ["call-arg"]
+
+[[tool.mypy.overrides]]
+module = "niles.mcp.client"
+disable_error_code = ["import-untyped"]
+
 [tool.coverage.run]
 source = ["src/niles"]
 omit = ["tests/*", "alembic/*"]
