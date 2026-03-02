@@ -603,14 +603,16 @@ async def readiness():
     try:
         await pool.fetchval("SELECT 1")
     except Exception as exc:
-        errors.append(f"db: {exc}")
+        logger.debug("Readiness probe DB check failed: %s", exc)
+        errors.append("db: unreachable")
 
     try:
         version = await pool.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
         if version is None:
             errors.append("alembic: no version found")
     except Exception as exc:
-        errors.append(f"alembic: {exc}")
+        logger.debug("Readiness probe alembic check failed: %s", exc)
+        errors.append("alembic: unreachable")
 
     if errors:
         return JSONResponse(
