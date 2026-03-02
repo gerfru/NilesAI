@@ -117,9 +117,15 @@ class UserStore:
         return None
 
     async def update_password(self, user_id: int, password_hash: str) -> bool:
-        """Update password hash for a user. Returns True if updated."""
+        """Update password hash and set auth_method to 'password'.
+
+        Also sets auth_method so that Google-OAuth users who receive an
+        admin-assigned password can log in via the password form.
+        Returns True if updated.
+        """
         result = await self.pool.execute(
-            "UPDATE users SET password_hash = $1 WHERE id = $2",
+            "UPDATE users SET password_hash = $1, auth_method = 'password'"
+            " WHERE id = $2",
             password_hash,
             user_id,
         )

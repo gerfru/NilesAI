@@ -11,13 +11,9 @@ from argon2.exceptions import VerifyMismatchError
 from niles.sources.web import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
-    _CHAT_PAGE_SIZE,
-    _GCAL_OAUTH_COOKIE,
     _get_session_user,
-    _login_attempts,
     _require_admin,
     _require_auth_and_csrf,
-    _verify_csrf,
     admin_create_user,
     admin_delete_user,
     admin_reset_password,
@@ -32,6 +28,10 @@ from niles.sources.web import (
     settings_page,
     update_setting,
 )
+from niles.sources.web._auth import _login_attempts
+from niles.sources.web._calendar import _GCAL_OAUTH_COOKIE
+from niles.sources.web._chat import _CHAT_PAGE_SIZE
+from niles.sources.web._core import _verify_csrf
 
 CSRF_TOKEN = "test-csrf-token"
 _TEST_NILES_KEY = "test-niles-key"
