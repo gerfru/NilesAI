@@ -286,18 +286,21 @@ async def callback_google_calendar(
     redirect_uri = _build_redirect_uri(request, "/ui/callback/google/calendar")
 
     # Exchange authorization code for tokens
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "code": code,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            },
-            timeout=30,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            token_resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+            )
+    except httpx.HTTPError as e:
+        logger.error("Google Calendar token exchange HTTP error: %s", e)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     if token_resp.status_code != 200:
         logger.error(
@@ -320,12 +323,15 @@ async def callback_google_calendar(
     token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
     # Discover calendars via Google Calendar REST API
-    async with httpx.AsyncClient() as client:
-        cal_resp = await client.get(
-            _GOOGLE_CALENDAR_LIST_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=30,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            cal_resp = await client.get(
+                _GOOGLE_CALENDAR_LIST_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+    except httpx.HTTPError as e:
+        logger.error("Google Calendar list HTTP error: %s", e)
+        return RedirectResponse(url=_fail_url, status_code=303)
 
     if cal_resp.status_code != 200:
         logger.error("Google Calendar list failed: %d", cal_resp.status_code)

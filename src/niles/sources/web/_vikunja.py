@@ -112,13 +112,15 @@ async def vikunja_connect(
         host = parsed.hostname or ""
         if not host:
             raise ValueError("host")
-        # Reject private/loopback IPs (except Docker-internal hostnames)
+        # Reject private/loopback IPs.  Hostnames (including "localhost")
+        # are intentionally allowed because Docker-internal service names
+        # (e.g. "vikunja") are the expected use case for self-hosted setups.
+        # This is acceptable since only authenticated admins can set the URL.
         try:
             addr = ipaddress.ip_address(host)
             if addr.is_private or addr.is_loopback or addr.is_link_local:
                 raise ValueError("private IP")
         except ValueError as ve:
-            # Not an IP address — allow hostnames (e.g. "vikunja", "localhost" for Docker)
             if str(ve) == "private IP":
                 raise
     except ValueError:
