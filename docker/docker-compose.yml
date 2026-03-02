@@ -19,6 +19,12 @@ services:
       - evolution_postgres:/var/lib/postgresql/data
     networks:
       - niles_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Evolution API (WhatsApp)
   evolution_api:
@@ -51,8 +57,15 @@ services:
       - ~/.evolution/instances:/evolution/instances
     networks:
       - niles_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
-      - evolution_postgres
+      evolution_postgres:
+        condition: service_healthy
 
   # Vikunja (Todo/Task Management)
   vikunja:
@@ -74,8 +87,15 @@ services:
     # No port exposed -- access only via Caddy reverse proxy (HTTPS :3457)
     volumes:
       - vikunja_files:/app/vikunja/files
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3456/api/v1/info || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
-      - evolution_postgres
+      evolution_postgres:
+        condition: service_healthy
     networks:
       - niles_network
     restart: unless-stopped
@@ -132,9 +152,12 @@ services:
     networks:
       - niles_network
     depends_on:
-      - niles_core
-      - evolution_api
-      - vikunja
+      niles_core:
+        condition: service_healthy
+      evolution_api:
+        condition: service_started
+      vikunja:
+        condition: service_started
 
   # Niles AI Core
   niles_core:
@@ -181,9 +204,17 @@ services:
       - ../config:/app/config:ro
     networks:
       - niles_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
-      - evolution_postgres
-      - evolution_api
+      evolution_postgres:
+        condition: service_healthy
+      evolution_api:
+        condition: service_started
 
 volumes:
   evolution_postgres:
