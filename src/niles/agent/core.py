@@ -4,11 +4,8 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 
-import httpx
 from openai import AsyncOpenAI
 
 from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
@@ -27,6 +24,15 @@ from ..signal_store import SignalMessageStore
 from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
+from .tools import TOOL_REGISTRY, ToolContext
+from .tools import calendar as _tools_calendar  # noqa: F401
+from .tools import contacts as _tools_contacts  # noqa: F401
+from .tools import memory as _tools_memory  # noqa: F401
+from .tools import mcp as _tools_mcp  # noqa: F401
+from .tools import signal as _tools_signal  # noqa: F401
+from .tools import tasks as _tools_tasks  # noqa: F401
+from .tools import whatsapp as _tools_whatsapp  # noqa: F401
+from .tools.mcp import handle_mcp_tool
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +353,6 @@ TOOLS = [
 ]
 
 MAX_TOOL_ROUNDS = 5
-MAX_MCP_RESULT_SIZE = 100_000  # 100 KB limit for MCP tool results
 
 
 class NilesAgent:
@@ -1081,6 +1086,28 @@ class NilesAgent:
         logger.warning("Max tool rounds reached")
         return "Ich konnte die Anfrage nicht abschließen."
 
+    def _tool_context(self) -> ToolContext:
+        """Build a ToolContext from the agent's dependencies."""
+        return ToolContext(
+            config=self.config,
+            contacts=self.contacts,
+            whatsapp=self.whatsapp,
+            signal=self.signal,
+            signal_store=self.signal_store,
+            memory=self.memory,
+            calendar=self.calendar,
+            calendar_manager=self.calendar_manager,
+            vikunja_store=self.vikunja_store,
+            wa_store=self.wa_store,
+            mcp=self.mcp,
+            resolve_contact_phone=self._resolve_contact_phone,
+            resolve_wa_instance=self._resolve_wa_instance,
+            resolve_vikunja=self._resolve_vikunja_tasks,
+            get_own_phone_number=self._get_own_phone_number,
+            get_calendar_sources=self._get_calendar_source_names,
+            pending_phone_choices=self._pending_phone_choices,
+        )
+
     async def _execute_tool_call(self, tool_call, chat_id: str = "") -> dict:
         """Execute a single tool call and return the result."""
         name = tool_call.function.name
@@ -1092,369 +1119,12 @@ class NilesAgent:
 
         logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)
 
-        if name == "find_contact":
-            query = args.get("name") or args.get("query") or ""
-            if not query:
-                # LLM sent wrong param names — use the first string value
-                for v in args.values():
-                    if isinstance(v, str) and v:
-                        query = v
-                        break
-            if not query:
-                return {"error": "Kein Name angegeben"}
-            contact = await self.contacts.find_by_name(query)
-            if contact:
-                return contact
-            return {"error": f"Kontakt '{query}' nicht gefunden"}
+        ctx = self._tool_context()
 
-        if name == "send_whatsapp":
-            to = args["to"]
-            text = args["text"]
-            resolved_number = None
+        # Registry lookup for built-in tools
+        handler = TOOL_REGISTRY.get(name)
+        if handler:
+            return await handler(args, chat_id, ctx)
 
-            # 1. Contact resolution (if name instead of number)
-            if not to.replace("+", "").replace(" ", "").isdigit():
-                contact = await self.contacts.find_by_name(to)
-                if not contact:
-                    return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
-                phones = contact.get("phones", [])
-                if len(phones) > 1:
-                    # Multiple numbers — store state and ask user to choose
-                    self._pending_phone_choices[chat_id] = {
-                        "phones": phones,
-                        "text": text,
-                        "contact_name": contact["full_name"],
-                        "expires_at": time.monotonic() + 300,
-                    }
-                    lines = [f"Es gibt mehrere Nummern für {contact['full_name']}:"]
-                    for i, p in enumerate(phones, 1):
-                        lines.append(f"{i}. 00{p['number']} ({p['type']})")
-                    return {"choose_phone": "\n".join(lines)}
-                if not contact.get("phone"):
-                    return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
-                resolved_number = contact["phone"]
-            else:
-                resolved_number = to
-
-            # 2. Self-check: own number is always allowed
-            is_self = False
-            own_number = await self._get_own_phone_number(chat_id)
-            if own_number:
-                normalized = resolved_number.replace("+", "").replace(" ", "")
-                is_self = normalized == own_number or (
-                    len(own_number) >= 8 and normalized.endswith(own_number)
-                )
-
-            # 3. Sending to others: only if feature flag is active
-            if not is_self and not self.config.feature_whatsapp_send_others:
-                logger.info("send_whatsapp to others disabled via feature flag")
-                return {
-                    "error": "Das Senden an andere Personen ist deaktiviert. "
-                    "Du kannst diese Funktion in den Einstellungen aktivieren."
-                }
-
-            # 4. Send message
-            instance = await self._resolve_wa_instance(chat_id)
-
-            result = await self.whatsapp.send_message(
-                to=resolved_number,
-                text=text,
-                instance=instance,
-            )
-            return (
-                {"status": "sent", "to": resolved_number}
-                if "error" not in result
-                else result
-            )
-
-        if name == "get_whatsapp_messages":
-            contact_arg = args.get("contact", "").strip()
-            if not contact_arg:
-                return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
-
-            phone, err = await self._resolve_contact_phone(contact_arg)
-            if err:
-                return err
-
-            # Build JID and resolve per-user instance
-            jid = f"{phone}@s.whatsapp.net"
-            instance = await self._resolve_wa_instance(chat_id)
-
-            messages = await self.whatsapp.fetch_messages(
-                remote_jid=jid,
-                instance=instance,
-            )
-            if not messages:
-                return {
-                    "error": "Keine WhatsApp-Nachrichten gefunden",
-                    "hint": "Es werden nur Nachrichten der letzten 30 Tage angezeigt.",
-                }
-
-            # Format as readable chat transcript for the LLM
-            contact_name = (
-                contact_arg
-                if not contact_arg.replace("+", "").replace(" ", "").isdigit()
-                else (messages[0].get("push_name") or phone)
-            )
-            local_tz = ZoneInfo(self.config.timezone)
-            lines = []
-            for msg in messages:
-                ts = datetime.fromtimestamp(
-                    msg["timestamp"], tz=timezone.utc
-                ).astimezone(local_tz)
-                who = "Du" if msg["from_me"] else contact_name
-                lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
-            transcript = "\n".join(lines)
-
-            # Compute date range for LLM context (in user's local timezone)
-            # See also: config/soul.md "Nachrichten lesen" + hinweis below
-            first_dt = datetime.fromtimestamp(
-                messages[0]["timestamp"],
-                tz=timezone.utc,
-            ).astimezone(local_tz)
-            last_dt = datetime.fromtimestamp(
-                messages[-1]["timestamp"],
-                tz=timezone.utc,
-            ).astimezone(local_tz)
-            if first_dt.date() == last_dt.date():
-                date_range = first_dt.strftime("%d.%m.%Y")
-            else:
-                date_range = (
-                    f"{first_dt.strftime('%d.%m.%Y')}"
-                    f" \u2013 "
-                    f"{last_dt.strftime('%d.%m.%Y')}"
-                )
-
-            return {
-                "chat_with": contact_name,
-                "count": len(messages),
-                "date_range": date_range,
-                # Summarization instruction (3/3) — keep in sync with:
-                # 1/3: config/soul.md "Nachrichten lesen"
-                # 2/3: tool description above
-                "hinweis": (
-                    f"{len(messages)} Nachrichten ({date_range}). "
-                    "Fasse die wichtigsten Punkte zusammen: "
-                    "Termine, Abmachungen, offene Fragen, wichtige Infos. "
-                    "Gib NICHT das rohe Transcript wieder."
-                ),
-                "transcript": transcript,
-            }
-
-        if name == "send_signal":
-            to = args["to"]
-            text = args["text"]
-
-            # 1. Contact resolution (if name instead of number)
-            phone, err = await self._resolve_contact_phone(to)
-            if err:
-                return err
-            resolved_number = f"+{phone}"
-
-            # 2. Self-check: own number is always allowed
-            own_phone = self.config.signal_phone_number
-            is_self = resolved_number == own_phone
-
-            # 3. Sending to others: only if feature flag is active
-            if not is_self and not self.config.feature_signal_send_others:
-                logger.info("send_signal to others disabled via feature flag")
-                return {
-                    "error": "Das Senden an andere Personen ist deaktiviert. "
-                    "Du kannst diese Funktion in den Einstellungen aktivieren."
-                }
-
-            # 4. Send message
-            result = await self.signal.send_message(to=resolved_number, text=text)
-            return (
-                {"status": "sent", "to": resolved_number}
-                if "error" not in result
-                else result
-            )
-
-        if name == "get_signal_messages":
-            contact_arg = args.get("contact", "").strip()
-            if not contact_arg:
-                return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
-
-            phone, err = await self._resolve_contact_phone(contact_arg)
-            if err:
-                return err
-            phone = f"+{phone}"
-
-            messages = await self.signal_store.get_messages(phone=phone)
-            if not messages:
-                return {
-                    "error": "Keine Signal-Nachrichten gefunden",
-                    "hint": "Es werden nur Nachrichten der letzten 30 Tage angezeigt.",
-                }
-
-            # Format as readable chat transcript for the LLM
-            contact_name = (
-                contact_arg
-                if not contact_arg.replace("+", "").replace(" ", "").isdigit()
-                else phone
-            )
-            local_tz = ZoneInfo(self.config.timezone)
-            lines = []
-            for msg in messages:
-                ts = datetime.fromtimestamp(
-                    msg["timestamp"], tz=timezone.utc
-                ).astimezone(local_tz)
-                who = "Du" if msg["from_me"] else contact_name
-                lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
-            transcript = "\n".join(lines)
-
-            first_dt = datetime.fromtimestamp(
-                messages[0]["timestamp"], tz=timezone.utc
-            ).astimezone(local_tz)
-            last_dt = datetime.fromtimestamp(
-                messages[-1]["timestamp"], tz=timezone.utc
-            ).astimezone(local_tz)
-            if first_dt.date() == last_dt.date():
-                date_range = first_dt.strftime("%d.%m.%Y")
-            else:
-                date_range = (
-                    f"{first_dt.strftime('%d.%m.%Y')}"
-                    f" \u2013 "
-                    f"{last_dt.strftime('%d.%m.%Y')}"
-                )
-
-            return {
-                "chat_with": contact_name,
-                "count": len(messages),
-                "date_range": date_range,
-                "hinweis": (
-                    f"{len(messages)} Nachrichten ({date_range}). "
-                    "Fasse die wichtigsten Punkte zusammen: "
-                    "Termine, Abmachungen, offene Fragen, wichtige Infos. "
-                    "Gib NICHT das rohe Transcript wieder."
-                ),
-                "transcript": transcript,
-            }
-
-        if name == "remember":
-            await self.memory.set(args["key"], args["value"])
-            return {"status": "saved", "key": args["key"]}
-
-        if name == "recall":
-            value = await self.memory.get(args["key"])
-            if value is not None:
-                return {"key": args["key"], "value": value}
-            return {"error": f"Nichts gespeichert unter '{args['key']}'"}
-
-        if name == "find_event":
-            if not self.calendar:
-                return {"error": "Kalender ist nicht konfiguriert"}
-
-            # Guard 1: small LLMs sometimes put a contact name into date_from
-            # (e.g. find_event(date_from="mama") when they should use
-            # find_contact).  Detect and redirect.
-            date_from = args.get("date_from", "")
-            date_to = args.get("date_to", "")
-            _date_chars = set("0123456789-/.T:+Z ")
-            for df in (date_from, date_to):
-                if df and not set(df).issubset(_date_chars):
-                    # Looks like a name, not a date — treat as query instead
-                    logger.info("find_event: moving non-date value '%s' to query", df)
-                    if not args.get("query"):
-                        args["query"] = df
-                    if df == date_from:
-                        date_from = ""
-                    else:
-                        date_to = ""
-
-            # Guard 2: small LLMs often confuse the user's name with a
-            # calendar source name and pass it as filter on general date
-            # queries.  Only honour the calendar filter when a search term
-            # is present (e.g. birthday lookups).
-            cal_filter = args.get("calendar", "")
-            if cal_filter and not args.get("query"):
-                logger.debug(
-                    "Dropping calendar filter '%s' on general date query",
-                    cal_filter,
-                )
-                cal_filter = ""
-            events = await self.calendar.find_by_query(
-                query=args.get("query", ""),
-                date_from=date_from,
-                date_to=date_to,
-                calendar=cal_filter,
-            )
-            if events:
-                result: dict = {"events": events, "count": len(events)}
-                result["hinweis"] = (
-                    "Nenne NUR diese Termine. Erfinde keine zusätzlichen Termine."
-                )
-                return result
-            return {"error": "Keine Termine gefunden"}
-
-        if name == "create_event":
-            if not self.calendar_manager:
-                return {"error": "Kalender ist nicht konfiguriert"}
-            try:
-                writable = await self.calendar_manager.get_writable_source()
-                if not writable:
-                    return {"error": "Kein beschreibbarer Kalender konfiguriert"}
-                return await self.calendar_manager.create_event(
-                    source=writable,
-                    summary=args["summary"],
-                    dtstart_str=args["start"],
-                    dtend_str=args.get("end"),
-                    description=args.get("description", ""),
-                    location=args.get("location", ""),
-                )
-            except httpx.HTTPError as e:
-                logger.error("HTTP error creating event: %s", e)
-                return {"error": "Termin konnte nicht erstellt werden (Netzwerkfehler)"}
-            except Exception as e:
-                logger.error("Failed to create event: %s", e)
-                return {"error": "Termin konnte nicht erstellt werden"}
-
-        if name == "list_tasks":
-            tasks_action = await self._resolve_vikunja_tasks(chat_id)
-            if not tasks_action:
-                return {
-                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
-                }
-            tasks = await tasks_action.list_tasks(
-                project=args.get("project", ""),
-                include_done=args.get("include_done", False),
-            )
-            if tasks:
-                return {"tasks": tasks, "count": len(tasks)}
-            return {"error": "Keine Aufgaben gefunden"}
-
-        if name == "create_task":
-            tasks_action = await self._resolve_vikunja_tasks(chat_id)
-            if not tasks_action:
-                return {
-                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
-                }
-            return await tasks_action.create_task(
-                title=args["title"],
-                description=args.get("description", ""),
-                due_date=args.get("due_date", ""),
-                priority=args.get("priority", 0),
-                project=args.get("project", ""),
-            )
-
-        if name == "complete_task":
-            tasks_action = await self._resolve_vikunja_tasks(chat_id)
-            if not tasks_action:
-                return {
-                    "error": "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
-                }
-            return await tasks_action.complete_task(title=args["title"])
-
-        # MCP tools (prefixed with mcp__)
-        if self.mcp and self.mcp.is_mcp_tool(name):
-            try:
-                result_text = await self.mcp.call_tool(name, args)
-                if len(result_text) > MAX_MCP_RESULT_SIZE:
-                    result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
-                return {"result": result_text}
-            except Exception as e:
-                logger.error("MCP tool call failed [%s]: %s", name, e)
-                return {"error": f"MCP tool error: {e}"}
-
-        return {"error": f"Unknown tool: {name}"}
+        # MCP fallback for tools not in the registry
+        return await handle_mcp_tool(name, args, ctx)
