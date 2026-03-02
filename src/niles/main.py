@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import re
+import secrets
 import sys
 import time
 from collections import defaultdict
@@ -392,7 +393,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and static files
-        if request.url.path == "/health" or request.url.path.startswith("/static"):
+        if request.url.path in ("/health", "/ready") or request.url.path.startswith(
+            "/static"
+        ):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -418,15 +421,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add defence-in-depth security headers to all responses."""
+    """Add defence-in-depth security headers including nonce-based CSP."""
 
     async def dispatch(self, request: Request, call_next):
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
+
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            f"script-src 'nonce-{nonce}' 'strict-dynamic' 'self'; "
+            "style-src 'self'; "
+            "img-src 'self' data: https://*.googleusercontent.com; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
         )
         return response
 
@@ -471,9 +487,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         return MetricsMiddleware._ID_RE.sub("/:id", path)
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in ("/metrics", "/health") or request.url.path.startswith(
-            "/static"
-        ):
+        if request.url.path in (
+            "/metrics",
+            "/health",
+            "/ready",
+        ) or request.url.path.startswith("/static"):
             return await call_next(request)
         endpoint = self._normalize_path(request.url.path)
         with HTTP_DURATION.labels(method=request.method, endpoint=endpoint).time():
@@ -485,6 +503,34 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
+
+
+async def _api_exception_handler(request: Request, exc: Exception) -> Response:
+    """Return structured JSON errors for API clients, plain text for browsers."""
+    accept = request.headers.get("accept", "")
+
+    if isinstance(exc, HTTPException):
+        status = exc.status_code
+        message = exc.detail
+    else:
+        status = 500
+        message = "Internal server error"
+        logger.exception(
+            "Unhandled exception on %s %s", request.method, request.url.path
+        )
+
+    if "text/html" in accept:
+        return Response(content=str(message), status_code=status)
+
+    return JSONResponse(
+        status_code=status,
+        content={"error": {"code": status, "message": str(message)}},
+    )
+
+
+app.add_exception_handler(HTTPException, _api_exception_handler)
+app.add_exception_handler(Exception, _api_exception_handler)
+
 # Middleware execution order (outermost first):
 # 1. RequestIdMiddleware — every response gets X-Request-ID, even 429s
 # 2. RateLimitMiddleware — reject abusive clients early
@@ -546,6 +592,35 @@ async def health():
             "max": pool.get_max_size(),
         },
     }
+
+
+@app.get("/ready")
+async def readiness():
+    """Readiness probe: checks DB connectivity and migration status."""
+    pool = app.state.pool
+    errors: list[str] = []
+
+    try:
+        await pool.fetchval("SELECT 1")
+    except Exception as exc:
+        logger.debug("Readiness probe DB check failed: %s", exc)
+        errors.append("db: unreachable")
+
+    try:
+        version = await pool.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
+        if version is None:
+            errors.append("alembic: no version found")
+    except Exception as exc:
+        logger.debug("Readiness probe alembic check failed: %s", exc)
+        errors.append("alembic: unreachable")
+
+    if errors:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "errors": errors},
+        )
+
+    return {"status": "ready", "alembic_version": version}
 
 
 class ChatRequest(BaseModel):
