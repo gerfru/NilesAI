@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": ["config:recommended", "docker:pinDigests", "helpers:pinGitHubActionDigests"],
   "packageRules": [
     {
       "matchUpdateTypes": ["patch"],
@@ -11,11 +11,5 @@
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
     }
-  ],
-  "docker": {
-    "enabled": true
-  },
-  "pip_requirements": {
-    "enabled": true
-  }
+  ]
 }
