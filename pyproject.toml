@@ -73,7 +73,10 @@ dependencies = [
 dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
     "httpx>=0.28.1",  # For TestClient
+    "mypy>=1.14.0",
+    "ruff>=0.9.0",
 ]
 
 [build-system]
@@ -86,3 +89,72 @@ packages = ["src/niles"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = false
+
+# Pre-existing type issues — tighten incrementally
+[[tool.mypy.overrides]]
+module = "niles.sources.web"
+disable_error_code = ["union-attr", "index", "arg-type", "assignment"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.manager"
+disable_error_code = ["operator", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "niles.main"
+disable_error_code = ["call-arg"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.ical_parser"
+disable_error_code = ["var-annotated", "assignment", "union-attr", "import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.caldav"
+disable_error_code = ["assignment", "arg-type", "operator"]
+
+[[tool.mypy.overrides]]
+module = "niles.sync.carddav"
+disable_error_code = ["assignment", "operator", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "niles.agent.core"
+disable_error_code = ["index", "assignment", "call-overload", "union-attr", "no-redef"]
+
+[[tool.mypy.overrides]]
+module = "niles.agent.prompts"
+disable_error_code = ["assignment", "union-attr"]
+
+[[tool.mypy.overrides]]
+module = "niles.jobs.briefing"
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "niles.actions.tasks"
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "niles.cli"
+disable_error_code = ["call-arg"]
+
+[[tool.mypy.overrides]]
+module = "niles.mcp.client"
+disable_error_code = ["import-untyped"]
+
+[tool.coverage.run]
+source = ["src/niles"]
+omit = ["tests/*", "alembic/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 65
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
+    "if TYPE_CHECKING",
+]
