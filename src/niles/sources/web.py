@@ -703,6 +703,7 @@ async def chat_page(
             "readonly": readonly,
             "available_channels": available_channels,
             "vikunja_url": settings.vikunja_public_url or "",
+            "feature_search": settings.feature_search,
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -874,7 +875,11 @@ async def chat_send(request: Request, message: str = Form(...)):
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(request: Request, message: str = Form(...)):
+async def chat_stream(
+    request: Request,
+    message: str = Form(...),
+    web_search: bool = Form(default=False),
+):
     """Process a chat message via SSE streaming.
 
     Uses fetch+ReadableStream on the client (not EventSource), so native SSE
@@ -897,7 +902,7 @@ async def chat_stream(request: Request, message: str = Form(...)):
         "type": "web",
         "from": chat_id,
         "content": message,
-        "metadata": {},
+        "metadata": {"web_search": web_search},
     }
 
     async def event_generator():

@@ -687,6 +687,15 @@ class NilesAgent:
             ]
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
+            # Only include search/fetch MCP tools when web_search is active
+            web_search = event.get("metadata", {}).get("web_search", False)
+            if not web_search:
+                _search_prefixes = ("mcp__searxng__", "mcp__fetch__")
+                mcp_tools = [
+                    t
+                    for t in mcp_tools
+                    if not t["function"]["name"].startswith(_search_prefixes)
+                ]
             all_tools.extend(mcp_tools)
             if mcp_tools and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
