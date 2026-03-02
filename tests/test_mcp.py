@@ -438,7 +438,8 @@ class TestAgentMCPDispatch:
         mock_mcp.call_tool.assert_not_called()
 
     async def test_agent_truncates_large_mcp_result(self):
-        from niles.agent.core import MAX_MCP_RESULT_SIZE, NilesAgent
+        from niles.agent.core import NilesAgent
+        from niles.agent.tools.mcp import MAX_MCP_RESULT_SIZE
         from niles.config import Settings
 
         settings = Settings(
