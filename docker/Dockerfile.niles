@@ -1,6 +1,7 @@
-FROM python:3.12-slim
+# --- Stage 1: Builder ---
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
 # Install uv for fast dependency management
 RUN pip install uv
@@ -11,12 +12,9 @@ RUN mkdir -p src/niles && touch src/niles/__init__.py \
     && uv pip install --system . \
     && rm -rf src/
 
-# Copy source code
-COPY src/ ./src/
-
-# Download Tailwind standalone CLI with SHA256 verification and build CSS
-# Binary is kept in the image so dev-mode (volume mount) can rebuild at startup
+# Copy source code and build Tailwind CSS
 COPY tailwind.config.js .
+COPY src/ ./src/
 RUN python -c "\
 import urllib.request, hashlib; \
 urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss'); \
@@ -28,14 +26,26 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
        -i src/niles/static/css/input.css \
        -o src/niles/static/css/style.css
 
-# Copy config
-COPY config/ ./config/
+# --- Stage 2: Runtime ---
+FROM python:3.12-slim
 
-# Copy Alembic migration infrastructure
+WORKDIR /app
+
+# Install curl for healthcheck probe
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application source (with built CSS)
+COPY --from=builder /build/src/ ./src/
+
+# Copy config, migrations, entrypoint
+COPY config/ ./config/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
-
-# Copy entrypoint
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
 # Run as non-root user
@@ -47,5 +57,8 @@ USER niles
 
 # src/niles must be importable as "niles"
 ENV PYTHONPATH=/app/src
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
