@@ -1,8 +1,8 @@
 """Tool handler registry for NilesAgent.
 
 Each handler module registers its functions via @register_tool.
-NilesAgent imports the sub-modules so that registration runs at
-import time; then _execute_tool_call() does a simple dict lookup.
+Importing this package auto-registers all handlers (side-effect
+imports at the bottom of this file).
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ class ToolContext:
     resolve_wa_instance: Callable[..., Awaitable[str | None]]
     resolve_vikunja: Callable[..., Awaitable[Any]]
     get_own_phone_number: Callable[..., Awaitable[str | None]]
-    get_calendar_sources: Callable[..., Awaitable[list[str]]]
     pending_phone_choices: dict[str, dict]
 
 
@@ -63,3 +62,7 @@ def register_tool(name: str) -> Callable[[ToolHandler], ToolHandler]:
         return func
 
     return decorator
+
+
+# Auto-register all handler modules on package import.
+from . import calendar, contacts, memory, signal, tasks, whatsapp  # noqa: E402, F401

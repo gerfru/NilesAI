@@ -25,13 +25,6 @@ from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .prompts import build_system_prompt, load_system_prompt
 from .tools import TOOL_REGISTRY, ToolContext
-from .tools import calendar as _tools_calendar  # noqa: F401
-from .tools import contacts as _tools_contacts  # noqa: F401
-from .tools import memory as _tools_memory  # noqa: F401
-from .tools import mcp as _tools_mcp  # noqa: F401
-from .tools import signal as _tools_signal  # noqa: F401
-from .tools import tasks as _tools_tasks  # noqa: F401
-from .tools import whatsapp as _tools_whatsapp  # noqa: F401
 from .tools.mcp import handle_mcp_tool
 
 logger = logging.getLogger(__name__)
@@ -1104,7 +1097,6 @@ class NilesAgent:
             resolve_wa_instance=self._resolve_wa_instance,
             resolve_vikunja=self._resolve_vikunja_tasks,
             get_own_phone_number=self._get_own_phone_number,
-            get_calendar_sources=self._get_calendar_source_names,
             pending_phone_choices=self._pending_phone_choices,
         )
 
@@ -1124,7 +1116,11 @@ class NilesAgent:
         # Registry lookup for built-in tools
         handler = TOOL_REGISTRY.get(name)
         if handler:
-            return await handler(args, chat_id, ctx)
+            try:
+                return await handler(args, chat_id, ctx)
+            except KeyError as exc:
+                logger.warning("Missing required argument in %s: %s", name, exc)
+                return {"error": f"Missing required argument: {exc}"}
 
         # MCP fallback for tools not in the registry
         return await handle_mcp_tool(name, args, ctx)
