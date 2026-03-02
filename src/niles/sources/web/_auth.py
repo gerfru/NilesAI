@@ -44,8 +44,12 @@ def _check_login_rate(client_ip: str) -> bool:
     now = time.monotonic()
     window = now - _LOGIN_WINDOW
     attempts = _login_attempts[client_ip]
-    _login_attempts[client_ip] = [t for t in attempts if t > window]
-    return len(_login_attempts[client_ip]) < _LOGIN_MAX_ATTEMPTS
+    recent = [t for t in attempts if t > window]
+    if recent:
+        _login_attempts[client_ip] = recent
+    else:
+        _login_attempts.pop(client_ip, None)
+    return len(recent) < _LOGIN_MAX_ATTEMPTS
 
 
 def _record_login_attempt(client_ip: str) -> None:
