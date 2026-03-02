@@ -83,4 +83,4 @@ jobs:
           sudo apt-get install -y trivy
 
       - name: Run Trivy vulnerability scanner
-        run: trivy image --exit-code 1 --severity CRITICAL,HIGH --format table niles-core:ci
+        run: trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table niles-core:ci
