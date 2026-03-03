@@ -176,7 +176,13 @@ class TestRateLimitingIntegration:
 
             resp = client.get("/test")
             assert resp.status_code == 429
-            assert resp.json() == {"detail": "Too many requests"}
+            assert resp.json() == {
+                "error": {
+                    "code": 429,
+                    "message": "Too many requests",
+                    "details": None,
+                }
+            }
 
     def test_health_exempt_from_rate_limit(self, limited_app):
         """/health is never rate-limited, even after exceeding limit."""
@@ -199,8 +205,8 @@ class TestRateLimitingIntegration:
             resp = client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
-            assert "detail" in body
-            assert body["detail"] == "Too many requests"
+            assert "error" in body
+            assert body["error"]["message"] == "Too many requests"
 
     def test_different_paths_share_rate_limit(self, limited_app):
         """Rate limit is per-IP, not per-path."""
