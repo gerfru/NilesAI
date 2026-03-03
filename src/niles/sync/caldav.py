@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import httpx
 
+from niles.http_retry import retry_http
+
 from .ical_parser import expand_recurring_event, parse_icalendar
 
 logger = logging.getLogger(__name__)
@@ -155,8 +157,8 @@ class CalDAVSync:
         self.source_id = source_id
         self._caldav_calendars = caldav_calendars
         # Base URL for fetching individual .ics files (scheme + host)
-        self._base_url = re.match(r"https?://[^/]+", caldav_url)
-        self._base_url = self._base_url.group(0) if self._base_url else ""
+        match = re.match(r"https?://[^/]+", caldav_url)
+        self._base_url = match.group(0) if match else ""
         # Cache for discover_collections (avoids PROPFIND on every settings page load)
         self._collections_cache: list[dict] | None = None
         self._collections_cache_time: float = 0
@@ -215,6 +217,7 @@ class CalDAVSync:
         logger.info("Synced %d events (range: %s to %s)", count, start_str, end_str)
         return count
 
+    @retry_http
     async def _report_time_range(
         self,
         collection_url: str,
@@ -354,6 +357,7 @@ class CalDAVSync:
             return None
         return {h.strip() for h in raw.split(",") if h.strip()}
 
+    @retry_http
     async def _propfind_request(self, url: str) -> str | None:
         """Send a single PROPFIND Depth:1 request, return XML or None."""
         async with httpx.AsyncClient() as client:
