@@ -5,7 +5,8 @@ import logging
 
 import structlog
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import JSONResponse
+
+from ..errors import error_response
 
 from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
@@ -33,7 +34,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     expected = settings.evolution_api_key
     if not token or len(token) > 256 or not hmac.compare_digest(token, expected):
         logger.warning("Webhook request with invalid or missing token")
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return error_response(401, "Unauthorized")
 
     try:
         payload = await request.json()
