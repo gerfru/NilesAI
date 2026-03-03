@@ -457,7 +457,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "font-src 'self'; "
             "connect-src 'self'; "
             "base-uri 'self'; "
-            "form-action 'self'"
+            "form-action 'self'; "
+            "report-uri /csp-report"
         )
         return response
 
@@ -506,6 +507,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             "/metrics",
             "/health",
             "/ready",
+            "/csp-report",
         ) or request.url.path.startswith("/static"):
             return await call_next(request)
         endpoint = self._normalize_path(request.url.path)
@@ -636,6 +638,28 @@ async def readiness():
         )
 
     return {"status": "ready", "alembic_version": version}
+
+
+@app.post("/csp-report", status_code=204)
+async def csp_report(request: Request) -> Response:
+    """Receive Content-Security-Policy violation reports from browsers.
+
+    Browsers send these automatically when a CSP directive is violated.
+    No auth required (browsers send without credentials).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return Response(status_code=204)
+
+    report = body.get("csp-report", body)
+    logger.warning(
+        "CSP violation: %s blocked by %s on %s",
+        report.get("blocked-uri", "unknown"),
+        report.get("violated-directive", "unknown"),
+        report.get("document-uri", "unknown"),
+    )
+    return Response(status_code=204)
 
 
 class ChatRequest(BaseModel):
