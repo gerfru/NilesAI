@@ -28,10 +28,12 @@
       hx-swap="innerHTML"
       class="mt-3">
     <div class="flex flex-col gap-2 mb-3">
-        <input type="password" name="api_token" placeholder="Vikunja API-Token"
+        <label for="vikunja-api-token" class="sr-only">Vikunja API-Token</label>
+        <input type="password" name="api_token" id="vikunja-api-token" placeholder="Vikunja API-Token"
                maxlength="256" required
                class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-        <input type="url" name="api_url" placeholder="API-URL (optional, leer = globale URL)"
+        <label for="vikunja-api-url" class="sr-only">Vikunja API-URL</label>
+        <input type="url" name="api_url" id="vikunja-api-url" placeholder="API-URL (optional, leer = globale URL)"
                maxlength="512"
                class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
     </div>
