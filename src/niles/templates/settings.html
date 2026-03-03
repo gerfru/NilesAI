@@ -34,7 +34,8 @@
         <input type="hidden" name="value" value="{{ 'true' if feature_whatsapp_send_others else 'false' }}">
         <span class="text-sm text-zinc-700 dark:text-zinc-300">Nachrichten an andere senden</span>
         <label class="toggle-switch">
-            <input type="checkbox" {% if feature_whatsapp_send_others %}checked{% endif %} data-flag-toggle>
+            <input type="checkbox" {% if feature_whatsapp_send_others %}checked{% endif %} data-flag-toggle
+                   aria-label="WhatsApp: Nachrichten an andere senden">
             <span class="toggle-track"></span>
         </label>
     </form>
@@ -65,7 +66,8 @@
         <input type="hidden" name="value" value="{{ 'true' if feature_signal_send_others else 'false' }}">
         <span class="text-sm text-zinc-700 dark:text-zinc-300">Nachrichten an andere senden</span>
         <label class="toggle-switch">
-            <input type="checkbox" {% if feature_signal_send_others %}checked{% endif %} data-flag-toggle>
+            <input type="checkbox" {% if feature_signal_send_others %}checked{% endif %} data-flag-toggle
+                   aria-label="Signal: Nachrichten an andere senden">
             <span class="toggle-track"></span>
         </label>
     </form>
@@ -113,11 +115,11 @@
         <form hx-post="/ui/api/settings/briefing_channel" hx-target="#toast-container" hx-swap="innerHTML"
               class="flex items-center justify-between">
             <div>
-                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Kanal</span>
+                <label for="briefing-channel" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Kanal</label>
                 <p class="text-xs text-zinc-500 dark:text-zinc-400">Ueber welchen Messenger wird das Briefing gesendet?</p>
             </div>
             <div class="flex gap-2">
-                <select name="value"
+                <select name="value" id="briefing-channel"
                         class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                     <option value="whatsapp" {% if briefing.briefing_channel == "whatsapp" %}selected{% endif %}>WhatsApp</option>
                     <option value="signal" {% if briefing.briefing_channel == "signal" %}selected{% endif %}>Signal</option>
@@ -138,6 +140,7 @@
                 <input type="checkbox"
                        {{ "checked" if briefing.feature_briefing_daily else "" }}
                        data-flag-toggle
+                       aria-label="Taegliches Briefing aktivieren"
                        class="sr-only peer">
                 <div class="w-9 h-5 bg-zinc-300 dark:bg-zinc-600 rounded-full peer peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
             </label>
@@ -155,6 +158,7 @@
                 <input type="checkbox"
                        {{ "checked" if briefing.feature_briefing_weekly else "" }}
                        data-flag-toggle
+                       aria-label="Woechentliche Uebersicht aktivieren"
                        class="sr-only peer">
                 <div class="w-9 h-5 bg-zinc-300 dark:bg-zinc-600 rounded-full peer peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
             </label>
@@ -162,17 +166,17 @@
 
         <div class="grid grid-cols-2 gap-4">
             <form hx-post="/ui/api/settings/briefing_daily_time" hx-target="#toast-container" hx-swap="innerHTML">
-                <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Tagesbriefing (Mo-Fr)</label>
+                <label for="briefing-daily-time" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Tagesbriefing (Mo-Fr)</label>
                 <div class="flex gap-2">
-                    <input type="time" name="value" value="{{ briefing.briefing_daily_time }}"
+                    <input type="time" name="value" id="briefing-daily-time" value="{{ briefing.briefing_daily_time }}"
                            class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-white">
                     <button type="submit" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Speichern</button>
                 </div>
             </form>
             <form hx-post="/ui/api/settings/briefing_weekly_time" hx-target="#toast-container" hx-swap="innerHTML">
-                <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Wochenuebersicht (Mo)</label>
+                <label for="briefing-weekly-time" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Wochenuebersicht (Mo)</label>
                 <div class="flex gap-2">
-                    <input type="time" name="value" value="{{ briefing.briefing_weekly_time }}"
+                    <input type="time" name="value" id="briefing-weekly-time" value="{{ briefing.briefing_weekly_time }}"
                            class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-white">
                     <button type="submit" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Speichern</button>
                 </div>
@@ -217,16 +221,19 @@
     <div class="mb-4" id="calendar-add-form">
         <div class="flex flex-col sm:flex-row gap-2 mb-2">
             <div class="flex gap-2">
+                <label for="cal-source-type" class="sr-only">Quellentyp</label>
                 <select id="cal-source-type"
                         class="w-28 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                     <option value="ics">ICS</option>
                     <option value="caldav">CalDAV</option>
                 </select>
+                <label for="cal-source-name" class="sr-only">Quellenname</label>
                 <input type="text" id="cal-source-name" placeholder="Name (optional)"
                        maxlength="200"
                        class="flex-1 sm:w-36 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             </div>
             <div class="flex gap-2 flex-1">
+                <label for="cal-source-url" class="sr-only">Quellen-URL</label>
                 <input type="url" id="cal-source-url" placeholder="https://..."
                        maxlength="2048" required
                        class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -244,9 +251,11 @@
             </div>
         </div>
         <div id="caldav-auth-fields" class="hidden flex gap-2 mb-2 sm:pl-[7.5rem]">
+            <label for="cal-source-user" class="sr-only">Benutzername</label>
             <input type="text" id="cal-source-user" placeholder="Benutzername"
                    maxlength="256"
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <label for="cal-source-password" class="sr-only">Passwort</label>
             <input type="password" id="cal-source-password" placeholder="Passwort"
                    maxlength="256"
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -307,15 +316,16 @@
         <input type="hidden" name="value" value="{{ 'true' if feature_search else 'false' }}">
         <span class="text-sm text-zinc-700 dark:text-zinc-300">Web Search aktivieren</span>
         <label class="toggle-switch">
-            <input type="checkbox" {% if feature_search %}checked{% endif %} data-flag-toggle>
+            <input type="checkbox" {% if feature_search %}checked{% endif %} data-flag-toggle
+                   aria-label="Web Search aktivieren">
             <span class="toggle-track"></span>
         </label>
     </form>
 
     <form hx-post="/ui/api/settings/searxng_url" hx-target="#toast-container" hx-swap="innerHTML">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">SearXNG URL</label>
+        <label for="searxng-url" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">SearXNG URL</label>
         <div class="flex gap-2">
-            <input type="url" name="value" value="{{ searxng_url }}"
+            <input type="url" name="value" id="searxng-url" value="{{ searxng_url }}"
                    maxlength="512" required
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
@@ -331,9 +341,9 @@
     {# --- Model dropdown (auto-loaded from Ollama) --- #}
     <form hx-post="/ui/api/settings/llm_model" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">llm_model</label>
+        <label for="llm-model" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">llm_model</label>
         <div class="flex gap-2">
-            <select name="value"
+            <select name="value" id="llm-model"
                     hx-get="/ui/api/settings/ollama_models" hx-trigger="load" hx-swap="innerHTML"
                     class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 <option value="{{ text_settings.llm_model }}" selected>{{ text_settings.llm_model }}</option>
@@ -346,9 +356,9 @@
     {# --- Base URL (text input) --- #}
     <form hx-post="/ui/api/settings/llm_base_url" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">llm_base_url</label>
+        <label for="llm-base-url" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">llm_base_url</label>
         <div class="flex gap-2">
-            <input type="text" name="value" value="{{ text_settings.llm_base_url }}"
+            <input type="text" name="value" id="llm-base-url" value="{{ text_settings.llm_base_url }}"
                    maxlength="512" pattern="[^\x00-\x1f]*" required
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
@@ -361,9 +371,9 @@
     <h3 class="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">General</h3>
     <form hx-post="/ui/api/settings/timezone" hx-target="#toast-container" hx-swap="innerHTML"
           class="mb-4">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
+        <label for="setting-timezone" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">timezone</label>
         <div class="flex gap-2">
-            <input type="text" name="value" value="{{ general.timezone }}"
+            <input type="text" name="value" id="setting-timezone" value="{{ general.timezone }}"
                    maxlength="64" pattern="[A-Za-z/_-]+" required
                    class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <button type="submit"
@@ -371,9 +381,9 @@
         </div>
     </form>
     <form hx-post="/ui/api/settings/log_level" hx-target="#toast-container" hx-swap="innerHTML">
-        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">log_level</label>
+        <label for="setting-log-level" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">log_level</label>
         <div class="flex gap-2">
-            <select name="value"
+            <select name="value" id="setting-log-level"
                     class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
                 <option value="{{ level }}" {% if general.log_level == level %}selected{% endif %}>{{ level }}</option>
