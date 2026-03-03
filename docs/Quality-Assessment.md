@@ -1,23 +1,23 @@
 # Technical Quality Assessment
 
-> Last updated: 2026-03-02 | After PR #43 (Tool-Handler-Registry) + PR #44 (Web-Package-Split)
+> Last updated: 2026-03-03 | After Phase 2 (Structural Improvements)
 
 ## Score Overview
 
 | Dimension          | Score | Trend   | Next Lever                          |
 |--------------------|-------|---------|-------------------------------------|
-| KISS / Complexity  | 7.5   | +1.0    | Split `NilesAgent` in `core.py`     |
-| Security           | 9.0   | =       | CSP violation reports, dep audit    |
+| KISS / Complexity  | 8.5   | +1.0    | Extract `main.py` startup logic     |
+| Security           | 9.5   | +0.5    | HSTS at app level, SBOM            |
 | Architecture       | 8.5   | =       | Extract `main.py` startup logic     |
-| DevOps             | 9.0   | =       | Renovate / Dependabot               |
-| UI/UX              | 7.0   | -0.5    | Accessibility audit (axe-core)      |
-| Maintainability    | 8.0   | +1.0    | Reduce mypy exclusions              |
-| Observability      | 7.0   | new     | Sentry or equivalent                |
-| Resilience         | 6.5   | new     | Retry logic for external services   |
-| Performance        | 7.5   | new     | Shared httpx client, caching        |
-| API Design         | 7.5   | new     | Unified error response format       |
+| DevOps             | 9.5   | +0.5    | Staging environment, rollback docs  |
+| UI/UX              | 7.0   | =       | Accessibility audit (axe-core)      |
+| Maintainability    | 8.0   | =       | Reduce mypy exclusions              |
+| Observability      | 7.0   | =       | Sentry or equivalent                |
+| Resilience         | 6.5   | =       | Retry logic for external services   |
+| Performance        | 7.5   | =       | Shared httpx client, caching        |
+| API Design         | 8.0   | +0.5    | OpenAPI schema curation             |
 
-**Average: 7.7/10** | Weighted (Security, Architecture, Maintainability x1.3; UI x0.8): **7.9/10**
+**Average: 8.0/10** | Weighted (Security, Architecture, Maintainability x1.3; UI x0.8): **8.1/10**
 
 ---
 
@@ -28,53 +28,48 @@
 | 2026-02-28 | Initial evaluation (6 dims)  | 7.8   |
 | 2026-03-01 | After core.py refactoring    | 8.2   |
 | 2026-03-02 | +4 new dimensions, web split | 7.9   |
+| 2026-03-03 | Phase 2: agent split, errors, CSP, audit | 8.1   |
 
-The apparent drop from 8.2 to 7.9 is due to adding four new dimensions
-(Observability, Resilience, Performance, API Design) that score lower. The
-original 6 dimensions alone remain at **8.2**.
+The apparent drop from 8.2 to 7.9 (2026-03-02) was due to adding four new
+dimensions (Observability, Resilience, Performance, API Design) that score
+lower. Phase 2 raised 4 dimensions: KISS (+1.0), Security (+0.5),
+DevOps (+0.5), API Design (+0.5).
 
 ---
 
-## 1. KISS / Complexity — 7.5/10
+## 1. KISS / Complexity — 8.5/10
 
 | Metric              | Value                                |
 |---------------------|--------------------------------------|
-| Largest file        | `agent/core.py` — 1,126 LOC         |
-| Average file size   | 302 LOC (69 files)                   |
+| Largest file        | `agent/core.py` — 819 LOC (was 1,126) |
+| Agent modules       | `core.py` 819, `context.py` 309, `text_tool_parser.py` 121 |
 | Web module max      | 382 LOC (`_calendar.py`) — was 2,444 |
 | Direct dependencies | 22 (pyproject.toml)                  |
 | Call chain depth    | 5-6 layers typical                   |
 
 ### Evidence
 
-**Why 7.5 and not higher:**
+**Why 8.5 and not higher:**
 
-The biggest complexity problem (web.py at 2,444 LOC) is resolved, but
-`agent/core.py` remains at 1,126 LOC with the `NilesAgent` class spanning
-lines 351-1126 (775 LOC). This class has too many responsibilities:
+`main.py` at 641 LOC still mixes app factory, middleware setup, lifespan
+management, health endpoints, and metrics endpoint in one file. The lifespan
+handler alone (lines 72-306) initializes 15+ `app.state` attributes.
 
-- Event routing: `process_event()` at line 953 dispatches by event type
-- Tool-call loop: `_run_tool_loop()` iterates up to 5 rounds of LLM calls
-- Context building: `_build_system_prompt()` assembles calendar, contacts, memory
-- Streaming: `process_event_stream()` handles SSE chunking + JSON buffering
+**Why 8.5 and not lower:**
 
-`main.py` at 641 LOC mixes app factory, middleware setup, lifespan management,
-health endpoints, and metrics endpoint in one file.
+- NilesAgent split into 3 focused modules: `core.py` (orchestration, ~500 LOC
+  class + 315 LOC TOOLS constant), `context.py` (context assembly, user/resource
+  resolution), `text_tool_parser.py` (pure functions for JSON tool-call detection)
+- Average file size healthy — 80% of files are under 400 LOC
+- Web split (13 modules, max 382 LOC) demonstrates the target structure
+- 22 direct dependencies is disciplined for 6 integrated external services
 
-**Why 7.5 and not lower:**
-
-- Average file size (302 LOC) is healthy — 80% of files are under 400 LOC
-- Call chain depth of 5-6 layers is reasonable for this domain complexity
-- 22 direct dependencies is disciplined for a project integrating 6 external
-  services (Ollama, Evolution API, Signal, CalDAV, Google, Vikunja)
-- The web split (13 modules, max 382 LOC) demonstrates the target structure
-
-**Score change:** +1.0 from 6.5 — web.py split eliminated the single worst
-offender. core.py prevents a higher score.
+**Score change:** +1.0 from 7.5 — NilesAgent split eliminated the last
+>1,000 LOC file. Each module now has a single responsibility.
 
 ---
 
-## 2. Security — 9.0/10
+## 2. Security — 9.5/10
 
 ### Evidence
 
@@ -137,12 +132,25 @@ Referrer-Policy: strict-origin-when-cross-origin
 Permissions-Policy: camera=(), microphone=(), geolocation=()
 ```
 
-**Why 9.0 and not 10:**
+**CSP violation reporting** (`main.py`):
 
-- No CSP violation reporting (`report-uri`/`report-to`) — attacks go unnoticed
-- No dependency vulnerability scanning (only container-level Trivy)
+`report-uri /csp-report` directive added to CSP header. The `POST /csp-report`
+endpoint logs violations at WARNING level and returns 204. Gracefully handles
+malformed JSON. Rate limiting applies via existing middleware.
+
+**Dependency vulnerability scanning:**
+
+`pip-audit --strict --desc` runs in CI (`dependency-audit` job in ci.yml).
+Fails the pipeline on any known vulnerability. Runs independently of lint/test.
+
+**Why 9.5 and not 10:**
+
 - HSTS handled by Caddy reverse proxy, not at app level (single point of failure
   if Caddy is bypassed)
+- No SBOM generation for supply chain transparency
+
+**Score change:** +0.5 from 9.0 — CSP violation reports and pip-audit close
+the two gaps identified in the previous assessment.
 
 ---
 
@@ -202,7 +210,6 @@ Each module imports `router` from `_core` and decorates its handlers. The
 
 **Why 8.5 and not higher:**
 
-- `NilesAgent` (775 LOC) mixes orchestration with context assembly
 - `main.py` lifespan handler (lines 72-306) initializes 15+ app.state
   attributes — a factory or builder pattern would be cleaner
 - No explicit service layer for CRUD operations — routes call stores directly
@@ -210,7 +217,7 @@ Each module imports `router` from `_core` and decorates its handlers. The
 
 ---
 
-## 4. DevOps — 9.0/10
+## 4. DevOps — 9.5/10
 
 ### Evidence
 
@@ -240,12 +247,23 @@ hooks caught ruff and mypy issues.
 Alembic version check at startup. If the DB schema doesn't match the latest
 migration, the app crashes immediately — no silent schema drift.
 
-**Why 9.0 and not 10:**
+**Dependency vulnerability scanning** (`.github/workflows/ci.yml`):
 
-- No Renovate/Dependabot for automated dependency updates
+`dependency-audit` CI job runs `pip-audit --strict --desc` independently of
+lint/test. Fails on any known vulnerability in the dependency tree.
+
+**Renovate** (`renovate.json`):
+
+Configured with `config:recommended` + `pep621` manager. devDeps patch
+auto-merge, major updates require manual review.
+
+**Why 9.5 and not 10:**
+
 - No staging environment or blue/green deployment
 - No documented rollback procedure
-- No `pip audit` or `safety` check in CI for Python dependency vulnerabilities
+
+**Score change:** +0.5 from 9.0 — pip-audit in CI and Renovate close the
+dependency management gaps.
 
 ---
 
@@ -506,7 +524,7 @@ user-visible latency issues.
 
 ---
 
-## 10. API Design — 7.5/10
+## 10. API Design — 8.0/10
 
 ### Evidence
 
@@ -536,42 +554,36 @@ Consistent URL structure. Resources are nouns, actions are HTTP verbs.
 - User list: `limit=100, offset=0` (`user_store.py:140`)
 - Memory store: `limit=200, offset=0` (`memory/store.py:78`)
 
-**Error response inconsistency:**
+**Unified error format** (`errors.py`):
 
-Some endpoints return JSON errors:
-```python
-raise HTTPException(status_code=401, detail="Session invalid")
-# → {"detail": "Session invalid"}
+JSON API error paths now use the CLAUDE.md-specified envelope:
+```json
+{"error": {"code": 429, "message": "Too many requests", "details": null}}
 ```
 
-Others return raw HTML:
-```python
-return Response(content="Passwort zu kurz.", status_code=400)
-```
+Applied to: `_api_exception_handler` (all HTTPExceptions), `RateLimitMiddleware`
+(429), webhook auth (401). Helper function `error_response()` in `errors.py`
+prevents format drift.
 
-Others return HTMX template fragments:
-```python
-return templates.TemplateResponse(request, "fragments/toast.html",
-    {"message": "...", "toast_type": "error"})
-```
+HTMX endpoints correctly return template fragments (toast, redirect headers) —
+these are the right format for HTMX interactions, not API responses.
 
-Three different error formats in one API. The CLAUDE.md specifies
-`{ error: { code, message, details } }` — not implemented.
+**Why 8.0 and not higher:**
 
-**Why 7.5 and not higher:**
-
-- Three inconsistent error response formats
-- No unified error envelope as specified in CLAUDE.md
 - No OpenAPI schema curation (auto-generated by FastAPI, but not documented
   or versioned)
+- HTMX endpoints use different error patterns by design, but this creates
+  two "styles" of error handling in the same codebase
 
-**Why 7.5 and not lower:**
+**Why 8.0 and not lower:**
 
 - REST conventions are correct where used
 - Pagination implemented on all list endpoints
-- The hybrid HTMX/API approach is an intentional design choice, and
-  HTMX fragment responses are the correct format for that interaction model
+- Unified JSON error envelope per CLAUDE.md spec on all API error paths
 - URL structure is consistent and predictable
+
+**Score change:** +0.5 from 7.5 — unified error format addresses the primary
+gap. The remaining HTMX/API duality is by design.
 
 ---
 
@@ -586,14 +598,14 @@ Three different error formats in one API. The CLAUDE.md specifies
 | 3 | UI/UX            | 7.0   | `<label for>` on all forms, `aria-label` on buttons, skip-to-content link | Small  |
 | 4 | Maintainability  | 8.0   | Reduce mypy exclusions for `web.*` modules                     | Medium |
 
-### Phase 2 — Structural Improvements (7.5-7.7 → ~8.3 avg)
+### Phase 2 — Structural Improvements (done)
 
-| # | Dimension        | Score | Measure                                                        | Effort |
-|---|------------------|-------|----------------------------------------------------------------|--------|
-| 5 | KISS / Complexity| 7.5   | Split `NilesAgent` (775 LOC): context builder, tool loop, streaming as separate modules | Medium |
-| 6 | API Design       | 7.5   | Unified error format `{ error: { code, message, details } }` per CLAUDE.md spec | Medium |
-| 7 | DevOps           | 9.0   | Renovate + `pip-audit` in CI                                   | Small  |
-| 8 | Security         | 9.0   | CSP `report-uri` endpoint + `pip-audit` in CI                  | Small  |
+| # | Dimension        | Before | After | Measure                                                     |
+|---|------------------|--------|-------|-------------------------------------------------------------|
+| 5 | KISS / Complexity| 7.5    | 8.5   | Split NilesAgent into `core.py`, `context.py`, `text_tool_parser.py` |
+| 6 | API Design       | 7.5    | 8.0   | Unified `{"error": {"code", "message", "details"}}` via `errors.py` |
+| 7 | DevOps           | 9.0    | 9.5   | `pip-audit --strict` CI job + Renovate configured            |
+| 8 | Security         | 9.0    | 9.5   | CSP `report-uri /csp-report` endpoint + pip-audit            |
 
 ### Phase 3 — Long-term (7.0-8.5 → ~8.5+ avg)
 
