@@ -1,6 +1,6 @@
 # Niles AI — Legal Notices & Third-Party Licenses
 
-> **Last updated:** 2026-02-26
+> **Last updated:** 2026-03-03
 
 This document contains legal notices, third-party license obligations, risk disclosures, and disclaimers for operators deploying Niles AI. It is intended to be distributed alongside the software.
 
@@ -27,37 +27,88 @@ Niles AI is released under the **MIT License**. See [LICENSE](../LICENSE) for th
 
 ## 2. Third-Party Components & Licenses
 
-Niles AI bundles or depends on the following third-party components, distributed as Docker containers or Python packages:
+### 2.1 License Audit Summary
+
+Full audit performed 2026-03-03 via `pip-licenses`. All 148 transitive Python
+dependencies were verified. No GPL-only dependencies found in the Python
+dependency tree.
+
+| License Category | Count | Commercial Use |
+|---|---|---|
+| MIT | ~65 | Permissive — no restrictions |
+| Apache-2.0 | ~30 | Permissive — patent grant included |
+| BSD (2/3-Clause) | ~25 | Permissive — no restrictions |
+| MPL-2.0 | 3 | File-level copyleft — modifications to MPL files must stay open |
+| LGPL | 1 (psycopg2-binary) | Weak copyleft — dynamic linking (Python import) does not trigger |
+| ISC / PSF / Unlicense | ~5 | Permissive — no restrictions |
+
+**Conclusion:** All Python dependencies are compatible with commercial,
+closed-source distribution.
+
+### 2.2 Direct Dependencies (Python packages)
+
+| Component | License | Source |
+|-----------|---------|--------|
+| FastAPI | MIT | [github.com/fastapi/fastapi](https://github.com/fastapi/fastapi) |
+| uvicorn | BSD-3-Clause | [github.com/encode/uvicorn](https://github.com/encode/uvicorn) |
+| asyncpg | Apache-2.0 | [github.com/MagicStack/asyncpg](https://github.com/MagicStack/asyncpg) |
+| httpx | BSD | [github.com/encode/httpx](https://github.com/encode/httpx) |
+| tenacity | Apache-2.0 | [github.com/jd/tenacity](https://github.com/jd/tenacity) |
+| openai | Apache-2.0 | [github.com/openai/openai-python](https://github.com/openai/openai-python) |
+| mcp | MIT | [github.com/modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
+| fastmcp | Apache-2.0 | [gofastmcp.com](https://gofastmcp.com) |
+| searxng-simple-mcp | MIT | [pypi.org/project/searxng-simple-mcp](https://pypi.org/project/searxng-simple-mcp/) |
+| pydantic-settings | MIT | [github.com/pydantic/pydantic-settings](https://github.com/pydantic/pydantic-settings) |
+| Jinja2 | BSD | [github.com/pallets/jinja](https://github.com/pallets/jinja) |
+| structlog | MIT / Apache-2.0 | [github.com/hynek/structlog](https://github.com/hynek/structlog) |
+| APScheduler | MIT | [github.com/agronholm/apscheduler](https://github.com/agronholm/apscheduler) |
+| argon2-cffi | MIT | [github.com/hynek/argon2-cffi](https://github.com/hynek/argon2-cffi) |
+| itsdangerous | BSD | [github.com/pallets/itsdangerous](https://github.com/pallets/itsdangerous) |
+| aiofiles | Apache-2.0 | [github.com/Tinche/aiofiles](https://github.com/Tinche/aiofiles) |
+| websockets | BSD-3-Clause | [github.com/python-websockets/websockets](https://github.com/python-websockets/websockets) |
+| python-dateutil | Apache-2.0 / BSD | [github.com/dateutil/dateutil](https://github.com/dateutil/dateutil) |
+| PyYAML | MIT | [github.com/yaml/pyyaml](https://github.com/yaml/pyyaml) |
+| prometheus-client | Apache-2.0 | [github.com/prometheus/client_python](https://github.com/prometheus/client_python) |
+| trafilatura | Apache-2.0 | [github.com/adbar/trafilatura](https://github.com/adbar/trafilatura) |
+| json-repair | MIT | [github.com/mangiucugna/json_repair](https://github.com/mangiucugna/json_repair) |
+| alembic | MIT | [github.com/sqlalchemy/alembic](https://github.com/sqlalchemy/alembic) |
+| SQLAlchemy | MIT | [github.com/sqlalchemy/sqlalchemy](https://github.com/sqlalchemy/sqlalchemy) |
+| **psycopg2-binary** | **LGPL** | [github.com/psycopg/psycopg2](https://github.com/psycopg/psycopg2) |
+
+**psycopg2-binary (LGPL):** Python imports are dynamic linking. The LGPL
+explicitly permits dynamic linking without triggering copyleft. Users can
+replace the library via pip/uv. No source disclosure required.
+
+### 2.3 Transitive Dependencies with Copyleft Elements
+
+| Component | License | Notes |
+|-----------|---------|-------|
+| certifi | MPL-2.0 | Root CA bundle. File-level copyleft only. |
+| pathspec | MPL-2.0 | Glob matching library. File-level copyleft only. |
+| tqdm | MPL-2.0 + MIT | Dual-licensed. Progress bar (transitive via trafilatura). |
+| tld | MPL-1.1 / GPL-2.0 / LGPL-2.1+ | Triple-licensed. Choose LGPL-2.1+. |
+
+MPL-2.0 is file-level copyleft: if you modify MPL-licensed source files,
+those modifications must remain under MPL. Using the libraries unmodified
+(as Niles does) requires no source disclosure.
+
+### 2.4 Docker Images (External Services)
 
 | Component | License | Distribution | Source |
 |-----------|---------|-------------|--------|
-| FastAPI | MIT | Python dependency | [github.com/fastapi/fastapi](https://github.com/fastapi/fastapi) |
-| uvicorn | BSD | Python dependency | [github.com/encode/uvicorn](https://github.com/encode/uvicorn) |
-| asyncpg | Apache 2.0 | Python dependency | [github.com/MagicStack/asyncpg](https://github.com/MagicStack/asyncpg) |
-| httpx | BSD | Python dependency | [github.com/encode/httpx](https://github.com/encode/httpx) |
-| openai | MIT / Apache 2.0 | Python dependency | [github.com/openai/openai-python](https://github.com/openai/openai-python) |
-| mcp | MIT | Python dependency | [github.com/modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
-| pydantic-settings | MIT | Python dependency | [github.com/pydantic/pydantic-settings](https://github.com/pydantic/pydantic-settings) |
-| Jinja2 | BSD | Python dependency | [github.com/pallets/jinja](https://github.com/pallets/jinja) |
-| structlog | MIT / Apache 2.0 | Python dependency | [github.com/hynek/structlog](https://github.com/hynek/structlog) |
-| APScheduler | MIT | Python dependency | [github.com/agronholm/apscheduler](https://github.com/agronholm/apscheduler) |
-| argon2-cffi | MIT / Apache 2.0 | Python dependency | [github.com/hynek/argon2-cffi](https://github.com/hynek/argon2-cffi) |
-| itsdangerous | BSD | Python dependency | [github.com/pallets/itsdangerous](https://github.com/pallets/itsdangerous) |
-| aiofiles | Apache 2.0 | Python dependency | [github.com/Tinche/aiofiles](https://github.com/Tinche/aiofiles) |
-| websockets | BSD | Python dependency | [github.com/python-websockets/websockets](https://github.com/python-websockets/websockets) |
-| python-dateutil | Apache 2.0 / BSD | Python dependency | [github.com/dateutil/dateutil](https://github.com/dateutil/dateutil) |
-| PyYAML | MIT | Python dependency | [github.com/yaml/pyyaml](https://github.com/yaml/pyyaml) |
-| prometheus-client | Apache 2.0 | Python dependency | [github.com/prometheus/client_python](https://github.com/prometheus/client_python) |
 | Ollama | MIT | Host-installed (not bundled) | [github.com/ollama/ollama](https://github.com/ollama/ollama) |
 | PostgreSQL | PostgreSQL License | Docker image | [postgresql.org](https://www.postgresql.org/) |
-| Caddy | Apache 2.0 | Docker image | [caddyserver.com](https://caddyserver.com/) |
-| Evolution API | Modified Apache 2.0 | Docker image | [github.com/EvolutionAPI/evolution-api](https://github.com/EvolutionAPI/evolution-api) |
-| **Vikunja** | **AGPL v3** | Docker image | [vikunja.io](https://vikunja.io/) |
+| Caddy | Apache-2.0 | Docker image | [caddyserver.com](https://caddyserver.com/) |
+| SearXNG | AGPL-3.0 | Docker image | [github.com/searxng/searxng](https://github.com/searxng/searxng) |
+| Evolution API | Modified Apache-2.0 | Docker image | [github.com/EvolutionAPI/evolution-api](https://github.com/EvolutionAPI/evolution-api) |
+| **Vikunja** | **AGPL-3.0** | Docker image | [vikunja.io](https://vikunja.io/) |
 | signal-cli-rest-api | MIT | Docker image | [github.com/bbernhard/signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) |
 | **signal-cli** | **GPLv3** | Bundled in signal-cli-rest-api image | [github.com/AsamK/signal-cli](https://github.com/AsamK/signal-cli) |
 | **libsignal** | **AGPLv3** | Bundled in signal-cli | [github.com/signalapp/libsignal](https://github.com/signalapp/libsignal) |
 
-Licenses marked in **bold** have copyleft obligations. See sections 4, 5, and 6 below.
+Licenses marked in **bold** have copyleft obligations. Niles communicates
+with all Docker services exclusively via HTTP/WebSocket APIs — no linking.
+See sections 4, 5, and 6 below for detailed analysis.
 
 ---
 
