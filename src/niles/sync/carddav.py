@@ -29,13 +29,19 @@ _HREF_REGEX = re.compile(
 class CardDAVSync:
     """Syncs contacts from a CardDAV server to PostgreSQL."""
 
-    def __init__(self, pool: asyncpg.Pool, config: Settings):
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        config: Settings,
+        client: httpx.AsyncClient | None = None,
+    ):
         self.pool = pool
         self.carddav_url = config.carddav_url
         self.auth = (config.carddav_user, config.carddav_password)
         # Base URL for fetching individual vCards (scheme + host)
         match = re.match(r"https?://[^/]+", config.carddav_url)
         self._base_url = match.group(0) if match else ""
+        self._client = client or httpx.AsyncClient(timeout=30)
 
     def update_config(self, config: Settings) -> None:
         """Hot-reload credentials from updated settings."""
@@ -103,19 +109,19 @@ class CardDAVSync:
         url = self.carddav_url
         if not url.endswith("/"):
             url += "/"
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.request(
-                "PROPFIND",
-                url,
-                content=_PROPFIND_BODY,
-                headers={
-                    "Depth": "1",
-                    "Content-Type": "application/xml; charset=utf-8",
-                },
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.request(
+            "PROPFIND",
+            url,
+            content=_PROPFIND_BODY,
+            headers={
+                "Depth": "1",
+                "Content-Type": "application/xml; charset=utf-8",
+            },
+            auth=self.auth,
+            follow_redirects=True,
+            timeout=30,
+        )
+        response.raise_for_status()
 
         xml = response.text
         if not xml or len(xml) < 100:
@@ -130,13 +136,12 @@ class CardDAVSync:
         """Fetch a single vCard by URL."""
         full_url = self._base_url + url if not url.startswith("http") else url
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                full_url,
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.get(
+            full_url,
+            auth=self.auth,
+            timeout=30,
+        )
+        response.raise_for_status()
 
         text = response.text
         if "BEGIN:VCARD" not in text:

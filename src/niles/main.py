@@ -26,6 +26,7 @@ from .logging_config import generate_request_id, setup_logging
 from .metrics import HTTP_DURATION, HTTP_REQUESTS
 
 from .actions.briefing import BriefingGenerator
+from .http_clients import HttpClients
 from .actions.calendar import CalendarAction
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
@@ -157,8 +158,11 @@ async def lifespan(app: FastAPI):
         settings = apply_overrides(settings, overrides)
         logger.info("Applied %d settings override(s) from DB", len(overrides))
 
+    # Shared HTTP clients (connection pooling)
+    http_clients = HttpClients(settings)
+
     # CardDAV Sync
-    carddav_sync = CardDAVSync(pool, settings)
+    carddav_sync = CardDAVSync(pool, settings, client=http_clients.general)
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
     caldav_sync = None
@@ -169,10 +173,16 @@ async def lifespan(app: FastAPI):
             auth=httpx.BasicAuth(settings.caldav_user, settings.caldav_password),
             timezone=settings.timezone,
             caldav_calendars=settings.caldav_calendars,
+            client=http_clients.general,
         )
 
     # Calendar Source Manager (unified sync for ICS + CalDAV + Google)
-    calendar_manager = CalendarSourceManager(pool, settings)
+    calendar_manager = CalendarSourceManager(
+        pool,
+        settings,
+        client=http_clients.general,
+        google_client=http_clients.google_oauth,
+    )
     await calendar_manager.initialize()
     calendar_sources = await calendar_manager.get_sources()
 
@@ -222,6 +232,8 @@ async def lifespan(app: FastAPI):
         vikunja_store=vikunja_store,
         weather_latitude=settings.weather_latitude,
         weather_longitude=settings.weather_longitude,
+        weather_client=http_clients.open_meteo,
+        vikunja_client=http_clients.general,
     )
 
     # Daily briefing: Mo-Fr (number auto-detected at runtime)
@@ -280,7 +292,7 @@ async def lifespan(app: FastAPI):
 
     # Actions
     contacts = ContactsAction(pool)
-    whatsapp_action = WhatsAppAction(settings)
+    whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
 
     # Signal (signal-cli-rest-api)
     signal_action = None
@@ -305,6 +317,7 @@ async def lifespan(app: FastAPI):
         vikunja_store=vikunja_store,
         signal=signal_action,
         signal_store=signal_store,
+        http_client=http_clients.general,
     )
 
     # Store on app state for access in route handlers
@@ -325,6 +338,7 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     app.state.signal_action = signal_action
     app.state.signal_store = signal_store
+    app.state.http_clients = http_clients
 
     # Cache signal_disabled flag from DB overrides (avoids DB query on
     # every 3s HTMX poll in signal_status endpoint).
@@ -368,6 +382,7 @@ async def lifespan(app: FastAPI):
 
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)
+    await http_clients.close_all()
     await pool.close()
     logger.info("Niles Core shut down.")
 

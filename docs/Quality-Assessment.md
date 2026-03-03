@@ -575,6 +575,35 @@ Three different error formats in one API. The CLAUDE.md specifies
 
 ---
 
+## Improvement Roadmap
+
+### Phase 1 — Quick Wins (6.5-7.5 → ~8.0 avg)
+
+| # | Dimension        | Score | Measure                                                        | Effort |
+|---|------------------|-------|----------------------------------------------------------------|--------|
+| 1 | Resilience       | 6.5   | Retry decorator for httpx calls (tenacity/stamina) — 5 services without retry | Small  |
+| 2 | Performance      | 7.5   | Shared `httpx.AsyncClient` as app.state instead of 15+ per-request clients | Small  |
+| 3 | UI/UX            | 7.0   | `<label for>` on all forms, `aria-label` on buttons, skip-to-content link | Small  |
+| 4 | Maintainability  | 8.0   | Reduce mypy exclusions for `web.*` modules                     | Medium |
+
+### Phase 2 — Structural Improvements (7.5-7.7 → ~8.3 avg)
+
+| # | Dimension        | Score | Measure                                                        | Effort |
+|---|------------------|-------|----------------------------------------------------------------|--------|
+| 5 | KISS / Complexity| 7.5   | Split `NilesAgent` (775 LOC): context builder, tool loop, streaming as separate modules | Medium |
+| 6 | API Design       | 7.5   | Unified error format `{ error: { code, message, details } }` per CLAUDE.md spec | Medium |
+| 7 | DevOps           | 9.0   | Renovate + `pip-audit` in CI                                   | Small  |
+| 8 | Security         | 9.0   | CSP `report-uri` endpoint + `pip-audit` in CI                  | Small  |
+
+### Phase 3 — Long-term (7.0-8.5 → ~8.5+ avg)
+
+| # | Dimension        | Score | Measure                                                        | Effort |
+|---|------------------|-------|----------------------------------------------------------------|--------|
+| 9 | Observability    | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs | Large  |
+| 10| Architecture     | 8.5   | Extract `main.py` lifespan into builder/factory pattern        | Medium |
+
+---
+
 ## Methodology
 
 - **Data source:** Automated codebase analysis (grep for patterns, line counts,
