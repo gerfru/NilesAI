@@ -176,7 +176,13 @@ class TestRateLimitingIntegration:
 
             resp = client.get("/test")
             assert resp.status_code == 429
-            assert resp.json() == {"detail": "Too many requests"}
+            assert resp.json() == {
+                "error": {
+                    "code": 429,
+                    "message": "Too many requests",
+                    "details": None,
+                }
+            }
 
     def test_health_exempt_from_rate_limit(self, limited_app):
         """/health is never rate-limited, even after exceeding limit."""
@@ -199,8 +205,8 @@ class TestRateLimitingIntegration:
             resp = client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
-            assert "detail" in body
-            assert body["detail"] == "Too many requests"
+            assert "error" in body
+            assert body["error"]["message"] == "Too many requests"
 
     def test_different_paths_share_rate_limit(self, limited_app):
         """Rate limit is per-IP, not per-path."""
@@ -212,3 +218,86 @@ class TestRateLimitingIntegration:
             # Same IP, different path -- should still be limited
             resp = client.get("/test")
             assert resp.status_code == 429
+
+
+class TestCSPReport:
+    """Tests for the CSP violation report endpoint and header."""
+
+    @pytest.fixture
+    def csp_app(self):
+        """Minimal app with SecurityHeadersMiddleware and real CSP report handler."""
+        from niles.main import SecurityHeadersMiddleware, csp_report
+
+        test_app = FastAPI()
+        test_app.add_middleware(SecurityHeadersMiddleware)
+
+        @test_app.get("/page")
+        async def page():
+            return {"ok": True}
+
+        test_app.add_api_route(
+            "/csp-report", csp_report, methods=["POST"], status_code=204
+        )
+        return test_app
+
+    def test_csp_header_contains_report_uri(self, csp_app):
+        """CSP header includes report-uri directive."""
+        with TestClient(csp_app) as client:
+            resp = client.get("/page")
+            csp = resp.headers.get("Content-Security-Policy", "")
+            assert "report-uri /csp-report" in csp
+
+    @pytest.fixture
+    def report_app(self):
+        """Minimal app using the real csp_report handler from main."""
+        from niles.main import csp_report
+
+        test_app = FastAPI()
+        test_app.add_api_route(
+            "/csp-report", csp_report, methods=["POST"], status_code=204
+        )
+        return test_app
+
+    def test_csp_report_valid_payload(self, report_app):
+        """POST a valid CSP report body → 204."""
+        with TestClient(report_app) as client:
+            resp = client.post(
+                "/csp-report",
+                json={
+                    "csp-report": {
+                        "document-uri": "https://example.com",
+                        "violated-directive": "script-src",
+                        "blocked-uri": "https://evil.com/script.js",
+                    }
+                },
+            )
+            assert resp.status_code == 204
+
+    def test_csp_report_valid_payload_logs_warning(self, report_app, caplog):
+        """Valid CSP report emits a WARNING log with violation details."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="niles.main"):
+            with TestClient(report_app) as client:
+                client.post(
+                    "/csp-report",
+                    json={
+                        "csp-report": {
+                            "document-uri": "https://example.com",
+                            "violated-directive": "script-src",
+                            "blocked-uri": "https://evil.com/script.js",
+                        }
+                    },
+                )
+        assert any("CSP violation" in r.message for r in caplog.records)
+        assert any("evil.com/script.js" in r.message for r in caplog.records)
+
+    def test_csp_report_invalid_json(self, report_app):
+        """POST non-JSON body → 204 (graceful)."""
+        with TestClient(report_app) as client:
+            resp = client.post(
+                "/csp-report",
+                content=b"not json",
+                headers={"Content-Type": "text/plain"},
+            )
+            assert resp.status_code == 204
