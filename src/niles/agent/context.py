@@ -272,10 +272,6 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _task_tools
             ]
-        # Remove WhatsApp tools when no WhatsApp action is configured
-        if not self.whatsapp:
-            _wa_tools = {"send_whatsapp", "get_whatsapp_messages"}
-            all_tools = [t for t in all_tools if t["function"]["name"] not in _wa_tools]
         # Remove Signal tools when no Signal action is configured
         if self.signal is None:
             _signal_tools = {"send_signal", "get_signal_messages"}

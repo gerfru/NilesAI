@@ -70,7 +70,9 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run pip-audit
-        run: uv run --extra dev pip-audit --strict --desc
+        # --skip-editable: skip niles-core (not on PyPI)
+        # CVE-2025-69872: diskcache pickle deserialisation (transitive via trafilatura, no fix available)
+        run: uv run --extra dev pip-audit --desc --skip-editable --ignore-vuln CVE-2025-69872
 
   secret-scan:
     runs-on: ubuntu-latest
