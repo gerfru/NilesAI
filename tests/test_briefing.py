@@ -661,11 +661,11 @@ class TestFetchDailyWeather:
         import httpx
 
         gen = self._make_gen()
-        with patch("httpx.AsyncClient") as mock_cls:
-            client = AsyncMock()
-            client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-            result = await gen._fetch_daily_weather(days=1)
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        gen._weather_client = mock_client
+        result = await gen._fetch_daily_weather(days=1)
 
         assert result is None

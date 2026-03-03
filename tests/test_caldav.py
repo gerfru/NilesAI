@@ -318,20 +318,16 @@ class TestCreateEvent:
         mock_response.status_code = 201
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.put.return_value = mock_response
+        sync._client = mock_client
 
-            result = await sync.create_event(
-                summary="Zahnarzt",
-                dtstart_str="2026-02-20T14:00",
-                description="Kontrolle",
-                location="Wien",
-            )
+        result = await sync.create_event(
+            summary="Zahnarzt",
+            dtstart_str="2026-02-20T14:00",
+            description="Kontrolle",
+            location="Wien",
+        )
 
         assert result["status"] == "created"
         assert result["summary"] == "Zahnarzt"
@@ -353,18 +349,14 @@ class TestCreateEvent:
         mock_response.status_code = 201
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.put.return_value = mock_response
+        sync._client = mock_client
 
-            result = await sync.create_event(
-                summary="Meeting",
-                dtstart_str="2026-02-20T14:00",
-            )
+        result = await sync.create_event(
+            summary="Meeting",
+            dtstart_str="2026-02-20T14:00",
+        )
 
         # End should be 1 hour after start
         assert "15:00" in result["end"]
@@ -373,19 +365,15 @@ class TestCreateEvent:
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = Exception("HTTP 403")
 
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.put.return_value = mock_response
+        sync._client = mock_client
 
-            with pytest.raises(Exception, match="HTTP 403"):
-                await sync.create_event(
-                    summary="Fail",
-                    dtstart_str="2026-02-20T14:00",
-                )
+        with pytest.raises(Exception, match="HTTP 403"):
+            await sync.create_event(
+                summary="Fail",
+                dtstart_str="2026-02-20T14:00",
+            )
 
         # No local upsert on failure
         pool.execute.assert_not_called()
@@ -396,18 +384,14 @@ class TestCreateEvent:
         mock_response.status_code = 201
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.caldav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.put.return_value = mock_response
+        sync._client = mock_client
 
-            result = await sync.create_event(
-                summary="Meeting\r\nDTEND:20260101T000000Z\r\nSUMMARY:Injected",
-                dtstart_str="2026-02-20T14:00",
-            )
+        result = await sync.create_event(
+            summary="Meeting\r\nDTEND:20260101T000000Z\r\nSUMMARY:Injected",
+            dtstart_str="2026-02-20T14:00",
+        )
 
         assert result["status"] == "created"
         put_call = mock_client.put.call_args

@@ -10,6 +10,8 @@ from openai import AsyncOpenAI
 
 from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
 
+import httpx
+
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction, normalize_phone
 from ..actions.tasks import TasksAction
@@ -375,6 +377,7 @@ class NilesAgent:
         vikunja_store: VikunjaCredentialStore | None = None,
         signal: SignalAction | None = None,
         signal_store: SignalMessageStore | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ):
         self.config = config
         self.llm = AsyncOpenAI(
@@ -393,6 +396,7 @@ class NilesAgent:
         self.vikunja_store = vikunja_store
         self.signal = signal
         self.signal_store = signal_store
+        self._http_client = http_client
         self.base_prompt = load_system_prompt()
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -471,7 +475,9 @@ class NilesAgent:
                     api_url = creds["api_url"] or self.config.vikunja_api_url
                     if api_url:
                         return TasksAction(
-                            api_url=api_url, api_token=creds["api_token"]
+                            api_url=api_url,
+                            api_token=creds["api_token"],
+                            client=self._http_client,
                         )
         return None
 

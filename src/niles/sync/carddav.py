@@ -6,6 +6,8 @@ import re
 import asyncpg
 import httpx
 
+from niles.http_retry import retry_http
+
 from ..config import Settings
 
 logger = logging.getLogger(__name__)
@@ -27,13 +29,19 @@ _HREF_REGEX = re.compile(
 class CardDAVSync:
     """Syncs contacts from a CardDAV server to PostgreSQL."""
 
-    def __init__(self, pool: asyncpg.Pool, config: Settings):
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        config: Settings,
+        client: httpx.AsyncClient | None = None,
+    ):
         self.pool = pool
         self.carddav_url = config.carddav_url
         self.auth = (config.carddav_user, config.carddav_password)
         # Base URL for fetching individual vCards (scheme + host)
-        self._base_url = re.match(r"https?://[^/]+", config.carddav_url)
-        self._base_url = self._base_url.group(0) if self._base_url else ""
+        match = re.match(r"https?://[^/]+", config.carddav_url)
+        self._base_url = match.group(0) if match else ""
+        self._client = client or httpx.AsyncClient(timeout=30)
 
     def update_config(self, config: Settings) -> None:
         """Hot-reload credentials from updated settings."""
@@ -95,24 +103,25 @@ class CardDAVSync:
         logger.info("Synced %d contacts", count)
         return count
 
+    @retry_http
     async def _propfind(self) -> list[str]:
         """Send PROPFIND request and extract .vcf URLs from response."""
         url = self.carddav_url
         if not url.endswith("/"):
             url += "/"
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.request(
-                "PROPFIND",
-                url,
-                content=_PROPFIND_BODY,
-                headers={
-                    "Depth": "1",
-                    "Content-Type": "application/xml; charset=utf-8",
-                },
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.request(
+            "PROPFIND",
+            url,
+            content=_PROPFIND_BODY,
+            headers={
+                "Depth": "1",
+                "Content-Type": "application/xml; charset=utf-8",
+            },
+            auth=self.auth,
+            follow_redirects=True,
+            timeout=30,
+        )
+        response.raise_for_status()
 
         xml = response.text
         if not xml or len(xml) < 100:
@@ -122,17 +131,17 @@ class CardDAVSync:
         urls = _HREF_REGEX.findall(xml)
         return [u.strip() for u in urls if u.strip()]
 
+    @retry_http
     async def _fetch_vcard(self, url: str) -> str | None:
         """Fetch a single vCard by URL."""
         full_url = self._base_url + url if not url.startswith("http") else url
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                full_url,
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.get(
+            full_url,
+            auth=self.auth,
+            timeout=30,
+        )
+        response.raise_for_status()
 
         text = response.text
         if "BEGIN:VCARD" not in text:
