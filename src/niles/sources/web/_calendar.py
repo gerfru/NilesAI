@@ -287,17 +287,17 @@ async def callback_google_calendar(
 
     # Exchange authorization code for tokens
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            token_resp = await client.post(
-                GOOGLE_TOKEN_URL,
-                data={
-                    "client_id": settings.google_client_id,
-                    "client_secret": settings.google_client_secret,
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "grant_type": "authorization_code",
-                },
-            )
+        google_client = request.app.state.http_clients.google_oauth
+        token_resp = await google_client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
     except httpx.HTTPError as e:
         logger.error("Google Calendar token exchange HTTP error: %s", e)
         return RedirectResponse(url=_fail_url, status_code=303)
@@ -324,11 +324,10 @@ async def callback_google_calendar(
 
     # Discover calendars via Google Calendar REST API
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            cal_resp = await client.get(
-                _GOOGLE_CALENDAR_LIST_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
+        cal_resp = await google_client.get(
+            _GOOGLE_CALENDAR_LIST_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
     except httpx.HTTPError as e:
         logger.error("Google Calendar list HTTP error: %s", e)
         return RedirectResponse(url=_fail_url, status_code=303)

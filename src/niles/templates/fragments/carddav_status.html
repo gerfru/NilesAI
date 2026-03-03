@@ -51,13 +51,16 @@
       hx-target="#carddav-status-container"
       hx-swap="innerHTML">
     <div class="htmx-hide-on-request flex flex-col sm:flex-row gap-2 mb-2">
-        <input type="url" name="url" placeholder="https://dav.example.com/carddav/..."
+        <label for="carddav-url" class="sr-only">CardDAV URL</label>
+        <input type="url" name="url" id="carddav-url" placeholder="https://dav.example.com/carddav/..."
                maxlength="2048" required
                class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-        <input type="text" name="username" placeholder="Benutzername"
+        <label for="carddav-username" class="sr-only">Benutzername</label>
+        <input type="text" name="username" id="carddav-username" placeholder="Benutzername"
                maxlength="256" required
                class="flex-1 sm:max-w-[12rem] px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-        <input type="password" name="password" placeholder="Passwort"
+        <label for="carddav-password" class="sr-only">Passwort</label>
+        <input type="password" name="password" id="carddav-password" placeholder="Passwort"
                maxlength="256" required
                class="flex-1 sm:max-w-[12rem] px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
         <button type="submit"

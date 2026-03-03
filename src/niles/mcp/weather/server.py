@@ -16,6 +16,8 @@ from datetime import datetime
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from niles.http_retry import retry_http
+
 mcp = FastMCP("weather")
 
 _BASE_URL = "https://api.open-meteo.com/v1/forecast"
@@ -91,6 +93,15 @@ def _get_config() -> tuple[str, str, str]:
     return lat, lon, tz
 
 
+@retry_http
+async def _fetch_open_meteo(params: dict) -> dict:
+    """HTTP call to Open-Meteo API (retryable on transient failures)."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(_BASE_URL, params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+
 @mcp.tool()
 async def get_current_weather() -> str:
     """Aktuelles Wetter am konfigurierten Standort abrufen.
@@ -120,10 +131,7 @@ async def get_current_weather() -> str:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(_BASE_URL, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        data = await _fetch_open_meteo(params)
     except httpx.HTTPError as e:
         return f"Fehler beim Abrufen der Wetterdaten: {e}"
 
@@ -186,10 +194,7 @@ async def get_forecast(days: int = 3) -> str:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(_BASE_URL, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        data = await _fetch_open_meteo(params)
     except httpx.HTTPError as e:
         return f"Fehler beim Abrufen der Vorhersage: {e}"
 

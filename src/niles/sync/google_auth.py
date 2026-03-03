@@ -23,10 +23,12 @@ class GoogleCalendarAuth(httpx.Auth):
         refresh_token: str,
         client_id: str,
         client_secret: str,
+        client: httpx.AsyncClient | None = None,
     ):
         self._refresh_token = refresh_token
         self._client_id = client_id
         self._client_secret = client_secret
+        self._client = client or httpx.AsyncClient(timeout=30)
         self._access_token: str | None = None
         self._expires_at: float = 0  # monotonic time
 
@@ -41,18 +43,17 @@ class GoogleCalendarAuth(httpx.Auth):
 
     async def _refresh(self) -> None:
         """Exchange refresh_token for a fresh access_token."""
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                GOOGLE_TOKEN_URL,
-                data={
-                    "client_id": self._client_id,
-                    "client_secret": self._client_secret,
-                    "refresh_token": self._refresh_token,
-                    "grant_type": "refresh_token",
-                },
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "refresh_token": self._refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
 
         data = response.json()
         self._access_token = data["access_token"]

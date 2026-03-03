@@ -18,6 +18,7 @@
             crossorigin="anonymous"></script>
 </head>
 <body class="bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 min-h-screen">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg focus:outline-none">Zum Hauptinhalt springen</a>
     <nav class="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
             <a href="/ui/chat" class="text-lg font-bold text-zinc-900 dark:text-white no-underline">Niles AI</a>
@@ -45,7 +46,7 @@
             </div>
         </div>
     </nav>
-    <main class="max-w-5xl mx-auto px-4 py-4 sm:py-6">
+    <main id="main-content" class="max-w-5xl mx-auto px-4 py-4 sm:py-6">
         {% block content %}{% endblock %}
     </main>
     <script nonce="{{ csp_nonce }}" src="/static/js/app.js"></script>

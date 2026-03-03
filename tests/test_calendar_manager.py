@@ -190,13 +190,11 @@ END:VCALENDAR"""
         mock_response.content = ics_text.encode()
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        manager._client = mock_client
 
-            count = await manager._sync_ics(source)
+        count = await manager._sync_ics(source)
 
         assert count == 1
         # Verify UID was prefixed (find the string arg that starts with "ics-")
@@ -223,13 +221,11 @@ END:VCALENDAR"""
         mock_response.content = b"BEGIN:VCALENDAR\nEND:VCALENDAR"
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        manager._client = mock_client
 
-            count = await manager._sync_ics(source)
+        count = await manager._sync_ics(source)
 
         assert count == 0
 
@@ -250,14 +246,12 @@ END:VCALENDAR"""
         mock_response.content = b"x" * (6 * 1024 * 1024)  # 6 MB > 5 MB limit
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        manager._client = mock_client
 
-            with pytest.raises(ValueError, match="too large"):
-                await manager._sync_ics(source)
+        with pytest.raises(ValueError, match="too large"):
+            await manager._sync_ics(source)
 
         # Verify error was recorded
         pool.execute.assert_called()
@@ -276,14 +270,12 @@ END:VCALENDAR"""
             "google_token_expiry": None,
         }
 
-        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.get.side_effect = httpx.HTTPError("Connection refused")
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.HTTPError("Connection refused")
+        manager._client = mock_client
 
-            with pytest.raises(httpx.HTTPError):
-                await manager._sync_ics(source)
+        with pytest.raises(httpx.HTTPError):
+            await manager._sync_ics(source)
 
         # Verify error was recorded
         pool.execute.assert_called()
@@ -306,21 +298,19 @@ class TestSyncICSRedirect:
             "google_token_expiry": None,
         }
 
-        with patch("niles.sync.manager.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_response = MagicMock()
+        mock_response.text = "BEGIN:VCALENDAR\nEND:VCALENDAR"
+        mock_response.content = b"BEGIN:VCALENDAR\nEND:VCALENDAR"
+        mock_response.raise_for_status = MagicMock()
 
-            mock_response = MagicMock()
-            mock_response.text = "BEGIN:VCALENDAR\nEND:VCALENDAR"
-            mock_response.content = b"BEGIN:VCALENDAR\nEND:VCALENDAR"
-            mock_response.raise_for_status = MagicMock()
-            mock_client.get.return_value = mock_response
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        manager._client = mock_client
 
-            await manager._sync_ics(source)
+        await manager._sync_ics(source)
 
-            call_kwargs = mock_client.get.call_args[1]
-            assert call_kwargs["follow_redirects"] is True
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["follow_redirects"] is True
 
 
 class TestSyncCalDAV:

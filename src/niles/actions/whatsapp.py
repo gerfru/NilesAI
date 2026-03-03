@@ -15,13 +15,12 @@ logger = logging.getLogger(__name__)
 class WhatsAppAction:
     """Sends messages and manages instances via Evolution API."""
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: Settings, client: httpx.AsyncClient | None = None):
         self.base_url = config.evolution_api_url
-        self.api_key = config.evolution_api_key
         self.instance = config.evolution_instance
-
-    def _headers(self) -> dict:
-        return {"apikey": self.api_key}
+        self._client = client or httpx.AsyncClient(
+            headers={"apikey": config.evolution_api_key}, timeout=30
+        )
 
     async def send_message(
         self,
@@ -46,18 +45,15 @@ class WhatsAppAction:
         url = f"{self.base_url}/message/sendText/{inst}"
         payload = {"number": to, "text": text}
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    url, json=payload, headers=self._headers(), timeout=30
-                )
-                response.raise_for_status()
-                result = response.json()
-                logger.info("Message sent to %s via %s", to, inst)
-                return result
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error("Failed to send message to %s: %s", to, e)
-                return {"error": str(e)}
+        try:
+            response = await self._client.post(url, json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            logger.info("Message sent to %s via %s", to, inst)
+            return result
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error("Failed to send message to %s: %s", to, e)
+            return {"error": str(e)}
 
     _MAX_AGE_DAYS = 30
 
@@ -101,31 +97,27 @@ class WhatsAppAction:
                 },
             },
         }
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._headers(),
-                    timeout=30,
+        try:
+            resp = await self._client.post(
+                url,
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            records = data.get("messages", {}).get("records", [])
+            if logger.isEnabledFor(logging.DEBUG):
+                msgs = data.get("messages")
+                keys_info = list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
+                logger.debug(
+                    "findMessages %s: %d records (keys: %s)",
+                    remote_jid,
+                    len(records),
+                    keys_info,
                 )
-                resp.raise_for_status()
-                data = resp.json()
-                records = data.get("messages", {}).get("records", [])
-                if logger.isEnabledFor(logging.DEBUG):
-                    msgs = data.get("messages")
-                    keys_info = (
-                        list(msgs.keys()) if isinstance(msgs, dict) else type(msgs)
-                    )
-                    logger.debug(
-                        "findMessages %s: %d records (keys: %s)",
-                        remote_jid,
-                        len(records),
-                        keys_info,
-                    )
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error("Failed to fetch messages from %s: %s", inst, e)
-                return []
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error("Failed to fetch messages from %s: %s", inst, e)
+            return []
 
         # Belt-and-suspenders: re-apply 30-day cutoff on the client side
         # in case Evolution API returns stale records outside the requested window.
@@ -204,16 +196,13 @@ class WhatsAppAction:
             },
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    url, json=payload, headers=self._headers(), timeout=30
-                )
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error("Failed to create instance %s: %s", instance_name, e)
-                return {"error": str(e)}
+        try:
+            response = await self._client.post(url, json=payload, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error("Failed to create instance %s: %s", instance_name, e)
+            return {"error": str(e)}
 
     async def get_connection_state(self, instance_name: str) -> str:
         """
@@ -223,19 +212,18 @@ class WhatsAppAction:
         """
         url = f"{self.base_url}/instance/connectionState/{instance_name}"
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(url, headers=self._headers(), timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                return data.get("instance", {}).get("state", "close")
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error(
-                    "Failed to get connection state for %s: %s",
-                    instance_name,
-                    e,
-                )
-                return "close"
+        try:
+            response = await self._client.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("instance", {}).get("state", "close")
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(
+                "Failed to get connection state for %s: %s",
+                instance_name,
+                e,
+            )
+            return "close"
 
     async def get_qr_code(self, instance_name: str) -> dict:
         """
@@ -245,72 +233,67 @@ class WhatsAppAction:
         """
         url = f"{self.base_url}/instance/connect/{instance_name}"
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(url, headers=self._headers(), timeout=10)
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error(
-                    "Failed to get QR code for %s: %s",
-                    instance_name,
-                    e,
-                )
-                return {"error": str(e)}
+        try:
+            response = await self._client.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(
+                "Failed to get QR code for %s: %s",
+                instance_name,
+                e,
+            )
+            return {"error": str(e)}
 
     async def get_owner_jid(self, instance_name: str) -> str | None:
         """Get the ownerJid (phone@s.whatsapp.net) for a connected instance."""
         url = f"{self.base_url}/instance/fetchInstances"
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    url,
-                    headers=self._headers(),
-                    params={"instanceName": instance_name},
-                    timeout=10,
-                )
-                response.raise_for_status()
-                data = response.json()
-                if data and isinstance(data, list):
-                    return data[0].get("ownerJid")
-            except (httpx.HTTPError, IndexError, KeyError, ValueError) as e:
-                logger.error(
-                    "Failed to get ownerJid for %s: %s",
-                    instance_name,
-                    e,
-                )
+        try:
+            response = await self._client.get(
+                url,
+                params={"instanceName": instance_name},
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data and isinstance(data, list):
+                return data[0].get("ownerJid")
+        except (httpx.HTTPError, IndexError, KeyError, ValueError) as e:
+            logger.error(
+                "Failed to get ownerJid for %s: %s",
+                instance_name,
+                e,
+            )
         return None
 
     async def logout_instance(self, instance_name: str) -> dict:
         """Logout a WhatsApp instance (unlink device)."""
         url = f"{self.base_url}/instance/logout/{instance_name}"
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.delete(url, headers=self._headers(), timeout=15)
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error(
-                    "Failed to logout instance %s: %s",
-                    instance_name,
-                    e,
-                )
-                return {"error": str(e)}
+        try:
+            response = await self._client.delete(url, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(
+                "Failed to logout instance %s: %s",
+                instance_name,
+                e,
+            )
+            return {"error": str(e)}
 
     async def delete_instance(self, instance_name: str) -> dict:
         """Delete an Evolution API instance."""
         url = f"{self.base_url}/instance/delete/{instance_name}"
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.delete(url, headers=self._headers(), timeout=15)
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, ValueError) as e:
-                logger.error(
-                    "Failed to delete instance %s: %s",
-                    instance_name,
-                    e,
-                )
-                return {"error": str(e)}
+        try:
+            response = await self._client.delete(url, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(
+                "Failed to delete instance %s: %s",
+                instance_name,
+                e,
+            )
+            return {"error": str(e)}
