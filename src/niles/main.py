@@ -26,6 +26,7 @@ from .logging_config import generate_request_id, setup_logging
 from .metrics import HTTP_DURATION, HTTP_REQUESTS
 
 from .actions.briefing import BriefingGenerator
+from .errors import error_response
 from .http_clients import HttpClients
 from .actions.calendar import CalendarAction
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
@@ -427,10 +428,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if len(self._hits[client_ip]) > self.rpm:
             logger.warning("Rate limit exceeded for %s", client_ip)
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests"},
-            )
+            return error_response(429, "Too many requests")
 
         return await call_next(request)
 
@@ -539,10 +537,7 @@ async def _api_exception_handler(request: Request, exc: Exception) -> Response:
     if "text/html" in accept:
         return Response(content=str(message), status_code=status)
 
-    return JSONResponse(
-        status_code=status,
-        content={"error": {"code": status, "message": str(message)}},
-    )
+    return error_response(status, str(message))
 
 
 app.add_exception_handler(HTTPException, _api_exception_handler)
