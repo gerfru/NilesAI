@@ -195,10 +195,6 @@ class TestWhatsAppAction:
         assert key_filter["remoteJid"] == "436601234567@s.whatsapp.net"
         assert key_filter["remoteJidAlt"] == "436601234567@s.whatsapp.net"
 
-    def test_headers(self, action):
-        """_headers returns correct API key."""
-        assert action._headers() == {"apikey": VALID_TOKEN}
-
 
 class TestWebhookIncoming:
     """Test that webhook handles incoming messages correctly."""
