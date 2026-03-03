@@ -216,48 +216,50 @@ async def callback_google(
     redirect_uri = _build_redirect_uri(request)
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Exchange authorization code for tokens
-            token_resp = await client.post(
-                GOOGLE_TOKEN_URL,
-                data={
-                    "client_id": settings.google_client_id,
-                    "client_secret": settings.google_client_secret,
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "grant_type": "authorization_code",
+        google_client = request.app.state.http_clients.google_oauth
+        # Exchange authorization code for tokens
+        token_resp = await google_client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+            timeout=10.0,
+        )
+        if token_resp.status_code != 200:
+            logger.error("Google token exchange failed: %s", token_resp.text)
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {
+                    "error": "Token-Austausch fehlgeschlagen.",
+                    "google_configured": gc,
                 },
             )
-            if token_resp.status_code != 200:
-                logger.error("Google token exchange failed: %s", token_resp.text)
-                return templates.TemplateResponse(
-                    request,
-                    "login.html",
-                    {
-                        "error": "Token-Austausch fehlgeschlagen.",
-                        "google_configured": gc,
-                    },
-                )
-            tokens = token_resp.json()
+        tokens = token_resp.json()
 
-            # Get user info from Google
-            userinfo_resp = await client.get(
-                _GOOGLE_USERINFO_URL,
-                headers={
-                    "Authorization": f"Bearer {tokens['access_token']}",
+        # Get user info from Google
+        userinfo_resp = await google_client.get(
+            _GOOGLE_USERINFO_URL,
+            headers={
+                "Authorization": f"Bearer {tokens['access_token']}",
+            },
+            timeout=10.0,
+        )
+        if userinfo_resp.status_code != 200:
+            logger.error("Google userinfo failed: %s", userinfo_resp.text)
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {
+                    "error": "Benutzerinformationen konnten nicht abgerufen werden.",
+                    "google_configured": gc,
                 },
             )
-            if userinfo_resp.status_code != 200:
-                logger.error("Google userinfo failed: %s", userinfo_resp.text)
-                return templates.TemplateResponse(
-                    request,
-                    "login.html",
-                    {
-                        "error": "Benutzerinformationen konnten nicht abgerufen werden.",
-                        "google_configured": gc,
-                    },
-                )
-            userinfo = userinfo_resp.json()
+        userinfo = userinfo_resp.json()
     except httpx.HTTPError as e:
         logger.error("Google OAuth HTTP error: %s", e)
         return templates.TemplateResponse(

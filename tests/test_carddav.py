@@ -87,15 +87,11 @@ class TestPropfind:
         mock_response.text = SAMPLE_PROPFIND_XML
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.carddav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.request.return_value = mock_response
+        sync._client = mock_client
 
-            urls = await sync._propfind()
+        urls = await sync._propfind()
 
         assert len(urls) == 2
         assert "/carddav/32/contact1.vcf" in urls
@@ -106,15 +102,11 @@ class TestPropfind:
         mock_response.text = "<short/>"
         mock_response.raise_for_status = MagicMock()
 
-        with patch("niles.sync.carddav.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client
-            )
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.request.return_value = mock_response
+        sync._client = mock_client
 
-            urls = await sync._propfind()
+        urls = await sync._propfind()
 
         assert urls == []
 

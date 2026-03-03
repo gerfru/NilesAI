@@ -11,40 +11,44 @@ logger = logging.getLogger(__name__)
 class TasksAction:
     """Interface to Vikunja REST API for task management."""
 
-    def __init__(self, api_url: str, api_token: str):
+    def __init__(
+        self,
+        api_url: str,
+        api_token: str,
+        client: httpx.AsyncClient | None = None,
+    ):
         self.api_url = api_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_token}"}
         self._default_project_id: int | None = None
+        self._client = client or httpx.AsyncClient(timeout=10)
 
     async def _get_default_project_id(self) -> int | None:
         """Get the first available project ID (cached)."""
         if self._default_project_id is not None:
             return self._default_project_id
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.api_url}/projects",
-                headers=self.headers,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            projects = resp.json()
-            if projects:
-                self._default_project_id = projects[0]["id"]
-                return self._default_project_id
+        resp = await self._client.get(
+            f"{self.api_url}/projects",
+            headers=self.headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        projects = resp.json()
+        if projects:
+            self._default_project_id = projects[0]["id"]
+            return self._default_project_id
         return None
 
     async def _find_project_by_name(self, name: str) -> int | None:
         """Find a project ID by name (case-insensitive)."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.api_url}/projects",
-                headers=self.headers,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            for project in resp.json():
-                if project["title"].lower() == name.lower():
-                    return project["id"]
+        resp = await self._client.get(
+            f"{self.api_url}/projects",
+            headers=self.headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        for project in resp.json():
+            if project["title"].lower() == name.lower():
+                return project["id"]
         return None
 
     async def list_tasks(
@@ -53,26 +57,25 @@ class TasksAction:
         include_done: bool = False,
     ) -> list[dict]:
         """List tasks, optionally filtered by project."""
-        async with httpx.AsyncClient() as client:
-            # Vikunja API: GET /api/v1/tasks/all
-            # Note: limited to 50 tasks (no pagination). Users with more
-            # tasks should use the Vikunja Web-UI for the full list.
-            params = {
-                "sort_by": "due_date",
-                "order_by": "asc",
-                "per_page": 50,
-            }
-            if not include_done:
-                params["filter"] = "done = false"
+        # Vikunja API: GET /api/v1/tasks/all
+        # Note: limited to 50 tasks (no pagination). Users with more
+        # tasks should use the Vikunja Web-UI for the full list.
+        params = {
+            "sort_by": "due_date",
+            "order_by": "asc",
+            "per_page": 50,
+        }
+        if not include_done:
+            params["filter"] = "done = false"
 
-            resp = await client.get(
-                f"{self.api_url}/tasks",
-                headers=self.headers,
-                params=params,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            tasks = resp.json()
+        resp = await self._client.get(
+            f"{self.api_url}/tasks",
+            headers=self.headers,
+            params=params,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        tasks = resp.json()
 
         # Filter by project name if specified
         if project:
@@ -143,21 +146,20 @@ class TasksAction:
         if priority > 0:
             payload["priority"] = min(priority, 4)
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.put(
-                f"{self.api_url}/projects/{project_id}/tasks",
-                headers=self.headers,
-                json=payload,
-                timeout=10,
+        resp = await self._client.put(
+            f"{self.api_url}/projects/{project_id}/tasks",
+            headers=self.headers,
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            logger.error(
+                "Vikunja create_task %s: %s", resp.status_code, resp.text[:200]
             )
-            if resp.status_code >= 400:
-                logger.error(
-                    "Vikunja create_task %s: %s", resp.status_code, resp.text[:200]
-                )
-                return {
-                    "error": f"Aufgabe konnte nicht erstellt werden (HTTP {resp.status_code})"
-                }
-            task = resp.json()
+            return {
+                "error": f"Aufgabe konnte nicht erstellt werden (HTTP {resp.status_code})"
+            }
+        task = resp.json()
 
         return {
             "created": True,
@@ -184,13 +186,12 @@ class TasksAction:
             }
 
         task_id = matches[0]["id"]
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self.api_url}/tasks/{task_id}",
-                headers=self.headers,
-                json={"done": True},
-                timeout=10,
-            )
-            resp.raise_for_status()
+        resp = await self._client.post(
+            f"{self.api_url}/tasks/{task_id}",
+            headers=self.headers,
+            json={"done": True},
+            timeout=10,
+        )
+        resp.raise_for_status()
 
         return {"completed": True, "title": matches[0]["title"]}
