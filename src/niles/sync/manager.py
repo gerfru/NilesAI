@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 import asyncpg
 import httpx
 
+from niles.http_retry import retry_http
+
 from .caldav import (
     CalDAVSync,
     _SYNC_DAYS_FUTURE,
@@ -70,7 +72,8 @@ class CalendarSourceManager:
         parsed = urlparse(url)
         if parsed.username or parsed.password:
             url = parsed._replace(
-                netloc=parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+                netloc=(parsed.hostname or "")
+                + (f":{parsed.port}" if parsed.port else "")
             ).geturl()
         if len(url) > 2048:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
@@ -191,6 +194,20 @@ class CalendarSourceManager:
             return await self._sync_caldav(src)
         return 0
 
+    @retry_http
+    async def _fetch_ics(self, url: str) -> str:
+        """HTTP GET for ICS file (retryable on transient failures)."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                timeout=_ICS_TIMEOUT,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            if len(response.content) > _MAX_ICS_SIZE:
+                raise ValueError(f"ICS file too large: {len(response.content)} bytes")
+        return response.text
+
     async def _sync_ics(self, source: dict) -> int:
         """Sync an ICS subscription: HTTP GET, parse, upsert.
 
@@ -202,22 +219,10 @@ class CalendarSourceManager:
         logger.info("Syncing ICS source '%s' from %s", source["name"], url)
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    timeout=_ICS_TIMEOUT,
-                    follow_redirects=True,
-                )
-                response.raise_for_status()
-                if len(response.content) > _MAX_ICS_SIZE:
-                    raise ValueError(
-                        f"ICS file too large: {len(response.content)} bytes"
-                    )
+            ics_text = await self._fetch_ics(url)
         except Exception as exc:
             await self._set_error(source_id, str(exc))
             raise
-
-        ics_text = response.text
         count = 0
 
         now = datetime.now(timezone.utc)

@@ -6,6 +6,8 @@ import re
 import asyncpg
 import httpx
 
+from niles.http_retry import retry_http
+
 from ..config import Settings
 
 logger = logging.getLogger(__name__)
@@ -32,8 +34,8 @@ class CardDAVSync:
         self.carddav_url = config.carddav_url
         self.auth = (config.carddav_user, config.carddav_password)
         # Base URL for fetching individual vCards (scheme + host)
-        self._base_url = re.match(r"https?://[^/]+", config.carddav_url)
-        self._base_url = self._base_url.group(0) if self._base_url else ""
+        match = re.match(r"https?://[^/]+", config.carddav_url)
+        self._base_url = match.group(0) if match else ""
 
     def update_config(self, config: Settings) -> None:
         """Hot-reload credentials from updated settings."""
@@ -95,6 +97,7 @@ class CardDAVSync:
         logger.info("Synced %d contacts", count)
         return count
 
+    @retry_http
     async def _propfind(self) -> list[str]:
         """Send PROPFIND request and extract .vcf URLs from response."""
         url = self.carddav_url
@@ -122,6 +125,7 @@ class CardDAVSync:
         urls = _HREF_REGEX.findall(xml)
         return [u.strip() for u in urls if u.strip()]
 
+    @retry_http
     async def _fetch_vcard(self, url: str) -> str | None:
         """Fetch a single vCard by URL."""
         full_url = self._base_url + url if not url.startswith("http") else url
