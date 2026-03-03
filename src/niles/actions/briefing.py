@@ -62,6 +62,8 @@ class BriefingGenerator:
         vikunja_store=None,
         weather_latitude: str = "",
         weather_longitude: str = "",
+        weather_client: httpx.AsyncClient | None = None,
+        vikunja_client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.tz = ZoneInfo(timezone)
@@ -69,6 +71,8 @@ class BriefingGenerator:
         self.vikunja_store = vikunja_store
         self.weather_latitude = weather_latitude
         self.weather_longitude = weather_longitude
+        self._weather_client = weather_client or httpx.AsyncClient(timeout=10)
+        self._vikunja_client = vikunja_client or httpx.AsyncClient(timeout=10)
 
     # -----------------------------------------------------------------
     # Data queries
@@ -132,20 +136,19 @@ class BriefingGenerator:
     @retry_http
     async def _fetch_vikunja_tasks(self, api_url: str, token: str) -> list:
         """HTTP call to Vikunja API (retryable on transient failures)."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{api_url}/tasks/all",
-                headers={"Authorization": f"Bearer {token}"},
-                params={
-                    "filter": "done = false",
-                    "sort_by": "due_date",
-                    "order_by": "asc",
-                    "per_page": 20,
-                },
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        resp = await self._vikunja_client.get(
+            f"{api_url}/tasks/all",
+            headers={"Authorization": f"Bearer {token}"},
+            params={
+                "filter": "done = false",
+                "sort_by": "due_date",
+                "order_by": "asc",
+                "per_page": 20,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def _filter_overdue(self, tasks: list[dict]) -> list[dict]:
         """Filter tasks that are past their due date (pure filter, no API call)."""
@@ -191,10 +194,9 @@ class BriefingGenerator:
     @retry_http
     async def _fetch_weather_json(self, params: dict) -> dict:
         """HTTP call to Open-Meteo API (retryable on transient failures)."""
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(_OPEN_METEO_URL, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = await self._weather_client.get(_OPEN_METEO_URL, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     @staticmethod
     def _daily_value(daily: dict, key: str, index: int, default="?"):

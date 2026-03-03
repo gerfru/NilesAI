@@ -81,6 +81,7 @@ def _make_request(
     wa_store=None,
     headers=None,
     client_ip="127.0.0.1",
+    http_clients=None,
 ):
     """Build a mock Request with app.state."""
     request = MagicMock()
@@ -94,6 +95,7 @@ def _make_request(
     request.app.state.wa_store = wa_store
     request.app.state.vikunja_provisioner = None
     request.app.state.shutdown_event = None
+    request.app.state.http_clients = http_clients or MagicMock()
     request.client.host = client_ip
     request.url.scheme = "http"
     return request
@@ -562,12 +564,6 @@ class TestOllamaModelsEndpoint:
 
     async def test_returns_options_from_ollama(self):
         settings = _make_settings(llm_model="llama3.1:8b")
-        request = _make_request(
-            cookies=_auth_cookies(),
-            settings=settings,
-            user_store=self._admin_user_store(),
-        )
-
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
@@ -579,14 +575,18 @@ class TestOllamaModelsEndpoint:
         }
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("niles.sources.web._settings.httpx.AsyncClient") as mock_client:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            mock_client.return_value = instance
+        mock_http_clients = MagicMock()
+        mock_http_clients.general = AsyncMock()
+        mock_http_clients.general.get = AsyncMock(return_value=mock_resp)
 
-            response = await ollama_models(request)
+        request = _make_request(
+            cookies=_auth_cookies(),
+            settings=settings,
+            user_store=self._admin_user_store(),
+            http_clients=mock_http_clients,
+        )
+
+        response = await ollama_models(request)
 
         body = response.body.decode()
         assert "llama3.1:8b" in body
@@ -596,20 +596,21 @@ class TestOllamaModelsEndpoint:
 
     async def test_returns_current_model_when_ollama_unreachable(self):
         settings = _make_settings(llm_model="llama3.1:8b")
+
+        mock_http_clients = MagicMock()
+        mock_http_clients.general = AsyncMock()
+        mock_http_clients.general.get = AsyncMock(
+            side_effect=Exception("Connection refused")
+        )
+
         request = _make_request(
             cookies=_auth_cookies(),
             settings=settings,
             user_store=self._admin_user_store(),
+            http_clients=mock_http_clients,
         )
 
-        with patch("niles.sources.web._settings.httpx.AsyncClient") as mock_client:
-            instance = AsyncMock()
-            instance.get.side_effect = Exception("Connection refused")
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            mock_client.return_value = instance
-
-            response = await ollama_models(request)
+        response = await ollama_models(request)
 
         body = response.body.decode()
         assert "llama3.1:8b" in body
@@ -706,13 +707,17 @@ class TestGoogleCalendarCallback:
             base_url="https://niles.example.com",
         )
 
-    def _gcal_request(self, *, state="valid-state", cookies=None):
+    def _gcal_request(self, *, state="valid-state", cookies=None, http_clients=None):
         """Build request with session + gcal_oauth_state cookie."""
         c = _auth_cookies()
         c[_GCAL_OAUTH_COOKIE] = state
         if cookies:
             c.update(cookies)
-        request = _make_request(cookies=c, settings=self._gcal_settings())
+        request = _make_request(
+            cookies=c,
+            settings=self._gcal_settings(),
+            http_clients=http_clients,
+        )
         request.app.state.calendar_manager = AsyncMock()
         return request
 
@@ -766,30 +771,26 @@ class TestGoogleCalendarCallback:
 
     async def test_rejects_failed_token_exchange(self):
         """Failed token exchange redirects with error."""
-        request = self._gcal_request()
-
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 400
 
-        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_token_resp
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_http_clients = MagicMock()
+        mock_http_clients.google_oauth = AsyncMock()
+        mock_http_clients.google_oauth.post = AsyncMock(return_value=mock_token_resp)
 
-            response = await callback_google_calendar(
-                request,
-                code="test-code",
-                state="valid-state",
-            )
+        request = self._gcal_request(http_clients=mock_http_clients)
+
+        response = await callback_google_calendar(
+            request,
+            code="test-code",
+            state="valid-state",
+        )
 
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
 
     async def test_rejects_missing_refresh_token(self):
         """Missing refresh_token redirects with error."""
-        request = self._gcal_request()
-
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
@@ -798,28 +799,23 @@ class TestGoogleCalendarCallback:
             # no refresh_token
         }
 
-        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_token_resp
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_http_clients = MagicMock()
+        mock_http_clients.google_oauth = AsyncMock()
+        mock_http_clients.google_oauth.post = AsyncMock(return_value=mock_token_resp)
 
-            response = await callback_google_calendar(
-                request,
-                code="test-code",
-                state="valid-state",
-            )
+        request = self._gcal_request(http_clients=mock_http_clients)
+
+        response = await callback_google_calendar(
+            request,
+            code="test-code",
+            state="valid-state",
+        )
 
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
 
     async def test_successful_calendar_discovery(self):
         """Successful flow adds calendars and redirects to settings."""
-        request = self._gcal_request()
-        manager = request.app.state.calendar_manager
-        manager.add_source = AsyncMock(return_value={"id": 1})
-        manager.sync_all = AsyncMock()
-
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
@@ -845,18 +841,22 @@ class TestGoogleCalendarCallback:
             ],
         }
 
-        with patch("niles.sources.web._calendar.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_token_resp
-            mock_client.get.return_value = mock_cal_resp
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_http_clients = MagicMock()
+        mock_google = AsyncMock()
+        mock_google.post = AsyncMock(return_value=mock_token_resp)
+        mock_google.get = AsyncMock(return_value=mock_cal_resp)
+        mock_http_clients.google_oauth = mock_google
 
-            response = await callback_google_calendar(
-                request,
-                code="test-code",
-                state="valid-state",
-            )
+        request = self._gcal_request(http_clients=mock_http_clients)
+        manager = request.app.state.calendar_manager
+        manager.add_source = AsyncMock(return_value={"id": 1})
+        manager.sync_all = AsyncMock()
+
+        response = await callback_google_calendar(
+            request,
+            code="test-code",
+            state="valid-state",
+        )
 
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/settings"

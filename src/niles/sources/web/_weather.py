@@ -34,13 +34,13 @@ async def weather_location_search(
         return HTMLResponse("")
 
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(
-                _GEOCODING_URL,
-                params={"name": q.strip(), "count": 5, "language": "de"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        geocoding = request.app.state.http_clients.geocoding
+        resp = await geocoding.get(
+            _GEOCODING_URL,
+            params={"name": q.strip(), "count": 5, "language": "de"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
     except httpx.HTTPError:
         return HTMLResponse(
             '<p class="text-sm text-red-500 py-1">Suche fehlgeschlagen.</p>'
