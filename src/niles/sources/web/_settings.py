@@ -3,7 +3,6 @@
 import html as _html
 import logging
 
-import httpx
 from fastapi import Form, Query, Request
 from fastapi.responses import HTMLResponse
 from openai import AsyncOpenAI
@@ -72,10 +71,10 @@ async def ollama_models(request: Request):
 
     current_model = settings.llm_model
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{base}/api/tags")
-            resp.raise_for_status()
-            data = resp.json()
+        general = request.app.state.http_clients.general
+        resp = await general.get(f"{base}/api/tags", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
     except Exception:
         # Ollama unreachable — return single option with current value
         return HTMLResponse(
