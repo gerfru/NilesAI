@@ -7,7 +7,7 @@ without runtime overhead.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     import asyncpg
@@ -47,7 +47,7 @@ class AppState(Protocol):
     vikunja_store: VikunjaCredentialStore
     vikunja_provisioner: VikunjaProvisioner | None
     briefing_generator: BriefingGenerator
-    scheduler: object
+    scheduler: Any
     signal_action: SignalAction | None
     signal_store: SignalMessageStore | None
     http_clients: HttpClients

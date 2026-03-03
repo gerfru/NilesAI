@@ -41,7 +41,7 @@ def _is_retryable(exc: BaseException) -> bool:
 
 
 def _log_retry(retry_state: tenacity.RetryCallState) -> None:
-    """Log each retry attempt via structlog."""
+    """Log each retry attempt."""
     exc = retry_state.outcome.exception() if retry_state.outcome else None
     logger.warning(
         "HTTP retry %d/3: %s",
