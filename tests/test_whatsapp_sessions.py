@@ -42,20 +42,17 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.send_message(
-                to="436601234567",
-                text="Hi",
-                instance="niles-wa-5",
-            )
-            assert "error" not in result
-            # Verify the URL includes the custom instance name
-            call_url = mock_client.post.call_args[0][0]
-            assert "niles-wa-5" in call_url
+        result = await action.send_message(
+            to="436601234567",
+            text="Hi",
+            instance="niles-wa-5",
+        )
+        assert "error" not in result
+        # Verify the URL includes the custom instance name
+        call_url = mock_client.post.call_args[0][0]
+        assert "niles-wa-5" in call_url
 
     async def test_fetch_messages(self, action):
         """fetch_messages calls Evolution API findMessages endpoint."""
@@ -81,15 +78,12 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-                instance="niles-wa-1",
-            )
+        result = await action.fetch_messages(
+            remote_jid="436601234567@s.whatsapp.net",
+            instance="niles-wa-1",
+        )
 
         assert len(result) == 1
         assert result[0]["text"] == "Hallo!"
@@ -107,14 +101,11 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-            )
+        await action.fetch_messages(
+            remote_jid="436601234567@s.whatsapp.net",
+        )
 
         payload = mock_client.post.call_args[1]["json"]
         ts_filter = payload["where"]["messageTimestamp"]
@@ -147,14 +138,11 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-            )
+        result = await action.fetch_messages(
+            remote_jid="436601234567@s.whatsapp.net",
+        )
 
         assert len(result) == 1
         assert result[0]["text"] == "[Bild]"
@@ -178,14 +166,11 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            result = await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-            )
+        result = await action.fetch_messages(
+            remote_jid="436601234567@s.whatsapp.net",
+        )
 
         assert len(result) == 1
         assert result[0]["text"] == "Hey!"
@@ -199,14 +184,11 @@ class TestWhatsAppAction:
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        action._client = mock_client
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr("httpx.AsyncClient", lambda: mock_client)
-            await action.fetch_messages(
-                remote_jid="436601234567@s.whatsapp.net",
-            )
+        await action.fetch_messages(
+            remote_jid="436601234567@s.whatsapp.net",
+        )
 
         payload = mock_client.post.call_args[1]["json"]
         key_filter = payload["where"]["key"]

@@ -1,7 +1,7 @@
 """Tests for GoogleCalendarAuth (Bearer token with automatic refresh)."""
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -34,42 +34,42 @@ class TestGoogleCalendarAuth:
             "expires_in": 3600,
         }
 
-        with patch("niles.sync.google_auth.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_response
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        auth._client = mock_client
 
-            request = MagicMock()
-            request.headers = {}
+        request = MagicMock()
+        request.headers = {}
 
-            async for _ in auth.async_auth_flow(request):
-                pass
+        async for _ in auth.async_auth_flow(request):
+            pass
 
-            # Verify Bearer token was set
-            assert request.headers["Authorization"] == "Bearer fresh-access-token"
+        # Verify Bearer token was set
+        assert request.headers["Authorization"] == "Bearer fresh-access-token"
 
-            # Verify refresh was called with correct params
-            call_kwargs = mock_client.post.call_args[1]
-            assert call_kwargs["data"]["refresh_token"] == "test-refresh-token"
-            assert call_kwargs["data"]["client_id"] == "test-client-id"
-            assert call_kwargs["data"]["grant_type"] == "refresh_token"
+        # Verify refresh was called with correct params
+        call_kwargs = mock_client.post.call_args[1]
+        assert call_kwargs["data"]["refresh_token"] == "test-refresh-token"
+        assert call_kwargs["data"]["client_id"] == "test-client-id"
+        assert call_kwargs["data"]["grant_type"] == "refresh_token"
 
     async def test_cached_token_not_refreshed(self, auth):
         """Second call should use cached token without refreshing."""
         auth._access_token = "cached-token"
         auth._expires_at = time.monotonic() + 3600
 
-        with patch("niles.sync.google_auth.httpx.AsyncClient") as mock_cls:
-            request = MagicMock()
-            request.headers = {}
+        mock_client = AsyncMock()
+        auth._client = mock_client
 
-            async for _ in auth.async_auth_flow(request):
-                pass
+        request = MagicMock()
+        request.headers = {}
 
-            # Should NOT have created a client (no refresh needed)
-            mock_cls.assert_not_called()
-            assert request.headers["Authorization"] == "Bearer cached-token"
+        async for _ in auth.async_auth_flow(request):
+            pass
+
+        # Should NOT have called post (no refresh needed)
+        mock_client.post.assert_not_called()
+        assert request.headers["Authorization"] == "Bearer cached-token"
 
     async def test_expired_token_triggers_refresh(self, auth):
         """Expired token should trigger a refresh."""
@@ -84,36 +84,32 @@ class TestGoogleCalendarAuth:
             "expires_in": 3600,
         }
 
-        with patch("niles.sync.google_auth.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_response
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        auth._client = mock_client
 
-            request = MagicMock()
-            request.headers = {}
+        request = MagicMock()
+        request.headers = {}
 
-            async for _ in auth.async_auth_flow(request):
-                pass
+        async for _ in auth.async_auth_flow(request):
+            pass
 
-            mock_client.post.assert_called_once()
-            assert request.headers["Authorization"] == "Bearer new-token"
+        mock_client.post.assert_called_once()
+        assert request.headers["Authorization"] == "Bearer new-token"
 
     async def test_refresh_failure_raises(self, auth):
         """HTTP error during refresh should propagate."""
-        with patch("niles.sync.google_auth.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post.side_effect = httpx.HTTPStatusError(
-                "401",
-                request=MagicMock(),
-                response=MagicMock(status_code=401),
-            )
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.HTTPStatusError(
+            "401",
+            request=MagicMock(),
+            response=MagicMock(status_code=401),
+        )
+        auth._client = mock_client
 
-            request = MagicMock()
-            request.headers = {}
+        request = MagicMock()
+        request.headers = {}
 
-            with pytest.raises(httpx.HTTPStatusError):
-                async for _ in auth.async_auth_flow(request):
-                    pass
+        with pytest.raises(httpx.HTTPStatusError):
+            async for _ in auth.async_auth_flow(request):
+                pass

@@ -5,7 +5,6 @@ import logging
 from urllib.parse import urlparse
 
 import asyncpg
-import httpx
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
 
@@ -45,15 +44,15 @@ async def vikunja_status(request: Request):
         api_url = creds["api_url"] or request.app.state.settings.vikunja_api_url
         if api_url:
             try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(
-                        f"{api_url.rstrip('/')}/projects",
-                        headers={"Authorization": f"Bearer {creds['api_token']}"},
-                        timeout=5,
-                    )
-                    resp.raise_for_status()
-                    ctx["vikunja_connected"] = True
-                    ctx["vikunja_project_count"] = len(resp.json())
+                general = request.app.state.http_clients.general
+                resp = await general.get(
+                    f"{api_url.rstrip('/')}/projects",
+                    headers={"Authorization": f"Bearer {creds['api_token']}"},
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                ctx["vikunja_connected"] = True
+                ctx["vikunja_project_count"] = len(resp.json())
             except Exception:
                 ctx["vikunja_connected"] = True
                 ctx["vikunja_error"] = "Verbindung zum Vikunja-Server fehlgeschlagen."
@@ -136,14 +135,14 @@ async def vikunja_connect(
 
     # Test connection before saving
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{effective_url.rstrip('/')}/projects",
-                headers={"Authorization": f"Bearer {api_token}"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            project_count = len(resp.json())
+        general = request.app.state.http_clients.general
+        resp = await general.get(
+            f"{effective_url.rstrip('/')}/projects",
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        project_count = len(resp.json())
     except Exception:
         return templates.TemplateResponse(
             request,
