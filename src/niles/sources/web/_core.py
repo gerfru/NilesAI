@@ -13,9 +13,17 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from niles.types import AppState
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ui", tags=["web-ui"])
+
+
+def _state(request: Request) -> AppState:
+    """Return typed app.state for mypy attribute resolution."""
+    return request.app.state  # type: ignore[return-value]
+
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 

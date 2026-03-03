@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import httpx
 
+from niles.http_retry import retry_http
+
 from .ical_parser import expand_recurring_event, parse_icalendar
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,7 @@ class CalDAVSync:
         timezone: str,
         caldav_calendars: str = "",
         source_id: int | None = None,
+        client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.caldav_url = caldav_url
@@ -155,8 +158,9 @@ class CalDAVSync:
         self.source_id = source_id
         self._caldav_calendars = caldav_calendars
         # Base URL for fetching individual .ics files (scheme + host)
-        self._base_url = re.match(r"https?://[^/]+", caldav_url)
-        self._base_url = self._base_url.group(0) if self._base_url else ""
+        match = re.match(r"https?://[^/]+", caldav_url)
+        self._base_url = match.group(0) if match else ""
+        self._client = client or httpx.AsyncClient(timeout=60)
         # Cache for discover_collections (avoids PROPFIND on every settings page load)
         self._collections_cache: list[dict] | None = None
         self._collections_cache_time: float = 0
@@ -215,6 +219,7 @@ class CalDAVSync:
         logger.info("Synced %d events (range: %s to %s)", count, start_str, end_str)
         return count
 
+    @retry_http
     async def _report_time_range(
         self,
         collection_url: str,
@@ -233,23 +238,22 @@ class CalDAVSync:
             "</C:calendar-query>"
         )
 
-        async with httpx.AsyncClient() as client:
-            response = await client.request(
-                "REPORT",
-                collection_url,
-                content=body,
-                headers={
-                    "Depth": "1",
-                    "Content-Type": "application/xml; charset=utf-8",
-                },
-                auth=self.auth,
-                timeout=60,
+        response = await self._client.request(
+            "REPORT",
+            collection_url,
+            content=body,
+            headers={
+                "Depth": "1",
+                "Content-Type": "application/xml; charset=utf-8",
+            },
+            auth=self.auth,
+            timeout=60,
+        )
+        response.raise_for_status()
+        if len(response.content) > _MAX_RESPONSE_BYTES:
+            raise ValueError(
+                f"CalDAV REPORT response too large: {len(response.content)} bytes"
             )
-            response.raise_for_status()
-            if len(response.content) > _MAX_RESPONSE_BYTES:
-                raise ValueError(
-                    f"CalDAV REPORT response too large: {len(response.content)} bytes"
-                )
 
         xml_text = response.text
         results: list[tuple[str, str]] = []
@@ -354,25 +358,25 @@ class CalDAVSync:
             return None
         return {h.strip() for h in raw.split(",") if h.strip()}
 
+    @retry_http
     async def _propfind_request(self, url: str) -> str | None:
         """Send a single PROPFIND Depth:1 request, return XML or None."""
-        async with httpx.AsyncClient() as client:
-            response = await client.request(
-                "PROPFIND",
-                url,
-                content=_PROPFIND_BODY,
-                headers={
-                    "Depth": "1",
-                    "Content-Type": "application/xml; charset=utf-8",
-                },
-                auth=self.auth,
-                timeout=30,
+        response = await self._client.request(
+            "PROPFIND",
+            url,
+            content=_PROPFIND_BODY,
+            headers={
+                "Depth": "1",
+                "Content-Type": "application/xml; charset=utf-8",
+            },
+            auth=self.auth,
+            timeout=30,
+        )
+        response.raise_for_status()
+        if len(response.content) > _MAX_RESPONSE_BYTES:
+            raise ValueError(
+                f"CalDAV PROPFIND response too large: {len(response.content)} bytes"
             )
-            response.raise_for_status()
-            if len(response.content) > _MAX_RESPONSE_BYTES:
-                raise ValueError(
-                    f"CalDAV PROPFIND response too large: {len(response.content)} bytes"
-                )
 
         xml = response.text
         if not xml or len(xml) < 100:
@@ -449,18 +453,17 @@ class CalDAVSync:
         target_url = await self._resolve_write_collection()
         put_url = f"{target_url.rstrip('/')}/{uid}.ics"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.put(
-                put_url,
-                content=ics_body,
-                headers={
-                    "Content-Type": "text/calendar; charset=utf-8",
-                    "If-None-Match": "*",
-                },
-                auth=self.auth,
-                timeout=30,
-            )
-            response.raise_for_status()
+        response = await self._client.put(
+            put_url,
+            content=ics_body,
+            headers={
+                "Content-Type": "text/calendar; charset=utf-8",
+                "If-None-Match": "*",
+            },
+            auth=self.auth,
+            timeout=30,
+        )
+        response.raise_for_status()
 
         # Store locally
         event_data = {

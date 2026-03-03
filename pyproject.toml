@@ -9,8 +9,9 @@ dependencies = [
     "fastapi>=0.129.0",
     "uvicorn[standard]>=0.41.0",
 
-    # Async HTTP Client
+    # Async HTTP Client + Retry
     "httpx>=0.28.1",
+    "tenacity>=9.0.0",
 
     # Database
     "asyncpg>=0.31.0",
@@ -97,14 +98,14 @@ warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = false
 
-# Pre-existing type issues — tighten incrementally
-[[tool.mypy.overrides]]
-module = "niles.sources.web"
-disable_error_code = ["union-attr", "index", "arg-type", "assignment"]
-
+# Type overrides — tightened incrementally; see docs/Quality-Assessment.md Phase 1
+# Removed: niles.sources.web (typed AppState eliminates union-attr)
+# Removed: niles.sync.caldav (fixed _base_url pattern)
+# Reduced: niles.sync.carddav (fixed assignment/operator, attr-defined remains)
+# Reduced: niles.sync.manager (fixed operator, arg-type remains)
 [[tool.mypy.overrides]]
 module = "niles.sync.manager"
-disable_error_code = ["operator", "arg-type"]
+disable_error_code = ["arg-type"]
 
 [[tool.mypy.overrides]]
 module = "niles.main"
@@ -115,12 +116,8 @@ module = "niles.sync.ical_parser"
 disable_error_code = ["var-annotated", "assignment", "union-attr", "import-untyped"]
 
 [[tool.mypy.overrides]]
-module = "niles.sync.caldav"
-disable_error_code = ["assignment", "arg-type", "operator"]
-
-[[tool.mypy.overrides]]
 module = "niles.sync.carddav"
-disable_error_code = ["assignment", "operator", "attr-defined"]
+disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "niles.agent.core"
