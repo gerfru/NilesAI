@@ -418,6 +418,8 @@ class NilesAgent:
         Only called when normal attribute lookup fails, so ``self.llm``
         and ``self.model`` are resolved directly with zero overhead.
         """
+        if name == "_ctx":
+            raise AttributeError("_ctx not yet initialized")
         try:
             return getattr(self._ctx, name)
         except AttributeError:

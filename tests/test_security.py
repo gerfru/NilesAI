@@ -225,8 +225,8 @@ class TestCSPReport:
 
     @pytest.fixture
     def csp_app(self):
-        """Minimal app with SecurityHeadersMiddleware and CSP report endpoint."""
-        from niles.main import SecurityHeadersMiddleware
+        """Minimal app with SecurityHeadersMiddleware and real CSP report handler."""
+        from niles.main import SecurityHeadersMiddleware, csp_report
 
         test_app = FastAPI()
         test_app.add_middleware(SecurityHeadersMiddleware)
@@ -235,16 +235,9 @@ class TestCSPReport:
         async def page():
             return {"ok": True}
 
-        @test_app.post("/csp-report", status_code=204)
-        async def csp_report(request):
-            from starlette.responses import Response as StarletteResponse
-
-            try:
-                await request.json()
-            except Exception:
-                pass
-            return StarletteResponse(status_code=204)
-
+        test_app.add_api_route(
+            "/csp-report", csp_report, methods=["POST"], status_code=204
+        )
         return test_app
 
     def test_csp_header_contains_report_uri(self, csp_app):
@@ -256,20 +249,13 @@ class TestCSPReport:
 
     @pytest.fixture
     def report_app(self):
-        """Minimal app with the CSP report endpoint logic."""
-        from starlette.requests import Request
-        from starlette.responses import Response as StarletteResponse
+        """Minimal app using the real csp_report handler from main."""
+        from niles.main import csp_report
 
         test_app = FastAPI()
-
-        @test_app.post("/csp-report", status_code=204)
-        async def csp_report(request: Request) -> StarletteResponse:
-            try:
-                await request.json()
-            except Exception:
-                pass
-            return StarletteResponse(status_code=204)
-
+        test_app.add_api_route(
+            "/csp-report", csp_report, methods=["POST"], status_code=204
+        )
         return test_app
 
     def test_csp_report_valid_payload(self, report_app):
@@ -286,6 +272,25 @@ class TestCSPReport:
                 },
             )
             assert resp.status_code == 204
+
+    def test_csp_report_valid_payload_logs_warning(self, report_app, caplog):
+        """Valid CSP report emits a WARNING log with violation details."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="niles.main"):
+            with TestClient(report_app) as client:
+                client.post(
+                    "/csp-report",
+                    json={
+                        "csp-report": {
+                            "document-uri": "https://example.com",
+                            "violated-directive": "script-src",
+                            "blocked-uri": "https://evil.com/script.js",
+                        }
+                    },
+                )
+        assert any("CSP violation" in r.message for r in caplog.records)
+        assert any("evil.com/script.js" in r.message for r in caplog.records)
 
     def test_csp_report_invalid_json(self, report_app):
         """POST non-JSON body → 204 (graceful)."""
