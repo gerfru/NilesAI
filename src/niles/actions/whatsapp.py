@@ -17,14 +17,10 @@ class WhatsAppAction:
 
     def __init__(self, config: Settings, client: httpx.AsyncClient | None = None):
         self.base_url = config.evolution_api_url
-        self.api_key = config.evolution_api_key
         self.instance = config.evolution_instance
         self._client = client or httpx.AsyncClient(
             headers={"apikey": config.evolution_api_key}, timeout=30
         )
-
-    def _headers(self) -> dict:
-        return {"apikey": self.api_key}
 
     async def send_message(
         self,
@@ -50,9 +46,7 @@ class WhatsAppAction:
         payload = {"number": to, "text": text}
 
         try:
-            response = await self._client.post(
-                url, json=payload, headers=self._headers(), timeout=30
-            )
+            response = await self._client.post(url, json=payload, timeout=30)
             response.raise_for_status()
             result = response.json()
             logger.info("Message sent to %s via %s", to, inst)
@@ -107,7 +101,6 @@ class WhatsAppAction:
             resp = await self._client.post(
                 url,
                 json=payload,
-                headers=self._headers(),
                 timeout=30,
             )
             resp.raise_for_status()
@@ -204,9 +197,7 @@ class WhatsAppAction:
         }
 
         try:
-            response = await self._client.post(
-                url, json=payload, headers=self._headers(), timeout=30
-            )
+            response = await self._client.post(url, json=payload, timeout=30)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -222,7 +213,7 @@ class WhatsAppAction:
         url = f"{self.base_url}/instance/connectionState/{instance_name}"
 
         try:
-            response = await self._client.get(url, headers=self._headers(), timeout=10)
+            response = await self._client.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
             return data.get("instance", {}).get("state", "close")
@@ -243,7 +234,7 @@ class WhatsAppAction:
         url = f"{self.base_url}/instance/connect/{instance_name}"
 
         try:
-            response = await self._client.get(url, headers=self._headers(), timeout=10)
+            response = await self._client.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -260,7 +251,6 @@ class WhatsAppAction:
         try:
             response = await self._client.get(
                 url,
-                headers=self._headers(),
                 params={"instanceName": instance_name},
                 timeout=10,
             )
@@ -281,9 +271,7 @@ class WhatsAppAction:
         url = f"{self.base_url}/instance/logout/{instance_name}"
 
         try:
-            response = await self._client.delete(
-                url, headers=self._headers(), timeout=15
-            )
+            response = await self._client.delete(url, timeout=15)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -299,9 +287,7 @@ class WhatsAppAction:
         url = f"{self.base_url}/instance/delete/{instance_name}"
 
         try:
-            response = await self._client.delete(
-                url, headers=self._headers(), timeout=15
-            )
+            response = await self._client.delete(url, timeout=15)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
