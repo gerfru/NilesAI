@@ -184,7 +184,12 @@ tests/
 ├── test_vikunja_provisioning.py  # Vikunja auto-provisioning (register, login, token)
 ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
 ├── test_logging.py               # Structured logging + Prometheus metrics
-└── test_fetch_mcp.py             # Web Fetch MCP server (SSRF, extraction, truncation)
+├── test_fetch_mcp.py             # Web Fetch MCP server (SSRF, extraction, truncation)
+├── test_notion_sync.py           # Notion API sync (block-to-text, pagination, MD5)
+├── test_notion_embeddings.py     # Notion embedding pipeline (chunking, Ollama calls)
+├── test_notion_retriever.py      # NotionRetriever (pgvector search, threshold)
+├── test_notion_tool.py           # search_notion tool handler
+└── test_notion_web.py            # Notion web routes (status/connect/disconnect/sync/search)
 ```
 
 ### Conventions
@@ -296,10 +301,11 @@ DATABASE_URL="..." alembic history
 
 ### Existing Migrations
 
-| File | Description |
-|------|-------------|
-| `001_baseline.py` | Initial schema (all 11 tables + indexes) |
-| `002_migrate_contact_phones.py` | Data migration: legacy phone columns → contact_phones |
+| File                             | Description                                                |
+|----------------------------------|------------------------------------------------------------|
+| `001_baseline.py`                | Initial schema (all 11 tables + indexes)                   |
+| `002_migrate_contact_phones.py`  | Data migration: legacy phone columns → contact_phones      |
+| `003_add_notion_rag.py`          | pgvector extension, `notion_pages` + `notion_embeddings` tables |
 
 ---
 
@@ -407,6 +413,7 @@ Niles uses APScheduler for automatic background jobs. All jobs are registered in
 | `calendar_sources_sync` | Daily 03:20 | Calendar sources exist | `sync/manager.py` |
 | `briefing_daily` | Mon-Fri, configurable | `feature_briefing_daily=true` | `jobs/briefing.py` |
 | `briefing_weekly` | Mon, configurable | `feature_briefing_weekly=true` | `jobs/briefing.py` |
+| `notion_sync` | Every N minutes (configurable) | `feature_notion=true` | `sync/notion.py` + `sync/notion_embeddings.py` |
 
 **Briefing pattern:** The briefing jobs (`jobs/briefing.py`) receive `app.state` as argument. At runtime (not at registration), the connected WhatsApp number is determined from the `whatsapp_sessions` table. If no session is connected, the briefing is skipped (no error).
 
