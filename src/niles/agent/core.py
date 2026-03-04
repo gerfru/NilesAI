@@ -488,6 +488,8 @@ class NilesAgent:
             return
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
+        _notion_mode = event.get("metadata", {}).get("notion_search", False)
+        _temperature = 0.3 if _notion_mode else 0.7
 
         for _ in range(MAX_TOOL_ROUNDS):
             try:
@@ -497,7 +499,7 @@ class NilesAgent:
                     messages=messages,
                     tools=all_tools or None,
                     tool_choice="auto" if all_tools else None,
-                    temperature=0.7,
+                    temperature=_temperature,
                     stream=True,
                     stream_options={"include_usage": True},
                 )
@@ -688,6 +690,8 @@ class NilesAgent:
             return reply
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
+        _notion_mode = event.get("metadata", {}).get("notion_search", False)
+        _temperature = 0.3 if _notion_mode else 0.7
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
@@ -698,7 +702,7 @@ class NilesAgent:
                     messages=messages,
                     tools=all_tools or None,
                     tool_choice="auto" if all_tools else None,
-                    temperature=0.7,
+                    temperature=_temperature,
                 )
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
             except Exception as e:
