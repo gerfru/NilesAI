@@ -56,6 +56,7 @@ def _make_request(
     notion_sync=None,
     notion_embedder=None,
     notion_retriever=None,
+    ollama_embedder=None,
 ):
     """Build a mock Request with app.state for Notion tests."""
     request = MagicMock()
@@ -70,6 +71,7 @@ def _make_request(
     request.app.state.notion_sync = notion_sync
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
+    request.app.state.ollama_embedder = ollama_embedder
     request.client.host = "127.0.0.1"
     request.url.scheme = "http"
     return request
@@ -167,6 +169,7 @@ class TestNotionConnect:
         ]
         settings_store = AsyncMock()
         agent = MagicMock()
+        agent._ctx = MagicMock()
         scheduler = MagicMock()
         scheduler.get_job.return_value = None
 
@@ -182,6 +185,7 @@ class TestNotionConnect:
         with (
             patch("niles.sync.notion.NotionSync") as MockSync,
             patch("niles.sync.notion_embeddings.NotionEmbeddingPipeline"),
+            patch("niles.sync.ollama_embedder.OllamaEmbedder"),
             patch("niles.actions.notion.NotionRetriever"),
             patch("niles.sources.web._notion.templates") as mock_tpl,
             patch("niles.sources.web._notion.asyncio") as mock_asyncio,
@@ -219,6 +223,7 @@ class TestNotionDisconnect:
         settings_store = AsyncMock()
         pool = AsyncMock()
         agent = MagicMock()
+        agent._ctx = MagicMock()
         scheduler = MagicMock()
         scheduler.get_job.return_value = MagicMock()  # Job exists
 
@@ -229,6 +234,7 @@ class TestNotionDisconnect:
             settings_store=settings_store,
             agent=agent,
             scheduler=scheduler,
+            ollama_embedder=AsyncMock(),
         )
 
         with patch("niles.sources.web._notion.templates") as mock_tpl:
@@ -271,7 +277,7 @@ class TestNotionSyncTrigger:
         ctx = mock_tpl.TemplateResponse.call_args[0][2]
         assert "nicht verfuegbar" in ctx["notion_error"]
 
-    async def test_sync_calls_sync_and_embed(self):
+    async def test_sync_creates_background_task(self):
         mock_sync = AsyncMock()
         mock_embedder = AsyncMock()
         pool = AsyncMock()
@@ -290,12 +296,15 @@ class TestNotionSyncTrigger:
             notion_embedder=mock_embedder,
         )
 
-        with patch("niles.sources.web._notion.templates") as mock_tpl:
+        with (
+            patch("niles.sources.web._notion.templates") as mock_tpl,
+            patch("niles.sources.web._notion.asyncio") as mock_asyncio,
+        ):
             mock_tpl.TemplateResponse.return_value = MagicMock(status_code=200)
             await notion_sync_trigger(request)
 
-        mock_sync.sync_all.assert_called_once()
-        mock_embedder.embed_pending.assert_called_once()
+        # Sync runs in background via create_task, not inline
+        mock_asyncio.create_task.assert_called_once()
 
 
 # ---------- notion_search ----------------------------------------------------

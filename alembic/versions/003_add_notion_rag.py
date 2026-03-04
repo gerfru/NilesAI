@@ -60,8 +60,8 @@ def upgrade() -> None:
     op.execute("""
         CREATE INDEX IF NOT EXISTS idx_notion_embeddings_vector
         ON notion_embeddings
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100)
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
     """)
 
 

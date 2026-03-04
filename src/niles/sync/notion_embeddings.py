@@ -3,12 +3,10 @@
 import logging
 
 import asyncpg
-import httpx
+
+from .ollama_embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
-
-# Ollama embedding endpoint timeout
-_EMBED_TIMEOUT = 30.0
 
 
 class NotionEmbeddingPipeline:
@@ -17,14 +15,12 @@ class NotionEmbeddingPipeline:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        ollama_base_url: str,
-        model: str = "nomic-embed-text",
+        embedder: OllamaEmbedder,
         chunk_size: int = 600,
         chunk_overlap: int = 100,
     ):
         self._pool = pool
-        self._ollama_url = ollama_base_url.rstrip("/").removesuffix("/v1")
-        self._model = model
+        self._embedder = embedder
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
 
@@ -57,9 +53,11 @@ class NotionEmbeddingPipeline:
                 )
 
                 # Generate embeddings and insert
+                chunk_errors = 0
                 for idx, chunk_text in enumerate(chunks):
-                    embedding = await self._generate_embedding(chunk_text)
+                    embedding = await self._embedder.embed(chunk_text)
                     if embedding is None:
+                        chunk_errors += 1
                         stats["errors"] += 1
                         continue
                     await self._pool.execute(
@@ -78,12 +76,13 @@ class NotionEmbeddingPipeline:
                     )
                     stats["chunks_created"] += 1
 
-                # Mark page as embedded
-                await self._pool.execute(
-                    "UPDATE notion_pages SET embedded_at = NOW() WHERE id = $1",
-                    page_id,
-                )
-                stats["pages_embedded"] += 1
+                # Only mark page as embedded when all chunks succeeded
+                if chunk_errors == 0:
+                    await self._pool.execute(
+                        "UPDATE notion_pages SET embedded_at = NOW() WHERE id = $1",
+                        page_id,
+                    )
+                    stats["pages_embedded"] += 1
 
             except Exception:
                 logger.exception("Embedding failed for page %s", page_id)
@@ -153,22 +152,3 @@ class NotionEmbeddingPipeline:
             return False
         alnum_count = sum(1 for c in non_ws if c.isalnum())
         return (alnum_count / len(non_ws)) >= min_ratio
-
-    async def _generate_embedding(self, text: str) -> list[float] | None:
-        """Call Ollama embedding API for a single text."""
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self._ollama_url}/api/embed",
-                    json={"model": self._model, "input": text},
-                    timeout=_EMBED_TIMEOUT,
-                )
-                response.raise_for_status()
-                data = response.json()
-                embeddings = data.get("embeddings", [])
-                if embeddings:
-                    return embeddings[0]
-                return None
-        except Exception:
-            logger.exception("Ollama embedding request failed")
-            return None
