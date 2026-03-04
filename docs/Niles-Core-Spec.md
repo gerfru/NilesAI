@@ -1153,7 +1153,7 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `feature_notion` | `false` | `FEATURE_NOTION` | No\*\*\*\*\*\* |
 | `notion_token` | `""` | `NOTION_TOKEN` | No |
 | `notion_sync_interval` | `60` | `NOTION_SYNC_INTERVAL` | No |
-| `notion_embedding_model` | `"nomic-embed-text"` | `NOTION_EMBEDDING_MODEL` | No |
+| `notion_embedding_model` | `"nomic-embed-text-v2-moe"` | `NOTION_EMBEDDING_MODEL` | No |
 | `notion_chunk_size` | `600` | `NOTION_CHUNK_SIZE` | No |
 | `notion_chunk_overlap` | `100` | `NOTION_CHUNK_OVERLAP` | No |
 | `notion_similarity_threshold` | `0.3` | `NOTION_SIMILARITY_THRESHOLD` | No |
