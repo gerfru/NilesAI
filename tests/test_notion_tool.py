@@ -48,6 +48,15 @@ class TestSearchNotionTool:
         assert "error" in result
         assert "nicht konfiguriert" in result["error"]
 
+    async def test_empty_query_rejected(self):
+        retriever = AsyncMock()
+        ctx = _ctx(retriever)
+
+        result = await handle_search_notion({"query": "  "}, "test-chat", ctx)
+
+        assert "error" in result
+        retriever.search.assert_not_called()
+
     async def test_no_results(self):
         retriever = AsyncMock()
         retriever.search.return_value = []

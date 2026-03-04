@@ -3,11 +3,10 @@
 import logging
 
 import asyncpg
-import httpx
+
+from ..sync.ollama_embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
-
-_EMBED_TIMEOUT = 15.0
 
 
 class NotionRetriever:
@@ -16,13 +15,11 @@ class NotionRetriever:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        ollama_base_url: str,
-        model: str = "nomic-embed-text",
+        embedder: OllamaEmbedder,
         similarity_threshold: float = 0.3,
     ):
         self._pool = pool
-        self._ollama_url = ollama_base_url.rstrip("/").removesuffix("/v1")
-        self._model = model
+        self._embedder = embedder
         self._threshold = similarity_threshold
 
     async def search(self, query: str, max_results: int = 5) -> list[dict]:
@@ -32,7 +29,7 @@ class NotionRetriever:
             chunk_text, page_title, page_url, similarity
         """
         # 1. Embed the query
-        embedding = await self._generate_embedding(query)
+        embedding = await self._embedder.embed(query)
         if embedding is None:
             return []
 
@@ -74,22 +71,3 @@ class NotionRetriever:
             self._threshold,
         )
         return results
-
-    async def _generate_embedding(self, text: str) -> list[float] | None:
-        """Call Ollama embedding API for the query text."""
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self._ollama_url}/api/embed",
-                    json={"model": self._model, "input": text},
-                    timeout=_EMBED_TIMEOUT,
-                )
-                response.raise_for_status()
-                data = response.json()
-                embeddings = data.get("embeddings", [])
-                if embeddings:
-                    return embeddings[0]
-                return None
-        except Exception:
-            logger.exception("Ollama embedding request failed for query")
-            return None
