@@ -477,19 +477,22 @@ class NilesAgent:
           {"type": "done"}
         """
         chat_id = event["from"]
+        # Store original user message in history (without injected Notion context)
+        _history_content = (
+            event.get("metadata", {}).get("original_message") or event["content"]
+        )
 
         # Intercept pending phone choice (bypass LLM entirely)
         reply = await self._handle_phone_choice(chat_id, event["content"])
         if reply is not None:
-            await self.history.add_message(chat_id, "user", event["content"])
+            await self.history.add_message(chat_id, "user", _history_content)
             await self.history.add_message(chat_id, "assistant", reply)
             yield {"type": "chunk", "text": reply}
             yield {"type": "done"}
             return
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
-        _notion_mode = event.get("metadata", {}).get("notion_search", False)
-        _temperature = 0.3 if _notion_mode else 0.7
+        _temperature = 0.3 if not all_tools else 0.7
 
         for _ in range(MAX_TOOL_ROUNDS):
             try:
@@ -595,7 +598,7 @@ class NilesAgent:
                         yield {"type": "chunk", "text": full_content}
                     if full_content:
                         await self.history.add_message(
-                            chat_id, "user", event["content"]
+                            chat_id, "user", _history_content
                         )
                         await self.history.add_message(
                             chat_id, "assistant", full_content
@@ -681,17 +684,20 @@ class NilesAgent:
             Response text
         """
         chat_id = event["from"]
+        # Store original user message in history (without injected Notion context)
+        _history_content = (
+            event.get("metadata", {}).get("original_message") or event["content"]
+        )
 
         # Intercept pending phone choice (bypass LLM entirely)
         reply = await self._handle_phone_choice(chat_id, event["content"])
         if reply is not None:
-            await self.history.add_message(chat_id, "user", event["content"])
+            await self.history.add_message(chat_id, "user", _history_content)
             await self.history.add_message(chat_id, "assistant", reply)
             return reply
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
-        _notion_mode = event.get("metadata", {}).get("notion_search", False)
-        _temperature = 0.3 if _notion_mode else 0.7
+        _temperature = 0.3 if not all_tools else 0.7
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _ in range(MAX_TOOL_ROUNDS):
@@ -744,7 +750,7 @@ class NilesAgent:
                     if isinstance(result, dict) and "choose_phone" in result:
                         text = result["choose_phone"]
                         await self.history.add_message(
-                            chat_id, "user", event["content"]
+                            chat_id, "user", _history_content
                         )
                         await self.history.add_message(chat_id, "assistant", text)
                         return text
@@ -764,7 +770,7 @@ class NilesAgent:
                     )
                 # Save both messages together to avoid orphaned records
                 if content:
-                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "user", _history_content)
                     await self.history.add_message(chat_id, "assistant", content)
                 return content
 

@@ -233,7 +233,11 @@ async def chat_stream(
         "type": "web",
         "from": chat_id,
         "content": enriched_message,
-        "metadata": {"web_search": web_search, "notion_search": notion_search},
+        "metadata": {
+            "web_search": web_search,
+            "notion_search": notion_search,
+            "original_message": message,
+        },
     }
 
     async def event_generator():

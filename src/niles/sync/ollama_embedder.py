@@ -23,6 +23,11 @@ class OllamaEmbedder:
         self._model = model
         self._client = httpx.AsyncClient()
 
+    @property
+    def model(self) -> str:
+        """Return the configured model name."""
+        return self._model
+
     async def embed(self, text: str, *, prefix: str = "") -> list[float] | None:
         """Generate embedding for a single text. Returns None on failure.
 
