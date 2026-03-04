@@ -29,7 +29,7 @@ class NotionRetriever:
             chunk_text, page_title, page_url, similarity
         """
         # 1. Embed the query
-        embedding = await self._embedder.embed(query)
+        embedding = await self._embedder.embed(query, prefix="search_query: ")
         if embedding is None:
             return []
 
