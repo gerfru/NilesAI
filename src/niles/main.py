@@ -321,6 +321,51 @@ async def lifespan(app: FastAPI):
         http_client=http_clients.general,
     )
 
+    # Notion RAG sync + embeddings + retrieval
+    notion_sync = None
+    notion_embedder = None
+    notion_retriever = None
+    if settings.feature_notion and settings.notion_token:
+        from .sync.notion import NotionSync
+        from .sync.notion_embeddings import NotionEmbeddingPipeline
+        from .actions.notion import NotionRetriever
+
+        notion_sync = NotionSync(pool, settings.notion_token)
+        notion_embedder = NotionEmbeddingPipeline(
+            pool=pool,
+            ollama_base_url=settings.llm_base_url,
+            model=settings.notion_embedding_model,
+            chunk_size=settings.notion_chunk_size,
+            chunk_overlap=settings.notion_chunk_overlap,
+        )
+        notion_retriever = NotionRetriever(
+            pool=pool,
+            ollama_base_url=settings.llm_base_url,
+            model=settings.notion_embedding_model,
+            similarity_threshold=settings.notion_similarity_threshold,
+        )
+
+        async def notion_sync_and_embed():
+            await notion_sync.sync_all()
+            await notion_embedder.embed_pending()
+
+        scheduler.add_job(
+            notion_sync_and_embed,
+            "interval",
+            minutes=settings.notion_sync_interval,
+            id="notion_sync",
+            max_instances=1,
+            misfire_grace_time=600,
+        )
+        asyncio.create_task(notion_sync_and_embed())
+        logger.info(
+            "Notion sync scheduled (every %d min)", settings.notion_sync_interval
+        )
+
+    # Wire Notion retriever into agent
+    if notion_retriever:
+        agent.notion_retriever = notion_retriever
+
     # Store on app state for access in route handlers
     app.state.settings = settings
     app.state.pool = pool
@@ -340,6 +385,9 @@ async def lifespan(app: FastAPI):
     app.state.signal_action = signal_action
     app.state.signal_store = signal_store
     app.state.http_clients = http_clients
+    app.state.notion_sync = notion_sync
+    app.state.notion_embedder = notion_embedder
+    app.state.notion_retriever = notion_retriever
 
     # Cache signal_disabled flag from DB overrides (avoids DB query on
     # every 3s HTMX poll in signal_status endpoint).

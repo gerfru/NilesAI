@@ -104,6 +104,17 @@
             </button>
             <input type="hidden" name="web_search" value="false">
             {% endif %}
+            {# --- Notion RAG Toggle (only when feature_notion is enabled) --- #}
+            {% if feature_notion %}
+            <button type="button" aria-label="Notion-Suche" aria-pressed="false" data-notion-toggle
+                    class="w-10 h-10 flex items-center justify-center rounded-full text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5"
+                    title="Notion-Suche">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path d="M10.75 16.82A7.462 7.462 0 0 1 15 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0 0 18 15.06V4.94a.75.75 0 0 0-.546-.721A9.006 9.006 0 0 0 15 3.75a9.006 9.006 0 0 0-4.25 1.065v12.005ZM9.25 4.815A9.006 9.006 0 0 0 5 3.75a9.006 9.006 0 0 0-2.454.469A.75.75 0 0 0 2 4.94v10.12a.75.75 0 0 0 .954.721A7.462 7.462 0 0 1 5 15.5a7.462 7.462 0 0 1 4.25 1.32V4.815Z"/>
+                </svg>
+            </button>
+            <input type="hidden" name="notion_search" value="false">
+            {% endif %}
             <button type="submit" aria-label="Senden"
                     class="w-10 h-10 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 cursor-pointer border-0 shrink-0 transition-colors duration-150 mb-0.5">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">

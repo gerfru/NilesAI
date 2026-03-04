@@ -119,7 +119,8 @@ Niles/
 │       │       ├── memory.py         # remember, recall
 │       │       ├── signal.py         # send_signal, get_signal_messages
 │       │       ├── tasks.py          # list_tasks, create_task, complete_task
-│       │       └── whatsapp.py       # send_whatsapp, get_whatsapp_messages
+│       │       ├── whatsapp.py       # send_whatsapp, get_whatsapp_messages
+│       │       └── notion.py        # search_notion
 │       ├── memory/
 │       │   ├── store.py              # Key-value memory (PostgreSQL)
 │       │   └── history.py            # Conversation history
@@ -129,7 +130,8 @@ Niles/
 │       │   ├── signal.py             # Signal send + status (signal-cli-rest-api)
 │       │   ├── contacts.py           # Contact lookup + normalize_phone
 │       │   ├── calendar.py           # Calendar queries
-│       │   └── tasks.py              # Vikunja task management
+│       │   ├── tasks.py              # Vikunja task management
+│       │   └── notion.py            # NotionRetriever (pgvector RAG search)
 │       ├── jobs/
 │       │   └── briefing.py           # Scheduler jobs for briefing
 │       ├── sources/
@@ -149,13 +151,16 @@ Niles/
 │       │       ├── _weather.py       # Weather location search/set/remove
 │       │       ├── _contacts.py      # CardDAV status/connect/disconnect/sync
 │       │       ├── _vikunja.py       # Vikunja status/connect/disconnect
+│       │       ├── _notion.py       # Notion status/connect/disconnect/sync/search
 │       │       └── _admin.py         # User management: list/create/reset/delete
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV contact sync
 │       │   ├── caldav.py             # CalDAV calendar sync
 │       │   ├── google_auth.py        # Google Calendar OAuth (Bearer + Refresh)
 │       │   ├── ical_parser.py        # Shared iCalendar parser
-│       │   └── manager.py            # CalendarSourceManager (CRUD, sync, migration)
+│       │   ├── manager.py            # CalendarSourceManager (CRUD, sync, migration)
+│       │   ├── notion.py            # Notion API sync (pages → notion_pages)
+│       │   └── notion_embeddings.py # Ollama embedding pipeline (→ notion_embeddings)
 │       ├── mcp/
 │       │   ├── client.py             # MCP server manager
 │       │   ├── weather/              # Weather MCP server (Open-Meteo)
@@ -177,7 +182,8 @@ Niles/
 │       │       ├── toast.html
 │       │       ├── calendars.html
 │       │       ├── calendar_sources.html
-│       │       └── signal_status.html
+│       │       ├── signal_status.html
+│       │       └── notion_status.html
 │       └── static/
 │           ├── css/
 │           │   ├── input.css         # Tailwind directives + custom components
@@ -455,6 +461,7 @@ class NilesAgent:
 | `mcp__weather__*` | varies | Weather tools via MCP (Open-Meteo, always active). |
 | `mcp__fetch__fetch_url` | `url: str, max_chars?: int` | Fetch and extract text from a web page (always active). SSRF-protected. |
 | `mcp__searxng__search` | `query: str, max_results?: int, ...` | Web search via SearXNG (when `feature_search=true`). |
+| `search_notion` | `query: str, max_results?: int` | Semantic search over Notion knowledge base (when `feature_notion=true`). |
 
 **Pipeline per event:**
 
@@ -529,6 +536,9 @@ EDITABLE_SETTINGS = {
     "briefing_daily_time", "briefing_weekly_time", "briefing_channel",
     "weather_latitude", "weather_longitude", "weather_location_name",
     "feature_search", "searxng_url",
+    "feature_notion", "notion_token", "notion_sync_interval",
+    "notion_embedding_model", "notion_chunk_size", "notion_chunk_overlap",
+    "notion_similarity_threshold",
 }
 
 class SettingsStore:
@@ -976,6 +986,44 @@ CREATE TABLE IF NOT EXISTS settings_overrides (
 );
 ```
 
+### notion_pages
+
+```sql
+CREATE TABLE IF NOT EXISTS notion_pages (
+    id TEXT PRIMARY KEY,                          -- Notion page UUID
+    title TEXT NOT NULL DEFAULT '',
+    parent_id TEXT,                                -- Parent page/database ID
+    object_type TEXT NOT NULL DEFAULT 'page',      -- 'page' or 'database'
+    content_text TEXT NOT NULL DEFAULT '',          -- Extracted plain text
+    content_md5 TEXT,                               -- MD5 of content_text (change detection)
+    url TEXT,                                       -- Notion page URL
+    last_edited TIMESTAMP WITH TIME ZONE,
+    synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    embedded_at TIMESTAMP WITH TIME ZONE           -- NULL = needs (re-)embedding
+);
+CREATE INDEX IF NOT EXISTS idx_notion_pages_parent ON notion_pages (parent_id);
+CREATE INDEX IF NOT EXISTS idx_notion_pages_needs_embedding
+    ON notion_pages (id) WHERE embedded_at IS NULL;
+```
+
+### notion_embeddings
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS notion_embeddings (
+    id SERIAL PRIMARY KEY,
+    page_id TEXT NOT NULL REFERENCES notion_pages(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    chunk_text TEXT NOT NULL,
+    embedding vector(768),                         -- nomic-embed-text dimension
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (page_id, chunk_index)
+);
+CREATE INDEX IF NOT EXISTS idx_notion_embeddings_cosine
+    ON notion_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
 ---
 
 ## 5. Security
@@ -1048,6 +1096,7 @@ Niles follows the principle **"Read and create, never delete"**:
 | Memory (PostgreSQL) | Yes | Yes | Yes (update) | No |
 | Web Search (SearXNG) | Yes | No | No | No |
 | Web Fetch | Yes | No | No | No |
+| Notion (Knowledge Base) | Yes | No | No | No |
 
 ---
 
@@ -1101,6 +1150,13 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `briefing_weekly_time` | `"07:15"` | `BRIEFING_WEEKLY_TIME` | No |
 | `feature_search` | `false` | `FEATURE_SEARCH` | No\*\*\*\*\* |
 | `searxng_url` | `"http://searxng:8080"` | `SEARXNG_URL` | No |
+| `feature_notion` | `false` | `FEATURE_NOTION` | No\*\*\*\*\*\* |
+| `notion_token` | `""` | `NOTION_TOKEN` | No |
+| `notion_sync_interval` | `60` | `NOTION_SYNC_INTERVAL` | No |
+| `notion_embedding_model` | `"nomic-embed-text"` | `NOTION_EMBEDDING_MODEL` | No |
+| `notion_chunk_size` | `600` | `NOTION_CHUNK_SIZE` | No |
+| `notion_chunk_overlap` | `100` | `NOTION_CHUNK_OVERLAP` | No |
+| `notion_similarity_threshold` | `0.3` | `NOTION_SIMILARITY_THRESHOLD` | No |
 
 \* `base_url` is recommended when Google OAuth is behind a reverse proxy (prevents redirect URI from untrusted headers).
 
@@ -1111,6 +1167,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 \*\*\*\* Required if Signal integration is desired. Phone number is auto-discovered after QR linking.
 
 \*\*\*\*\* Enables SearXNG web search. Requires the SearXNG Docker container (profile `search`).
+
+\*\*\*\*\*\* Enables Notion knowledge base (RAG). Requires `notion_token` and `ollama pull nomic-embed-text`.
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 

@@ -21,10 +21,11 @@ For technical details on architecture and development, see [Development.md](Deve
 9. [Tasks (Vikunja)](#9-tasks-vikunja)
 10. [Briefing (Daily/Weekly)](#10-briefing-dailyweekly)
 11. [Web Search & Fetch](#11-web-search--fetch)
-12. [HTTPS & Remote Access (Tailscale + Caddy)](#12-https--remote-access-tailscale--caddy)
-13. [Backup & Maintenance](#13-backup--maintenance)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Reference](#15-reference)
+12. [Notion (Knowledge Base)](#12-notion-knowledge-base)
+13. [HTTPS & Remote Access (Tailscale + Caddy)](#13-https--remote-access-tailscale--caddy)
+14. [Backup & Maintenance](#14-backup--maintenance)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Reference](#16-reference)
 
 ---
 
@@ -582,7 +583,63 @@ When both search and fetch are active, the agent can perform deep research:
 
 ---
 
-## 12. HTTPS & Remote Access (Tailscale + Caddy)
+## 12. Notion (Knowledge Base)
+
+Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmented Generation). Pages are synced, chunked, and embedded locally using Ollama. Queries are answered via pgvector similarity search.
+
+### Prerequisites
+
+- **Ollama embedding model**: `ollama pull nomic-embed-text`
+- **Notion Internal Integration Token**: Create at [notion.so/my-integrations](https://www.notion.so/my-integrations) with "Read content" capability
+- **Share pages/databases** with the integration in Notion
+
+### Setup
+
+1. Create a Notion integration at [notion.so/my-integrations](https://www.notion.so/my-integrations):
+   - Name: "Niles" (or any name)
+   - Capabilities: Read content (no write needed)
+   - Copy the Internal Integration Token (`ntn_...`)
+
+2. In Notion, share the pages/databases you want Niles to search with the integration (Share > Invite > select integration).
+
+3. Pull the embedding model on the host:
+   ```bash
+   ollama pull nomic-embed-text
+   ```
+
+4. **Option A: Via Settings UI** (recommended)
+
+   Open Settings > Notion, paste the token, click "Verbinden". Niles tests the connection and starts syncing automatically.
+
+5. **Option B: Via `.env`**
+
+   ```bash
+   FEATURE_NOTION=true
+   NOTION_TOKEN=ntn_xxxxxxxxxxxxxxxxxxxx
+   # Optional:
+   # NOTION_SYNC_INTERVAL=30       # minutes between syncs
+   # NOTION_EMBEDDING_MODEL=nomic-embed-text
+   ```
+   Then restart: `./scripts/start.sh`
+
+### How It Works
+
+1. **Sync**: Niles discovers all accessible pages via the Notion Search API, fetches block content recursively, and stores plaintext in `notion_pages`. MD5 change detection avoids redundant work.
+2. **Embed**: Changed pages are chunked (600 chars, 100 overlap) and embedded via Ollama (`nomic-embed-text`, 768 dimensions). Vectors are stored in `notion_embeddings` using pgvector.
+3. **Search**: The `search_notion` agent tool (or the Notion toggle in the chat UI) embeds the query and runs a cosine similarity search against stored embeddings.
+
+### Troubleshooting
+
+| Problem | Solution |
+| ------- | -------- |
+| "Notion-Integration nicht konfiguriert" | Enable `FEATURE_NOTION=true` or connect via Settings UI |
+| Connection test fails | Verify token is correct and integration has access to at least one page |
+| No search results | Check that sync has completed (`docker logs niles_core \| grep notion`), and that `nomic-embed-text` model is pulled |
+| Slow embedding | Normal for first sync with many pages. Subsequent syncs only re-embed changed pages |
+
+---
+
+## 13. HTTPS & Remote Access (Tailscale + Caddy)
 
 ### Caddy (Reverse Proxy)
 
@@ -636,7 +693,7 @@ Niles is now accessible from any device on the Tailscale network.
 
 ---
 
-## 13. Backup & Maintenance
+## 14. Backup & Maintenance
 
 ### Create Backup
 
@@ -687,7 +744,7 @@ Deletes all containers and Docker volumes (PostgreSQL data). WhatsApp sessions (
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 ### Service Won't Start
 
@@ -744,7 +801,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 ---
 
-## 15. Reference
+## 16. Reference
 
 ### Environment Variables
 

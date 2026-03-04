@@ -278,6 +278,11 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _signal_tools
             ]
+        # Remove Notion tool when feature_notion is disabled
+        if not self.config.feature_notion:
+            all_tools = [
+                t for t in all_tools if t["function"]["name"] != "search_notion"
+            ]
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
             # Only include search/fetch MCP tools when web_search is active
