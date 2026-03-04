@@ -217,6 +217,14 @@ async def chat_stream(
                     )
                 context_parts.append(f"[Frage]\n{message}")
                 enriched_message = "\n\n".join(context_parts)
+            else:
+                enriched_message = (
+                    "[Notion-Kontext]\n"
+                    "Keine relevanten Inhalte im Notion-Wissensspeicher "
+                    "gefunden. Teile dem Benutzer mit, dass zu seiner Frage "
+                    "keine passenden Notion-Seiten vorhanden sind.\n\n"
+                    f"[Frage]\n{message}"
+                )
 
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
