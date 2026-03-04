@@ -259,6 +259,19 @@ class ContextBuilder:
                     "Such-Tools stehen nicht zur Verfügung."
                 )
 
+        # Append Notion context instruction when toggle is active
+        notion_search = event.get("metadata", {}).get("notion_search", False)
+        if notion_search:
+            system_prompt += (
+                "\n\n## Notion-Kontext AKTIV\n"
+                "Der Benutzer hat die Notion-Suche aktiviert. Relevante Inhalte "
+                "aus dem Notion-Wissensspeicher wurden bereits in die Nachricht "
+                "eingefuegt (markiert mit [Notion-Kontext]). Beantworte die "
+                "Frage ausschliesslich auf Basis dieses Kontexts. Rufe KEINE "
+                "anderen Tools auf (kein list_tasks, find_event etc.), es sei "
+                "denn die Frage betrifft eindeutig etwas anderes."
+            )
+
         history_messages = await self.history.get_recent(chat_id)
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
         messages.extend(
@@ -281,7 +294,6 @@ class ContextBuilder:
             ]
         # Remove Notion tool when disabled, retriever not available, or
         # notion_search toggle is active (context already injected directly)
-        notion_search = event.get("metadata", {}).get("notion_search", False)
         if (
             not self.config.feature_notion
             or not getattr(self, "notion_retriever", None)
