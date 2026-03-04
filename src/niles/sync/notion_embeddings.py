@@ -43,6 +43,11 @@ class NotionEmbeddingPipeline:
         Returns stats dict with pages_embedded, chunks_created, errors.
         """
         stats = {"pages_embedded": 0, "chunks_created": 0, "errors": 0}
+        logger.info(
+            "Embedding with model %s (dim check: query prefix='search_query: ', "
+            "doc prefix='search_document: ')",
+            self._embedder.model,
+        )
 
         rows = await self._pool.fetch("""
             SELECT id, title, content_text
