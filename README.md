@@ -11,6 +11,7 @@ A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsA
 - **Tasks** -- Vikunja integration (list, create, complete), auto-provisioned per-user accounts.
 - **Contacts** -- CardDAV sync with multi-phone support.
 - **Memory** -- Persistent key-value store, injected into every conversation.
+- **Knowledge Base** -- Notion RAG integration with semantic search (pgvector embeddings, local Ollama).
 - **Web Search** -- SearXNG meta search (Google, Bing, DuckDuckGo), privacy-first, self-hosted.
 - **Web Fetch** -- Extract and summarize web page content (trafilatura, SSRF-protected).
 - **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
@@ -39,6 +40,7 @@ Browser / curl / WhatsApp
 |                 +-- actions/calendar.py ----> PostgreSQL    |
 |                 +-- actions/tasks.py -------> Vikunja       |
 |                 +-- memory/store.py -------> PostgreSQL     |
+|                 +-- actions/notion.py ----> pgvector (RAG)  |
 |                 +-- mcp/client.py ---------> MCP Servers    |
 |                                                             |
 |  /webhook/whatsapp --- sources/whatsapp.py                  |
@@ -103,7 +105,7 @@ docs/                          Technical Documentation
 | Backend       | FastAPI (Python 3.12)              |
 | Web UI        | Jinja2 + htmx + Tailwind CSS + SSE |
 | LLM           | Ollama (local, llama3.1:8b)        |
-| Database      | PostgreSQL 15                      |
+| Database      | PostgreSQL 15 + pgvector            |
 | WhatsApp      | Evolution API v2.3.7               |
 | Tasks         | Vikunja 1.1.0                      |
 | Reverse Proxy | Caddy 2 (self-signed TLS)          |
@@ -133,6 +135,7 @@ The LLM can invoke these tools during conversations:
 | `get_signal_messages`   | Read Signal chat history (last 30 days)  |
 | `mcp__fetch__fetch_url` | Fetch and extract text from a web page   |
 | `mcp__searxng__search`  | Web search via SearXNG (when enabled)    |
+| `search_notion`         | Semantic search over Notion knowledge base |
 | `mcp__weather__*`       | Weather data (current + forecast)        |
 
 Additional MCP tools from external servers are automatically discovered and added.

@@ -47,6 +47,7 @@ class ToolContext:
     resolve_vikunja: Callable[..., Awaitable[Any]]
     get_own_phone_number: Callable[..., Awaitable[str | None]]
     pending_phone_choices: dict[str, dict]
+    notion_retriever: Any = None  # actions.notion.NotionRetriever
 
 
 ToolHandler = Callable[[dict, str, ToolContext], Awaitable[dict]]
@@ -65,4 +66,4 @@ def register_tool(name: str) -> Callable[[ToolHandler], ToolHandler]:
 
 
 # Auto-register all handler modules on package import.
-from . import calendar, contacts, memory, signal, tasks, whatsapp  # noqa: E402, F401
+from . import calendar, contacts, memory, notion, signal, tasks, whatsapp  # noqa: E402, F401

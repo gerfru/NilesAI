@@ -1,0 +1,69 @@
+{% if notion_error %}
+<p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ notion_error }}</p>
+{% endif %}
+
+{% if connected %}
+<div id="notion-connected">
+    <div class="htmx-hide-on-request flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 gap-2">
+        <div class="flex items-start gap-3 flex-1 min-w-0">
+            <svg class="w-5 h-5 mt-0.5 shrink-0 text-purple-500 dark:text-purple-400" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+            </svg>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">Notion verbunden</span>
+                    <span class="text-[0.6rem] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 font-semibold uppercase tracking-wider">RAG</span>
+                </div>
+                <span class="text-xs text-zinc-400 dark:text-zinc-500 block truncate">Token: {{ notion_token_masked }}</span>
+                {% if page_count is defined and page_count > 0 %}
+                <span class="text-xs text-green-600 dark:text-green-400">{{ page_count }} Seiten, {{ chunk_count|default(0) }} Chunks</span>
+                {% else %}
+                <span class="text-xs text-zinc-400 dark:text-zinc-500">Keine Seiten synchronisiert</span>
+                {% endif %}
+                {% if last_sync %}
+                <span class="text-xs text-zinc-400 dark:text-zinc-500 block">Letzter Sync: {{ last_sync.strftime('%d.%m.%Y %H:%M') }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex gap-1.5 sm:ml-3 shrink-0 ml-8">
+            <button hx-post="/ui/api/notion/sync"
+                    hx-target="#notion-status-container"
+                    hx-swap="innerHTML"
+                    hx-indicator="#notion-connected"
+                    class="px-2.5 py-1 text-xs text-purple-500 dark:text-purple-400 border border-purple-300 dark:border-purple-500 rounded-lg bg-transparent hover:bg-purple-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Sync</button>
+            <button hx-post="/ui/api/notion/disconnect"
+                    hx-target="#notion-status-container"
+                    hx-swap="innerHTML"
+                    hx-confirm="Notion trennen und alle synchronisierten Daten loeschen?"
+                    class="px-2.5 py-1 text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg bg-transparent hover:bg-red-50 dark:hover:bg-zinc-700 cursor-pointer transition-colors duration-150">Trennen</button>
+        </div>
+    </div>
+    <div class="htmx-indicator items-center gap-2 py-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <svg class="animate-spin h-4 w-4 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Notion wird synchronisiert...
+    </div>
+</div>
+{% else %}
+<form hx-post="/ui/api/notion/connect"
+      hx-target="#notion-status-container"
+      hx-swap="innerHTML">
+    <div class="htmx-hide-on-request flex flex-col sm:flex-row gap-2 mb-2">
+        <label for="notion-token" class="sr-only">Notion Token</label>
+        <input type="password" name="token" id="notion-token" placeholder="ntn_****"
+               maxlength="256" required
+               class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <button type="submit"
+                class="px-4 py-2 text-sm text-white bg-purple-500 hover:bg-purple-600 rounded-lg cursor-pointer shrink-0">Verbinden</button>
+    </div>
+    <div class="htmx-indicator items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <svg class="animate-spin h-4 w-4 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Verbinde mit Notion...
+    </div>
+</form>
+{% endif %}

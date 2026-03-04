@@ -72,6 +72,7 @@ closed-source distribution.
 | trafilatura | Apache-2.0 | [github.com/adbar/trafilatura](https://github.com/adbar/trafilatura) |
 | json-repair | MIT | [github.com/mangiucugna/json_repair](https://github.com/mangiucugna/json_repair) |
 | alembic | MIT | [github.com/sqlalchemy/alembic](https://github.com/sqlalchemy/alembic) |
+| notion-client | MIT | [github.com/ramnes/notion-sdk-py](https://github.com/ramnes/notion-sdk-py) |
 | SQLAlchemy | MIT | [github.com/sqlalchemy/sqlalchemy](https://github.com/sqlalchemy/sqlalchemy) |
 | **psycopg2-binary** | **LGPL** | [github.com/psycopg/psycopg2](https://github.com/psycopg/psycopg2) |
 
