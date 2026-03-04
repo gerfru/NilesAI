@@ -95,6 +95,9 @@ packages = ["src/niles"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: requires Docker Compose infrastructure (deselect with -m 'not integration')",
+]
 
 [tool.mypy]
 python_version = "3.12"
