@@ -343,4 +343,5 @@ def _safe_settings_dict(settings) -> dict:
         "weather": weather,
         "feature_search": getattr(settings, "feature_search", False),
         "searxng_url": getattr(settings, "searxng_url", "http://searxng:8888"),
+        "feature_notion": getattr(settings, "feature_notion", False),
     }
