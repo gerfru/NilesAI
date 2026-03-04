@@ -209,9 +209,10 @@ async def chat_stream(
                 ]
                 for r in results:
                     score = r.get("similarity", 0)
+                    title = r["page_title"]
+                    url = r["page_url"]
                     context_parts.append(
-                        f"Quelle: {r['page_title']} (Relevanz: {score:.0%})\n"
-                        f"{r['page_url']}\n"
+                        f"Quelle: [{title}]({url}) (Relevanz: {score:.0%})\n"
                         f"> {r['chunk_text']}"
                     )
                 context_parts.append(f"[Frage]\n{message}")
