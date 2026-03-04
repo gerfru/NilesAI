@@ -618,7 +618,7 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
    NOTION_TOKEN=ntn_xxxxxxxxxxxxxxxxxxxx
    # Optional:
    # NOTION_SYNC_INTERVAL=30       # minutes between syncs
-   # NOTION_EMBEDDING_MODEL=nomic-embed-text
+   # NOTION_EMBEDDING_MODEL=nomic-embed-text-v2-moe
    ```
    Then restart: `./scripts/start.sh`
 
