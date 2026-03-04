@@ -191,7 +191,10 @@ async def chat_stream(
     if not settings.feature_notion:
         notion_search = False
 
-    # Notion context injection (deterministic, bypasses LLM tool selection)
+    # Notion context injection (deterministic, bypasses LLM tool selection).
+    # This is separate from the `search_notion` agent tool which the LLM
+    # can call autonomously.  The UI toggle disables the agent tool
+    # (via web_search=False pattern) so the two paths never run together.
     enriched_message = message
     if notion_search:
         retriever = getattr(request.app.state, "notion_retriever", None)

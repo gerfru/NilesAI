@@ -98,7 +98,7 @@ class NotionSync:
             page_id,
         )
         if existing and existing["last_edited"] and last_edited:
-            if str(existing["last_edited"]) == str(last_edited):
+            if existing["last_edited"] == last_edited:
                 self._stats["pages_unchanged"] += 1
                 return
 

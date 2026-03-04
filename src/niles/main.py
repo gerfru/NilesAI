@@ -325,29 +325,39 @@ async def lifespan(app: FastAPI):
     notion_sync = None
     notion_embedder = None
     notion_retriever = None
+    ollama_embedder = None
     if settings.feature_notion and settings.notion_token:
         from .sync.notion import NotionSync
         from .sync.notion_embeddings import NotionEmbeddingPipeline
+        from .sync.ollama_embedder import OllamaEmbedder
         from .actions.notion import NotionRetriever
 
+        ollama_embedder = OllamaEmbedder(
+            ollama_base_url=settings.llm_base_url,
+            model=settings.notion_embedding_model,
+        )
         notion_sync = NotionSync(pool, settings.notion_token)
         notion_embedder = NotionEmbeddingPipeline(
             pool=pool,
-            ollama_base_url=settings.llm_base_url,
-            model=settings.notion_embedding_model,
+            embedder=ollama_embedder,
             chunk_size=settings.notion_chunk_size,
             chunk_overlap=settings.notion_chunk_overlap,
         )
         notion_retriever = NotionRetriever(
             pool=pool,
-            ollama_base_url=settings.llm_base_url,
-            model=settings.notion_embedding_model,
+            embedder=ollama_embedder,
             similarity_threshold=settings.notion_similarity_threshold,
         )
 
+        _notion_lock = asyncio.Lock()
+
         async def notion_sync_and_embed():
-            await notion_sync.sync_all()
-            await notion_embedder.embed_pending()
+            if _notion_lock.locked():
+                logger.info("Notion sync skipped (already running)")
+                return
+            async with _notion_lock:
+                await notion_sync.sync_all()
+                await notion_embedder.embed_pending()
 
         scheduler.add_job(
             notion_sync_and_embed,
@@ -362,9 +372,10 @@ async def lifespan(app: FastAPI):
             "Notion sync scheduled (every %d min)", settings.notion_sync_interval
         )
 
-    # Wire Notion retriever into agent
+    # Wire Notion retriever into agent + context builder (for tool filtering)
     if notion_retriever:
         agent.notion_retriever = notion_retriever
+        agent._ctx.notion_retriever = notion_retriever
 
     # Store on app state for access in route handlers
     app.state.settings = settings
@@ -388,6 +399,7 @@ async def lifespan(app: FastAPI):
     app.state.notion_sync = notion_sync
     app.state.notion_embedder = notion_embedder
     app.state.notion_retriever = notion_retriever
+    app.state.ollama_embedder = ollama_embedder
 
     # Cache signal_disabled flag from DB overrides (avoids DB query on
     # every 3s HTMX poll in signal_status endpoint).
@@ -429,6 +441,8 @@ async def lifespan(app: FastAPI):
     if signal_action:
         await signal_action.close()
 
+    if ollama_embedder:
+        await ollama_embedder.close()
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)
     await http_clients.close_all()
