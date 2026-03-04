@@ -201,13 +201,30 @@ async def chat_stream(
         if retriever:
             results = await retriever.search(message, max_results=5)
             if results:
-                context_parts = ["[Notion-Kontext]"]
+                context_parts = [
+                    "[Notion-Kontext]\n"
+                    "Die folgenden Abschnitte wurden per Aehnlichkeitssuche "
+                    "gefunden. Beantworte die Frage NUR anhand dieser Inhalte. "
+                    "Ignoriere Abschnitte, die thematisch nicht zur Frage passen."
+                ]
                 for r in results:
+                    score = r.get("similarity", 0)
+                    title = r["page_title"]
+                    url = r["page_url"]
                     context_parts.append(
-                        f"Quelle: {r['page_title']} ({r['page_url']})\n> {r['chunk_text']}"
+                        f"Quelle: [{title}]({url}) (Relevanz: {score:.0%})\n"
+                        f"> {r['chunk_text']}"
                     )
-                context_parts.append(f"\n[Frage]\n{message}")
+                context_parts.append(f"[Frage]\n{message}")
                 enriched_message = "\n\n".join(context_parts)
+            else:
+                enriched_message = (
+                    "[Notion-Kontext]\n"
+                    "Keine relevanten Inhalte im Notion-Wissensspeicher "
+                    "gefunden. Teile dem Benutzer mit, dass zu seiner Frage "
+                    "keine passenden Notion-Seiten vorhanden sind.\n\n"
+                    f"[Frage]\n{message}"
+                )
 
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
@@ -216,7 +233,11 @@ async def chat_stream(
         "type": "web",
         "from": chat_id,
         "content": enriched_message,
-        "metadata": {"web_search": web_search, "notion_search": notion_search},
+        "metadata": {
+            "web_search": web_search,
+            "notion_search": notion_search,
+            "original_message": message,
+        },
     }
 
     async def event_generator():

@@ -82,3 +82,57 @@ def build_system_prompt(
         )
 
     return prompt
+
+
+# ---------------------------------------------------------------------------
+# Notion RAG mode — minimal prompt for small models (llama3.1:8b)
+# ---------------------------------------------------------------------------
+
+_NOTION_RAG_PROMPT = (
+    "Du bist Niles, ein persoenlicher AI-Assistent. "
+    "Du beantwortest Fragen ausschliesslich anhand der bereitgestellten "
+    "Notion-Abschnitte.\n\n"
+    "## Regeln\n"
+    "1. Antworte NUR mit Informationen aus den [Notion-Kontext]-Abschnitten.\n"
+    "2. Wenn kein Abschnitt zur Frage passt, sage: "
+    '"Dazu habe ich keine Informationen in deinem Notion-Wissensspeicher."\n'
+    "3. Nenne die Quellen als Markdown-Links: [Seitentitel](URL).\n"
+    "4. Ignoriere Abschnitte, die thematisch nicht zur Frage passen.\n"
+    "5. Erfinde KEINE Informationen. Nutze KEIN Vorwissen.\n"
+    "6. Antworte auf Deutsch, kurz und praegnant."
+)
+
+
+def build_notion_rag_prompt(
+    memories: list[dict] | None = None,
+    timezone: str = "Europe/Vienna",
+) -> str:
+    """Build a minimal system prompt for Notion RAG mode.
+
+    Excludes tool instructions, calendar sources, and upcoming days
+    to maximise token budget for RAG context chunks.
+    """
+    try:
+        tz = ZoneInfo(timezone)
+    except (KeyError, ValueError):
+        tz = ZoneInfo("Europe/Vienna")
+    now = datetime.now(tz)
+    weekdays_de = [
+        "Montag",
+        "Dienstag",
+        "Mittwoch",
+        "Donnerstag",
+        "Freitag",
+        "Samstag",
+        "Sonntag",
+    ]
+    weekday = weekdays_de[now.weekday()]
+
+    prompt = _NOTION_RAG_PROMPT
+    prompt += f"\n\nHeute ist {weekday}, der {now.strftime('%d.%m.%Y')}."
+
+    if memories:
+        memory_lines = [f"- {e['key']}: {e['value']}" for e in memories]
+        prompt += "\n\n## Gedaechtnis\n" + "\n".join(memory_lines)
+
+    return prompt
