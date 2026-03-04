@@ -618,14 +618,16 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
    NOTION_TOKEN=ntn_xxxxxxxxxxxxxxxxxxxx
    # Optional:
    # NOTION_SYNC_INTERVAL=30       # minutes between syncs
-   # NOTION_EMBEDDING_MODEL=nomic-embed-text-v2-moe
+   # NOTION_EMBEDDING_MODEL=nomic-embed-text-v2-moe  # default set in config.py
    ```
    Then restart: `./scripts/start.sh`
+
+   > **Note:** `NOTION_EMBEDDING_MODEL` is optional — the default (`nomic-embed-text-v2-moe`) is set in `config.py`. Only override via `.env` if you need a different model. When changing models, call `POST /api/notion/reembed` to regenerate all embeddings.
 
 ### How It Works
 
 1. **Sync**: Niles discovers all accessible pages via the Notion Search API, fetches block content recursively, and stores plaintext in `notion_pages`. MD5 change detection avoids redundant work.
-2. **Embed**: Changed pages are chunked (600 chars, 100 overlap) and embedded via Ollama (`nomic-embed-text`, 768 dimensions). Vectors are stored in `notion_embeddings` using pgvector.
+2. **Embed**: Changed pages are chunked (600 chars, 100 overlap) and embedded via Ollama (`nomic-embed-text-v2-moe`, 768 dimensions). Vectors are stored in `notion_embeddings` using pgvector.
 3. **Search**: The `search_notion` agent tool (or the Notion toggle in the chat UI) embeds the query and runs a cosine similarity search against stored embeddings.
 
 ### Troubleshooting
