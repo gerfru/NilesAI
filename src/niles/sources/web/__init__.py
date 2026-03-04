@@ -23,6 +23,7 @@ from . import (  # noqa: F401, E402
     _calendar,
     _chat,
     _contacts,
+    _notion,
     _settings,
     _signal,
     _vikunja,
@@ -60,6 +61,13 @@ from ._chat import (  # noqa: F401, E402
     chat_page,
     chat_send,
     chat_stream,
+)
+from ._notion import (  # noqa: F401, E402
+    notion_connect,
+    notion_disconnect,
+    notion_search,
+    notion_status,
+    notion_sync_trigger,
 )
 from ._contacts import (  # noqa: F401, E402
     contacts_connect,

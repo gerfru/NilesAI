@@ -16,6 +16,18 @@
     .dark [data-search-toggle][aria-pressed="true"]:hover {
         @apply text-blue-300 bg-blue-800/40;
     }
+    [data-notion-toggle][aria-pressed="true"] {
+        @apply text-purple-500 bg-purple-100;
+    }
+    [data-notion-toggle][aria-pressed="true"]:hover {
+        @apply text-purple-600 bg-purple-200;
+    }
+    .dark [data-notion-toggle][aria-pressed="true"] {
+        @apply text-purple-400 bg-purple-900/40;
+    }
+    .dark [data-notion-toggle][aria-pressed="true"]:hover {
+        @apply text-purple-300 bg-purple-800/40;
+    }
 }
 
 /* Toggle switch (replaces Pico CSS role="switch") */
