@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     # Notion RAG (Knowledge Base)
     notion_token: str = ""
     notion_sync_interval: int = 30  # minutes between syncs
-    notion_embedding_model: str = "nomic-embed-text"
+    notion_embedding_model: str = "nomic-embed-text-v2-moe"
     notion_chunk_size: int = 600  # characters per chunk
     notion_chunk_overlap: int = 100  # overlap between chunks
     notion_similarity_threshold: float = 0.3  # minimum cosine similarity
