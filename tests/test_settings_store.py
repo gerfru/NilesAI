@@ -32,6 +32,13 @@ class TestEditableWhitelist:
             "weather_location_name",
             "feature_search",
             "searxng_url",
+            "notion_token",
+            "notion_sync_interval",
+            "notion_embedding_model",
+            "notion_chunk_size",
+            "notion_chunk_overlap",
+            "notion_similarity_threshold",
+            "feature_notion",
         }
         assert EDITABLE_SETTINGS == expected
 

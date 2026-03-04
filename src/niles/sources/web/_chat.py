@@ -78,6 +78,8 @@ async def chat_page(
             "available_channels": available_channels,
             "vikunja_url": settings.vikunja_public_url or "",
             "feature_search": settings.feature_search,
+            "feature_notion": settings.feature_notion
+            and bool(getattr(request.app.state, "notion_retriever", None)),
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -164,6 +166,7 @@ async def chat_stream(
     request: Request,
     message: str = Form(...),
     web_search: bool = Form(default=False),
+    notion_search: bool = Form(default=False),
 ):
     """Process a chat message via SSE streaming.
 
@@ -181,10 +184,30 @@ async def chat_stream(
             status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
         )
 
-    # Server-side guard: ignore client flag when feature is globally disabled
+    # Server-side guard: ignore client flags when features are globally disabled
     settings = request.app.state.settings
     if not settings.feature_search:
         web_search = False
+    if not settings.feature_notion:
+        notion_search = False
+
+    # Notion context injection (deterministic, bypasses LLM tool selection).
+    # This is separate from the `search_notion` agent tool which the LLM
+    # can call autonomously.  The UI toggle disables the agent tool
+    # (via web_search=False pattern) so the two paths never run together.
+    enriched_message = message
+    if notion_search:
+        retriever = getattr(request.app.state, "notion_retriever", None)
+        if retriever:
+            results = await retriever.search(message, max_results=5)
+            if results:
+                context_parts = ["[Notion-Kontext]"]
+                for r in results:
+                    context_parts.append(
+                        f"Quelle: {r['page_title']} ({r['page_url']})\n> {r['chunk_text']}"
+                    )
+                context_parts.append(f"\n[Frage]\n{message}")
+                enriched_message = "\n\n".join(context_parts)
 
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
@@ -192,7 +215,7 @@ async def chat_stream(
     event = {
         "type": "web",
         "from": chat_id,
-        "content": message,
+        "content": enriched_message,
         "metadata": {"web_search": web_search},
     }
 

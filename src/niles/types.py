@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from niles.sync.carddav import CardDAVSync
     from niles.sync.manager import CalendarSourceManager
     from niles.user_store import UserStore
+    from niles.actions.notion import NotionRetriever
+    from niles.sync.notion import NotionSync
+    from niles.sync.notion_embeddings import NotionEmbeddingPipeline
     from niles.vikunja_provisioning import VikunjaProvisioner
     from niles.vikunja_store import VikunjaCredentialStore
     from niles.whatsapp_store import WhatsAppSessionStore
@@ -54,3 +57,6 @@ class AppState(Protocol):
     signal_disabled: bool
     shutdown_event: asyncio.Event
     signal_task: asyncio.Task[None] | None
+    notion_sync: NotionSync | None
+    notion_embedder: NotionEmbeddingPipeline | None
+    notion_retriever: NotionRetriever | None
