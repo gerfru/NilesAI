@@ -50,6 +50,13 @@ EDITABLE_SETTINGS = {
     "weather_location_name",
     "feature_search",
     "searxng_url",
+    "feature_notion",
+    "notion_token",
+    "notion_sync_interval",
+    "notion_embedding_model",
+    "notion_chunk_size",
+    "notion_chunk_overlap",
+    "notion_similarity_threshold",
 }
 
 _KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
