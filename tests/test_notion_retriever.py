@@ -94,3 +94,12 @@ class TestSearch:
         args = pool.fetch.call_args[0]
         # $2 = threshold
         assert args[2] == 0.5
+
+    async def test_search_uses_query_prefix(self):
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = []
+
+        await ret.search("test query")
+
+        embedder.embed.assert_called_once_with("test query", prefix="search_query: ")

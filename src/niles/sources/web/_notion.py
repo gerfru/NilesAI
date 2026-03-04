@@ -302,6 +302,51 @@ async def notion_sync_trigger(request: Request):
     )
 
 
+@router.post("/api/notion/reembed", response_class=HTMLResponse)
+async def notion_force_reembed(request: Request):
+    """Force re-embedding of all Notion pages (e.g. after model/prefix change)."""
+    _user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+
+    notion_embedder = getattr(request.app.state, "notion_embedder", None)
+    if not notion_embedder:
+        ctx = await _notion_status_ctx(request)
+        ctx["notion_error"] = "Notion Embedder nicht verfuegbar."
+        return templates.TemplateResponse(
+            request,
+            "fragments/notion_status.html",
+            ctx,
+        )
+
+    if _notion_sync_lock.locked():
+        ctx = await _notion_status_ctx(request)
+        ctx["notion_error"] = "Sync laeuft bereits."
+        return templates.TemplateResponse(
+            request,
+            "fragments/notion_status.html",
+            ctx,
+        )
+
+    async def _run_reembed():
+        async with _notion_sync_lock:
+            try:
+                count = await notion_embedder.force_reembed()
+                logger.info("Force re-embed: marked %d pages", count)
+                await notion_embedder.embed_pending()
+            except Exception:
+                logger.exception("Force re-embed failed")
+
+    asyncio.create_task(_run_reembed())
+
+    ctx = await _notion_status_ctx(request)
+    return templates.TemplateResponse(
+        request,
+        "fragments/notion_status.html",
+        ctx,
+    )
+
+
 @router.post("/api/notion/search")
 async def notion_search(request: Request, query: str = Form(...)):
     """Direct Notion search (bypasses LLM tool selection)."""
