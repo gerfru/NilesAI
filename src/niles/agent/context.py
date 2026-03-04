@@ -263,13 +263,15 @@ class ContextBuilder:
         notion_search = event.get("metadata", {}).get("notion_search", False)
         if notion_search:
             system_prompt += (
-                "\n\n## Notion-Kontext AKTIV\n"
-                "Der Benutzer hat die Notion-Suche aktiviert. Relevante Inhalte "
-                "aus dem Notion-Wissensspeicher wurden bereits in die Nachricht "
-                "eingefuegt (markiert mit [Notion-Kontext]). Beantworte die "
-                "Frage ausschliesslich auf Basis dieses Kontexts. Rufe KEINE "
-                "anderen Tools auf (kein list_tasks, find_event etc.), es sei "
-                "denn die Frage betrifft eindeutig etwas anderes."
+                "\n\n## WICHTIG — Notion-Wissensmodus\n"
+                "Die Nachricht des Benutzers enthaelt Abschnitte aus dem "
+                "Notion-Wissensspeicher (markiert mit [Notion-Kontext]). "
+                "REGELN:\n"
+                "1. Beantworte die Frage NUR mit Informationen aus diesen "
+                "Abschnitten.\n"
+                "2. Rufe KEINE Tools auf.\n"
+                "3. Wenn kein Abschnitt zur Frage passt, sage das ehrlich.\n"
+                "4. Fasse die relevanten Inhalte zusammen und nenne die Quelle."
             )
 
         history_messages = await self.history.get_recent(chat_id)

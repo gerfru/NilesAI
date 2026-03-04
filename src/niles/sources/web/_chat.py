@@ -201,12 +201,20 @@ async def chat_stream(
         if retriever:
             results = await retriever.search(message, max_results=5)
             if results:
-                context_parts = ["[Notion-Kontext]"]
+                context_parts = [
+                    "[Notion-Kontext]\n"
+                    "Die folgenden Abschnitte wurden per Aehnlichkeitssuche "
+                    "gefunden. Beantworte die Frage NUR anhand dieser Inhalte. "
+                    "Ignoriere Abschnitte, die thematisch nicht zur Frage passen."
+                ]
                 for r in results:
+                    score = r.get("similarity", 0)
                     context_parts.append(
-                        f"Quelle: {r['page_title']} ({r['page_url']})\n> {r['chunk_text']}"
+                        f"Quelle: {r['page_title']} (Relevanz: {score:.0%})\n"
+                        f"{r['page_url']}\n"
+                        f"> {r['chunk_text']}"
                     )
-                context_parts.append(f"\n[Frage]\n{message}")
+                context_parts.append(f"[Frage]\n{message}")
                 enriched_message = "\n\n".join(context_parts)
 
     chat_id = _user_chat_id(user)
