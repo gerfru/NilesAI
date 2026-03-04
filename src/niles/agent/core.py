@@ -346,6 +346,32 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_notion",
+            "description": (
+                "Durchsucht die Notion-Wissensdatenbank nach relevanten Inhalten. "
+                "Nutze dieses Tool wenn der Benutzer nach Informationen fragt, "
+                "die in seinen Notion-Seiten stehen koennten (Dokumentation, "
+                "Notizen, Projekte, Wikis)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Suchanfrage in natuerlicher Sprache",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximale Anzahl Ergebnisse (1-10, Standard: 5)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 MAX_TOOL_ROUNDS = 5
@@ -390,6 +416,7 @@ class NilesAgent:
         signal_store: SignalMessageStore | None = None,
         http_client: httpx.AsyncClient | None = None,
     ):
+        self.notion_retriever: object | None = None
         self.llm = AsyncOpenAI(
             base_url=config.llm_base_url,
             api_key="not-needed",
@@ -793,6 +820,7 @@ class NilesAgent:
             resolve_vikunja=self._resolve_vikunja_tasks,
             get_own_phone_number=self._get_own_phone_number,
             pending_phone_choices=self._pending_phone_choices,
+            notion_retriever=getattr(self, "notion_retriever", None),
         )
 
     async def _execute_tool_call(self, tool_call, chat_id: str = "") -> dict:

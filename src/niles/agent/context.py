@@ -71,6 +71,7 @@ class ContextBuilder:
         self.signal = signal
         self.signal_store = signal_store
         self._http_client = http_client
+        self.notion_retriever: object | None = None
 
         # Cached calendar source names (refreshed every 5 minutes)
         self._source_names_cache: list[str] = []
@@ -277,6 +278,13 @@ class ContextBuilder:
             _signal_tools = {"send_signal", "get_signal_messages"}
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _signal_tools
+            ]
+        # Remove Notion tool when disabled or retriever not available
+        if not self.config.feature_notion or not getattr(
+            self, "notion_retriever", None
+        ):
+            all_tools = [
+                t for t in all_tools if t["function"]["name"] != "search_notion"
             ]
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()

@@ -130,6 +130,13 @@ function _getSearchParam(form) {
     return el ? "&web_search=" + el.value : "";
 }
 
+/* --- Notion search toggle --- */
+
+function _getNotionParam(form) {
+    var el = form.querySelector("[name='notion_search']");
+    return el ? "&notion_search=" + el.value : "";
+}
+
 /* --- Chat streaming (SSE) --- */
 
 let chatStreaming = false;
@@ -172,7 +179,7 @@ async function handleChatSubmit(form) {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "X-CSRF-Token": getCookie("niles_csrf"),
             },
-            body: "message=" + encodeURIComponent(message) + _getSearchParam(form),
+            body: "message=" + encodeURIComponent(message) + _getSearchParam(form) + _getNotionParam(form),
             signal: chatAbortController.signal,
         });
 
@@ -278,6 +285,16 @@ document.body.addEventListener("click", function(evt) {
     var next = btn.getAttribute("aria-pressed") !== "true";
     btn.setAttribute("aria-pressed", String(next));
     var hidden = btn.closest("form").querySelector("[name='web_search']");
+    if (hidden) hidden.value = next ? "true" : "false";
+});
+
+/* Notion search toggle button (CSP-safe, event delegation) */
+document.body.addEventListener("click", function(evt) {
+    var btn = evt.target.closest("[data-notion-toggle]");
+    if (!btn) return;
+    var next = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", String(next));
+    var hidden = btn.closest("form").querySelector("[name='notion_search']");
     if (hidden) hidden.value = next ? "true" : "false";
 });
 

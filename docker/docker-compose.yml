@@ -5,7 +5,7 @@ services:
   # PostgreSQL for Evolution API
   evolution_postgres:
     container_name: niles_evolution_postgres
-    image: postgres:15-alpine@sha256:fceb6f86328c36f2438fae3b851b0cc57c4a7e69a58c866d9ce24281f2cf0c9c
+    image: pgvector/pgvector:pg15
     restart: unless-stopped
     # Postgres port: loopback only, random port by default (not discoverable).
     # For debugging, set in .env: POSTGRES_HOST_PORT=5432
@@ -206,6 +206,10 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FEATURE_SEARCH=${FEATURE_SEARCH:-false}
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      - FEATURE_NOTION=${FEATURE_NOTION:-false}
+      - NOTION_TOKEN=${NOTION_TOKEN:-}
+      - NOTION_SYNC_INTERVAL=${NOTION_SYNC_INTERVAL:-30}
+      - NOTION_EMBEDDING_MODEL=${NOTION_EMBEDDING_MODEL:-nomic-embed-text}
     volumes:
       - ../config:/app/config:ro
     networks:
