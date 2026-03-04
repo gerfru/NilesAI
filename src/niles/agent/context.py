@@ -279,9 +279,13 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _signal_tools
             ]
-        # Remove Notion tool when disabled or retriever not available
-        if not self.config.feature_notion or not getattr(
-            self, "notion_retriever", None
+        # Remove Notion tool when disabled, retriever not available, or
+        # notion_search toggle is active (context already injected directly)
+        notion_search = event.get("metadata", {}).get("notion_search", False)
+        if (
+            not self.config.feature_notion
+            or not getattr(self, "notion_retriever", None)
+            or notion_search
         ):
             all_tools = [
                 t for t in all_tools if t["function"]["name"] != "search_notion"
