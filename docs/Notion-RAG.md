@@ -228,7 +228,9 @@ def downgrade():
 
 **Note on vector index:** `ivfflat` with `lists = 100` is suitable for up to ~100K chunks. For smaller workspaces (<1000 pages), a sequential scan may be faster — pgvector falls back automatically. The index can be rebuilt with different parameters if needed.
 
-**Note on embedding dimensions:** The `vector(768)` column matches `nomic-embed-text`. If switching to `mxbai-embed-large` (1024 dimensions), the column must be altered and all embeddings regenerated. This is handled by the embedding pipeline (§6).
+**Note on embedding dimensions:** The `vector(768)` column matches both `nomic-embed-text` and `nomic-embed-text-v2-moe` (768 dimensions each). If switching to `mxbai-embed-large` (1024 dimensions), the column must be altered and all embeddings regenerated. This is handled by the embedding pipeline (§6).
+
+**Upgrading the embedding model:** When switching models (e.g. from `nomic-embed-text` to `nomic-embed-text-v2-moe`), all existing embeddings must be regenerated because different models produce incompatible vector spaces. Call `POST /api/notion/reembed` after changing the model, or run two sync cycles to re-embed all pages.
 
 ---
 
