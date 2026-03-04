@@ -292,17 +292,21 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _signal_tools
             ]
-        # Remove Notion tool when disabled, retriever not available, or
-        # notion_search toggle is active (context already injected directly)
-        if (
-            not self.config.feature_notion
-            or not getattr(self, "notion_retriever", None)
-            or notion_search
+        # Remove Notion tool when disabled or retriever not available
+        if not self.config.feature_notion or not getattr(
+            self, "notion_retriever", None
         ):
             all_tools = [
                 t for t in all_tools if t["function"]["name"] != "search_notion"
             ]
-        if self.mcp:
+
+        # When Notion toggle is active, context is already injected into the
+        # user message.  Remove ALL tools so the small local model answers
+        # exclusively from the provided context instead of calling tools.
+        if notion_search:
+            all_tools = []
+
+        if self.mcp and not notion_search:
             mcp_tools = self.mcp.get_openai_tools()
             # Only include search/fetch MCP tools when web_search is active
             if not web_search:
