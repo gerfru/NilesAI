@@ -33,5 +33,5 @@ if ! python -c "import pytest" 2>/dev/null; then
     echo ""
 fi
 
-# Run tests
-python -m pytest tests/ -v "$@"
+# Run tests (exclude integration tests — use scripts/test-integration.sh for those)
+python -m pytest tests/ -v -m "not integration" "$@"
