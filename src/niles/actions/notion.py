@@ -16,7 +16,7 @@ class NotionRetriever:
         self,
         pool: asyncpg.Pool,
         embedder: OllamaEmbedder,
-        similarity_threshold: float = 0.55,
+        similarity_threshold: float = 0.3,
     ):
         self._pool = pool
         self._embedder = embedder

@@ -13,7 +13,7 @@ from ..actions.tasks import TasksAction
 from ..config import Settings
 from ..memory.store import MemoryStore
 from ..memory.history import ConversationHistory
-from .prompts import build_system_prompt
+from .prompts import build_notion_rag_prompt, build_system_prompt
 
 if TYPE_CHECKING:
     import httpx
@@ -222,8 +222,25 @@ class ContextBuilder:
         Returns (chat_id, messages, filtered_tools).
         """
         chat_id = event["from"]
+        notion_search = event.get("metadata", {}).get("notion_search", False)
 
         memories = await self.memory.list_all()
+
+        # --- Notion RAG mode: minimal prompt, limited history, no tools ---
+        if notion_search:
+            system_prompt = build_notion_rag_prompt(
+                memories=memories,
+                timezone=self.config.timezone,
+            )
+            history_messages = await self.history.get_recent(chat_id, limit=4)
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            messages.extend(
+                {"role": m["role"], "content": m["content"]} for m in history_messages
+            )
+            messages.append({"role": "user", "content": event["content"]})
+            return chat_id, messages, []
+
+        # --- Normal mode: full soul.md prompt + tool filtering ---
         source_names = await self.get_calendar_source_names()
 
         system_prompt = build_system_prompt(
@@ -259,24 +276,8 @@ class ContextBuilder:
                     "Such-Tools stehen nicht zur Verfügung."
                 )
 
-        # Append Notion context instruction when toggle is active
-        notion_search = event.get("metadata", {}).get("notion_search", False)
-        if notion_search:
-            system_prompt += (
-                "\n\n## WICHTIG — Notion-Wissensmodus\n"
-                "Die Nachricht des Benutzers enthaelt Abschnitte aus dem "
-                "Notion-Wissensspeicher (markiert mit [Notion-Kontext]). "
-                "REGELN:\n"
-                "1. Beantworte die Frage NUR mit Informationen aus diesen "
-                "Abschnitten.\n"
-                "2. Rufe KEINE Tools auf.\n"
-                "3. Wenn kein Abschnitt zur Frage passt, sage das ehrlich.\n"
-                "4. Fasse die relevanten Inhalte zusammen und nenne die Quellen "
-                "als Markdown-Links, z.B. [Seitentitel](URL)."
-            )
-
         history_messages = await self.history.get_recent(chat_id)
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": system_prompt}]
         messages.extend(
             {"role": m["role"], "content": m["content"]} for m in history_messages
         )
@@ -302,14 +303,7 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] != "search_notion"
             ]
-
-        # When Notion toggle is active, context is already injected into the
-        # user message.  Remove ALL tools so the small local model answers
-        # exclusively from the provided context instead of calling tools.
-        if notion_search:
-            all_tools = []
-
-        if self.mcp and not notion_search:
+        if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
             # Only include search/fetch MCP tools when web_search is active
             if not web_search:
