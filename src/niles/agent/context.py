@@ -13,7 +13,7 @@ from ..actions.tasks import TasksAction
 from ..config import Settings
 from ..memory.store import MemoryStore
 from ..memory.history import ConversationHistory
-from .prompts import build_system_prompt
+from .prompts import build_notion_rag_prompt, build_system_prompt
 
 if TYPE_CHECKING:
     import httpx
@@ -222,8 +222,25 @@ class ContextBuilder:
         Returns (chat_id, messages, filtered_tools).
         """
         chat_id = event["from"]
+        notion_search = event.get("metadata", {}).get("notion_search", False)
 
         memories = await self.memory.list_all()
+
+        # --- Notion RAG mode: minimal prompt, limited history, no tools ---
+        if notion_search:
+            system_prompt = build_notion_rag_prompt(
+                memories=memories,
+                timezone=self.config.timezone,
+            )
+            history_messages = await self.history.get_recent(chat_id, limit=4)
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            messages.extend(
+                {"role": m["role"], "content": m["content"]} for m in history_messages
+            )
+            messages.append({"role": "user", "content": event["content"]})
+            return chat_id, messages, []
+
+        # --- Normal mode: full soul.md prompt + tool filtering ---
         source_names = await self.get_calendar_source_names()
 
         system_prompt = build_system_prompt(
@@ -259,21 +276,8 @@ class ContextBuilder:
                     "Such-Tools stehen nicht zur Verfügung."
                 )
 
-        # Append Notion context instruction when toggle is active
-        notion_search = event.get("metadata", {}).get("notion_search", False)
-        if notion_search:
-            system_prompt += (
-                "\n\n## Notion-Kontext AKTIV\n"
-                "Der Benutzer hat die Notion-Suche aktiviert. Relevante Inhalte "
-                "aus dem Notion-Wissensspeicher wurden bereits in die Nachricht "
-                "eingefuegt (markiert mit [Notion-Kontext]). Beantworte die "
-                "Frage ausschliesslich auf Basis dieses Kontexts. Rufe KEINE "
-                "anderen Tools auf (kein list_tasks, find_event etc.), es sei "
-                "denn die Frage betrifft eindeutig etwas anderes."
-            )
-
         history_messages = await self.history.get_recent(chat_id)
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": system_prompt}]
         messages.extend(
             {"role": m["role"], "content": m["content"]} for m in history_messages
         )
@@ -292,12 +296,9 @@ class ContextBuilder:
             all_tools = [
                 t for t in all_tools if t["function"]["name"] not in _signal_tools
             ]
-        # Remove Notion tool when disabled, retriever not available, or
-        # notion_search toggle is active (context already injected directly)
-        if (
-            not self.config.feature_notion
-            or not getattr(self, "notion_retriever", None)
-            or notion_search
+        # Remove Notion tool when disabled or retriever not available
+        if not self.config.feature_notion or not getattr(
+            self, "notion_retriever", None
         ):
             all_tools = [
                 t for t in all_tools if t["function"]["name"] != "search_notion"

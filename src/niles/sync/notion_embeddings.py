@@ -24,12 +24,30 @@ class NotionEmbeddingPipeline:
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
 
+    async def force_reembed(self) -> int:
+        """Mark all pages for re-embedding by clearing embedded_at.
+
+        Returns the number of pages marked. Call embed_pending() afterwards
+        to actually regenerate the embeddings.
+        """
+        result = await self._pool.execute(
+            "UPDATE notion_pages SET embedded_at = NULL WHERE embedded_at IS NOT NULL"
+        )
+        count = int(result.split()[-1])  # "UPDATE 378"
+        logger.info("Marked %d pages for re-embedding", count)
+        return count
+
     async def embed_pending(self) -> dict:
         """Process all pages that need (re-)embedding.
 
         Returns stats dict with pages_embedded, chunks_created, errors.
         """
         stats = {"pages_embedded": 0, "chunks_created": 0, "errors": 0}
+        logger.info(
+            "Embedding with model %s (dim check: query prefix='search_query: ', "
+            "doc prefix='search_document: ')",
+            self._embedder.model,
+        )
 
         rows = await self._pool.fetch("""
             SELECT id, title, content_text
@@ -55,7 +73,9 @@ class NotionEmbeddingPipeline:
                 # Generate embeddings and insert
                 chunk_errors = 0
                 for idx, chunk_text in enumerate(chunks):
-                    embedding = await self._embedder.embed(chunk_text)
+                    embedding = await self._embedder.embed(
+                        chunk_text, prefix="search_document: "
+                    )
                     if embedding is None:
                         chunk_errors += 1
                         stats["errors"] += 1
