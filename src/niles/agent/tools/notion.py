@@ -10,6 +10,8 @@ async def handle_search_notion(args: dict, chat_id: str, ctx: ToolContext) -> di
         return {"error": "Notion-Integration nicht konfiguriert."}
 
     query = args.get("query", "")
+    if not query.strip():
+        return {"error": "query must not be empty"}
     max_results = min(int(args.get("max_results", 5)), 10)
 
     results = await retriever.search(query, max_results=max_results)
