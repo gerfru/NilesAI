@@ -271,7 +271,8 @@ class ContextBuilder:
                 "Abschnitten.\n"
                 "2. Rufe KEINE Tools auf.\n"
                 "3. Wenn kein Abschnitt zur Frage passt, sage das ehrlich.\n"
-                "4. Fasse die relevanten Inhalte zusammen und nenne die Quelle."
+                "4. Fasse die relevanten Inhalte zusammen und nenne die Quellen "
+                "als Markdown-Links, z.B. [Seitentitel](URL)."
             )
 
         history_messages = await self.history.get_recent(chat_id)
