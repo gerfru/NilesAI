@@ -257,3 +257,41 @@ class TestEmbedPending:
         # Last execute call should update embedded_at
         last_call = pool.execute.call_args_list[-1]
         assert "embedded_at" in last_call[0][0]
+
+    async def test_embed_uses_document_prefix(self):
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "Content here"},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        # embed() should be called with search_document prefix
+        embedder.embed.assert_called_once_with(
+            "[Test] Content here", prefix="search_document: "
+        )
+
+
+# ---------- force_reembed ----------------------------------------------------
+
+
+class TestForceReembed:
+    async def test_marks_all_pages(self):
+        pipe, pool, _ = _pipeline()
+        pool.execute = AsyncMock(return_value="UPDATE 378")
+
+        count = await pipe.force_reembed()
+
+        assert count == 378
+        sql = pool.execute.call_args[0][0]
+        assert "embedded_at = NULL" in sql
+
+    async def test_zero_pages(self):
+        pipe, pool, _ = _pipeline()
+        pool.execute = AsyncMock(return_value="UPDATE 0")
+
+        count = await pipe.force_reembed()
+
+        assert count == 0
