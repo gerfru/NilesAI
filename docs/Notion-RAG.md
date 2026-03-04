@@ -117,7 +117,7 @@ New fields on `Settings`:
 # Notion (RAG Knowledge Base)
 notion_token: str = ""              # NOTION_TOKEN — Internal Integration Secret
 notion_sync_interval: int = 30      # NOTION_SYNC_INTERVAL — minutes between syncs
-notion_embedding_model: str = "nomic-embed-text"  # NOTION_EMBEDDING_MODEL
+notion_embedding_model: str = "nomic-embed-text-v2-moe"  # NOTION_EMBEDDING_MODEL
 notion_chunk_size: int = 600        # NOTION_CHUNK_SIZE — tokens per chunk
 notion_chunk_overlap: int = 100     # NOTION_CHUNK_OVERLAP — overlap between chunks
 notion_similarity_threshold: float = 0.3  # NOTION_SIMILARITY_THRESHOLD — minimum cosine similarity
@@ -128,7 +128,7 @@ feature_notion: bool = False        # FEATURE_NOTION — master toggle
 |-------|---------|-------------|----------|
 | `notion_token` | `""` | `NOTION_TOKEN` | Yes (when `feature_notion=true`) |
 | `notion_sync_interval` | `30` | `NOTION_SYNC_INTERVAL` | No |
-| `notion_embedding_model` | `"nomic-embed-text"` | `NOTION_EMBEDDING_MODEL` | No |
+| `notion_embedding_model` | `"nomic-embed-text-v2-moe"` | `NOTION_EMBEDDING_MODEL` | No |
 | `notion_chunk_size` | `600` | `NOTION_CHUNK_SIZE` | No |
 | `notion_chunk_overlap` | `100` | `NOTION_CHUNK_OVERLAP` | No |
 | `notion_similarity_threshold` | `0.3` | `NOTION_SIMILARITY_THRESHOLD` | No |
@@ -155,7 +155,7 @@ Add to `EDITABLE_SETTINGS` in `settings_store.py`:
 # NOTION_TOKEN=ntn_****
 # FEATURE_NOTION=true
 # NOTION_SYNC_INTERVAL=30
-# NOTION_EMBEDDING_MODEL=nomic-embed-text
+# NOTION_EMBEDDING_MODEL=nomic-embed-text-v2-moe
 ```
 
 ---

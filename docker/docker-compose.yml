@@ -209,7 +209,6 @@ services:
       - FEATURE_NOTION=${FEATURE_NOTION:-false}
       - NOTION_TOKEN=${NOTION_TOKEN:-}
       - NOTION_SYNC_INTERVAL=${NOTION_SYNC_INTERVAL:-30}
-      - NOTION_EMBEDDING_MODEL=${NOTION_EMBEDDING_MODEL:-nomic-embed-text}
     volumes:
       - ../config:/app/config:ro
     networks:
