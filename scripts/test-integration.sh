@@ -65,15 +65,21 @@ if ! python -c "import pytest" 2>/dev/null; then
     pip install -e ".[dev]" --quiet
 fi
 
-# Auto-fetch Vikunja API token from DB if not already set
+# Auto-fetch Vikunja API token from DB if not already set.
+# Credentials are passed via env vars to avoid shell injection from special
+# characters in passwords (e.g. single quotes).
 if [ -z "${VIKUNJA_API_TOKEN:-}" ]; then
-    VIKUNJA_API_TOKEN=$(python3 -c "
-import asyncio, asyncpg
+    VIKUNJA_API_TOKEN=$(PGHOST="$POSTGRES_HOST" PGPORT="$POSTGRES_HOST_PORT" \
+        PGDB="$POSTGRES_DB" PGUSER="$POSTGRES_USER" \
+        PGPASSWORD="$EVOLUTION_POSTGRES_PASSWORD" \
+        python3 -c "
+import asyncio, asyncpg, os
 async def q():
     try:
-        c = await asyncpg.connect(host='$POSTGRES_HOST', port=$POSTGRES_HOST_PORT,
-            database='$POSTGRES_DB', user='$POSTGRES_USER',
-            password='$EVOLUTION_POSTGRES_PASSWORD', timeout=3)
+        c = await asyncpg.connect(
+            host=os.environ['PGHOST'], port=int(os.environ['PGPORT']),
+            database=os.environ['PGDB'], user=os.environ['PGUSER'],
+            password=os.environ['PGPASSWORD'], timeout=3)
         v = await c.fetchval('SELECT api_token FROM vikunja_credentials LIMIT 1')
         await c.close()
         print(v or '', end='')

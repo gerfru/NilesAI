@@ -10,6 +10,9 @@ from .conftest import VIKUNJA_API_TOKEN, VIKUNJA_API_URL
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
+# Task IDs created during tests, cleaned up in fixture teardown
+_created_task_ids: list[int] = []
+
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def tasks_action(vikunja_available):
@@ -21,6 +24,15 @@ async def tasks_action(vikunja_available):
         client=client,
     )
     yield action
+    # Cleanup: delete all [TEST] tasks created during this session
+    for task_id in _created_task_ids:
+        try:
+            await client.delete(
+                f"{VIKUNJA_API_URL}/tasks/{task_id}",
+                headers={"Authorization": f"Bearer {VIKUNJA_API_TOKEN}"},
+            )
+        except Exception:
+            pass
     await client.aclose()
 
 
@@ -37,6 +49,7 @@ class TestVikunjaIntegration:
         )
         assert result.get("created") is True
         assert result.get("id") is not None
+        _created_task_ids.append(result["id"])
         task_title = result["title"]
 
         # Verify it appears in list
@@ -59,5 +72,4 @@ class TestVikunjaIntegration:
             due_date="2026-12-31T23:59:00Z",
         )
         assert result.get("created") is True
-        # Cleanup
-        await tasks_action.complete_task(title="[TEST] Task with Due Date")
+        _created_task_ids.append(result["id"])
