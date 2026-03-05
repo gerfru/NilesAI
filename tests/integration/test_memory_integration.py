@@ -67,4 +67,6 @@ class TestMemoryListAll:
         await store.set("list_test_1", "v1")
         await store.set("list_test_2", "v2")
         results = await store.list_all()
-        assert len(results) >= 2
+        keys = {r["key"] for r in results}
+        assert "list_test_1" in keys
+        assert "list_test_2" in keys
