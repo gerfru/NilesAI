@@ -6,9 +6,21 @@ from pydantic import ValidationError
 from niles.config import Settings
 
 
-def test_settings_defaults():
+def test_settings_defaults(monkeypatch):
     """Settings loads with correct defaults."""
+    # Clear env vars that would override defaults (e.g. from a previous
+    # test-integration.sh run or a sourced .env file)
+    for var in (
+        "POSTGRES_HOST",
+        "POSTGRES_HOST_PORT",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "LLM_BASE_URL",
+        "EVOLUTION_INSTANCE",
+    ):
+        monkeypatch.delenv(var, raising=False)
     settings = Settings(
+        _env_file=None,
         postgres_password="test",
         evolution_api_key="test",
     )
