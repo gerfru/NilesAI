@@ -81,7 +81,7 @@ async def judge_interaction(
     )
 
     response = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -115,6 +115,18 @@ async def run_and_judge(
     collected_tool_results: list[dict] = []
     response_chunks: list[str] = []
 
+    # Wrap _execute_tool_call to capture tool results (not exposed in stream)
+    original_execute = agent._execute_tool_call
+
+    async def _capturing_execute(tool_call, tc_chat_id):
+        result = await original_execute(tool_call, tc_chat_id)
+        collected_tool_results.append(
+            {"name": tool_call.function.name, "result": result}
+        )
+        return result
+
+    agent._execute_tool_call = _capturing_execute
+
     async for item in agent.process_event_stream(event):
         if item["type"] == "status":
             # Extract tool name from "tool_name..." format
@@ -122,6 +134,8 @@ async def run_and_judge(
             collected_tool_calls.append({"name": tool_name})
         elif item["type"] == "chunk":
             response_chunks.append(item["text"])
+
+    agent._execute_tool_call = original_execute
 
     agent_response = "".join(response_chunks)
 

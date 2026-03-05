@@ -88,9 +88,9 @@ def _csrf_headers() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def app_client(pool_in_tx):
-    """httpx.AsyncClient with ASGI transport against the test app."""
+    """httpx.AsyncClient for auth tests (401/403 — never reaches the LLM)."""
     fake = FakeLLM([{"content": "Standard-Antwort."}])
     agent = make_e2e_agent(pool_in_tx, fake)
     app = _create_test_app(agent, pool_in_tx)

@@ -411,7 +411,7 @@ class TestMultiToolPipeline:
                         {
                             "name": "send_whatsapp",
                             "arguments": {
-                                "to": "436601234567",
+                                "to": "+43 660 1234567",
                                 "text": "Hallo Max!",
                             },
                         }
