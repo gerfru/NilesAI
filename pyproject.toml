@@ -83,6 +83,7 @@ dev = [
     "mypy>=1.14.0",
     "pip-audit>=2.7.0",
     "ruff>=0.9.0",
+    "anthropic>=0.40",  # Claude-as-Judge E2E tests
 ]
 
 [build-system]
@@ -97,6 +98,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires Docker Compose infrastructure (deselect with -m 'not integration')",
+    "e2e: end-to-end agent pipeline tests (deselect with -m 'not e2e')",
+    "llm_judge: requires Ollama + Claude API key, slow (deselect with -m 'not llm_judge')",
 ]
 
 [tool.mypy]
