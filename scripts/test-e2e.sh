@@ -14,13 +14,7 @@ cd "$(dirname "$0")/.."
 
 # Load .env for DB credentials
 if [ -f .env ]; then
-    while IFS='=' read -r key value; do
-        key=$(echo "$key" | xargs)
-        [[ -z "$key" || "$key" == \#* ]] && continue
-        value="${value%\"}"
-        value="${value#\"}"
-        export "$key=$value"
-    done < .env
+    set -a; source .env; set +a
 fi
 
 # Host addresses for local execution
@@ -31,14 +25,14 @@ export POSTGRES_DB="${POSTGRES_DB:-evolution_db}"
 
 # Activate venv
 if [ ! -d .venv ]; then
-    echo "Error: .venv not found. Run 'python3 -m venv .venv && pip install -e .[dev]' first."
+    echo "Error: .venv not found. Run 'uv venv && uv pip install -e .[dev]' first."
     exit 1
 fi
 source .venv/bin/activate
 
 if ! python -c "import pytest" 2>/dev/null; then
     echo "Installing dependencies..."
-    pip install -e ".[dev]" --quiet
+    uv pip install -e ".[dev]" --quiet
 fi
 
 MODE="${1:-pipeline}"
