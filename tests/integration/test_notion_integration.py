@@ -45,6 +45,11 @@ class TestNotionRetriever:
         assert results == []
 
     async def test_search_with_seeded_data(self, db_conn, embedder):
+        # Uses db_conn directly (not pool_in_tx) because we construct a
+        # SingleConnectionPool inline for the NotionRetriever — both the
+        # seeding INSERTs and the search query run on the same connection
+        # within the same rolled-back transaction.
+
         # Use a unique document that won't collide with production data
         unique_text = "Xylophon-Reparaturanleitung für linkshändige Astronauten"
         page_title = "IntegTest Xylophon Handbuch"

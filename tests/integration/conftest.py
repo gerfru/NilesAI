@@ -7,7 +7,9 @@ service is not reachable.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import warnings
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -15,6 +17,9 @@ import asyncpg
 import httpx
 import pytest
 import pytest_asyncio
+
+# Suppress InsecureRequestWarning from verify=False (self-signed Caddy certs)
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +111,7 @@ async def db_pool():
             max_size=5,
             timeout=5,
         )
-    except (OSError, asyncpg.PostgresError):
+    except (OSError, asyncpg.PostgresError, asyncio.TimeoutError):
         pytest.skip(f"PostgreSQL not reachable at {POSTGRES_HOST}:{POSTGRES_PORT}")
         return
 
@@ -123,7 +128,7 @@ async def db_pool():
     await pool.close()
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def db_conn(db_pool):
     """Per-test connection inside a transaction (rolled back after test)."""
     conn = await db_pool.acquire()
