@@ -36,6 +36,7 @@ def _env(key: str, default: str = "") -> str:
 
 
 POSTGRES_HOST = _env("POSTGRES_HOST", "127.0.0.1")
+# POSTGRES_HOST_PORT: Docker Compose exposed port on the host (matches docker-compose.yml)
 POSTGRES_PORT = int(_env("POSTGRES_HOST_PORT", "5432"))
 POSTGRES_DB = _env("POSTGRES_DB", "evolution_db")
 POSTGRES_USER = _env("POSTGRES_USER", "evolution")
@@ -141,8 +142,8 @@ def _make_settings(**overrides):
     return Settings(**defaults)
 
 
-def make_e2e_agent(pool, fake_llm: FakeLLM) -> NilesAgent:
-    """Build a NilesAgent with real DB stores but a scripted FakeLLM."""
+def _make_agent_core(pool) -> NilesAgent:
+    """Build a NilesAgent with real DB stores (no LLM assigned)."""
     config = _make_settings()
     contacts = ContactsAction(pool)
     memory = MemoryStore(pool)
@@ -159,6 +160,17 @@ def make_e2e_agent(pool, fake_llm: FakeLLM) -> NilesAgent:
             history=history,
             calendar=calendar,
         )
+    return agent
+
+
+def make_real_agent(pool) -> NilesAgent:
+    """Build a NilesAgent with real DB stores and the real (Ollama) LLM."""
+    return _make_agent_core(pool)
+
+
+def make_e2e_agent(pool, fake_llm: FakeLLM) -> NilesAgent:
+    """Build a NilesAgent with real DB stores but a scripted FakeLLM."""
+    agent = _make_agent_core(pool)
     agent.llm = fake_llm
     return agent
 
@@ -204,7 +216,7 @@ async def seed_contact(db_conn):
         """,
         contact_id,
     )
-    return {"id": contact_id, "full_name": "Max Mustermann", "phone": "436601234567"}
+    return {"id": contact_id, "full_name": "Max Mustermann", "phone": "+43 660 1234567"}
 
 
 @pytest_asyncio.fixture(loop_scope="session")

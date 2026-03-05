@@ -13,19 +13,12 @@ Requirements:
 from __future__ import annotations
 
 import os
-from unittest.mock import patch
 
 import httpx
 import pytest
 import pytest_asyncio
 
-from niles.actions.calendar import CalendarAction
-from niles.actions.contacts import ContactsAction
-from niles.agent.core import NilesAgent
-from niles.config import Settings
-from niles.memory.history import ConversationHistory
-from niles.memory.store import MemoryStore
-
+from .conftest import make_real_agent
 from .judge import run_and_judge
 
 pytestmark = [
@@ -64,30 +57,7 @@ async def anthropic_available():
 @pytest_asyncio.fixture(loop_scope="session")
 async def real_agent(pool_in_tx, ollama_available, anthropic_available):
     """NilesAgent with real Ollama LLM + real DB."""
-    settings = Settings(
-        _env_file=None,
-        postgres_password="test",
-        evolution_api_key="test",
-        niles_api_key="test",
-    )
-
-    from unittest.mock import AsyncMock
-
-    contacts = ContactsAction(pool_in_tx)
-    memory = MemoryStore(pool_in_tx)
-    history = ConversationHistory(pool_in_tx)
-    calendar = CalendarAction(pool_in_tx, timezone="Europe/Vienna")
-
-    with patch("niles.agent.core.load_system_prompt", return_value="Du bist Niles."):
-        agent = NilesAgent(
-            config=settings,
-            contacts=contacts,
-            whatsapp=AsyncMock(),
-            memory=memory,
-            history=history,
-            calendar=calendar,
-        )
-    return agent
+    return make_real_agent(pool_in_tx)
 
 
 # ---------------------------------------------------------------------------
