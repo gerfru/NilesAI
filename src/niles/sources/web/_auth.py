@@ -13,7 +13,7 @@ from argon2.exceptions import VerifyMismatchError
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ...sync.google_auth import GOOGLE_TOKEN_URL
+from ...mcp.user_pool import GOOGLE_TOKEN_URL
 from ._core import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
