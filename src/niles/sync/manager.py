@@ -17,7 +17,6 @@ from .caldav import (
     cleanup_recurring_occurrences,
     upsert_event,
 )
-from .google_auth import GoogleCalendarAuth
 from .ical_parser import expand_recurring_event, parse_icalendar
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ _CREDENTIAL_RE = re.compile(r"://[^@/\s]+@")
 
 
 class CalendarSourceManager:
-    """Manages calendar sources of all types (ICS, CalDAV, Google).
+    """Manages calendar sources of all types (ICS, CalDAV).
 
     Responsibilities:
     - CRUD for calendar_sources table
@@ -38,6 +37,9 @@ class CalendarSourceManager:
     - Auto-migration of .env CalDAV config on first startup
     - Sync orchestration across all enabled sources
     - Event creation on writable sources
+
+    Note: Google Calendar is handled via gws MCP server (per-user),
+    not through this manager. See mcp/user_pool.py.
     """
 
     def __init__(
@@ -45,12 +47,10 @@ class CalendarSourceManager:
         pool: asyncpg.Pool,
         settings,
         client: httpx.AsyncClient | None = None,
-        google_client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.settings = settings
         self._client = client or httpx.AsyncClient(timeout=10)
-        self._google_client = google_client or httpx.AsyncClient(timeout=30)
 
     async def initialize(self) -> None:
         """Run post-migration business logic.
@@ -70,8 +70,6 @@ class CalendarSourceManager:
         writable: bool = False,
         auth_user: str | None = None,
         auth_password: str | None = None,
-        google_refresh_token: str | None = None,
-        google_token_expiry: datetime | None = None,
     ) -> dict:
         """Add a new calendar source. Returns the created row."""
         if not url.startswith("https://"):
@@ -87,15 +85,14 @@ class CalendarSourceManager:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
         if len(name) > 200:
             raise ValueError("Name ist zu lang (max 200 Zeichen)")
-        if source_type not in ("ics", "caldav", "google"):
+        if source_type not in ("ics", "caldav"):
             raise ValueError(f"Unbekannter Typ: {source_type}")
 
         row = await self.pool.fetchrow(
             """
             INSERT INTO calendar_sources
-                (name, url, source_type, writable, auth_user, auth_password,
-                 google_refresh_token, google_token_expiry)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (name, url, source_type, writable, auth_user, auth_password)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, name, url, source_type, writable, enabled,
                       last_synced, last_error, created_at
             """,
@@ -105,8 +102,6 @@ class CalendarSourceManager:
             writable,
             auth_user,
             auth_password,
-            google_refresh_token,
-            google_token_expiry,
         )
         logger.info("Added calendar source: %s (%s)", name, source_type)
         return dict(row)
@@ -140,8 +135,7 @@ class CalendarSourceManager:
         """Return the first enabled, writable calendar source."""
         row = await self.pool.fetchrow(
             """
-            SELECT id, name, url, source_type, auth_user, auth_password,
-                   google_refresh_token, google_token_expiry
+            SELECT id, name, url, source_type, auth_user, auth_password
             FROM calendar_sources
             WHERE writable = TRUE AND enabled = TRUE
             ORDER BY created_at
@@ -156,8 +150,7 @@ class CalendarSourceManager:
         """Sync all enabled sources. Returns total events synced."""
         sources = await self.pool.fetch(
             """
-            SELECT id, name, url, source_type, auth_user, auth_password,
-                   google_refresh_token, google_token_expiry
+            SELECT id, name, url, source_type, auth_user, auth_password
             FROM calendar_sources WHERE enabled = TRUE
             """
         )
@@ -167,7 +160,7 @@ class CalendarSourceManager:
             try:
                 if src["source_type"] == "ics":
                     count = await self._sync_ics(src)
-                elif src["source_type"] in ("caldav", "google"):
+                elif src["source_type"] == "caldav":
                     count = await self._sync_caldav(src)
                 else:
                     continue
@@ -187,8 +180,7 @@ class CalendarSourceManager:
         """Sync a single source by ID. Returns event count, or None if not found."""
         row = await self.pool.fetchrow(
             """
-            SELECT id, name, url, source_type, auth_user, auth_password,
-                   google_refresh_token, google_token_expiry
+            SELECT id, name, url, source_type, auth_user, auth_password
             FROM calendar_sources WHERE id = $1 AND enabled = TRUE
             """,
             source_id,
@@ -198,7 +190,7 @@ class CalendarSourceManager:
         src = dict(row)
         if src["source_type"] == "ics":
             return await self._sync_ics(src)
-        if src["source_type"] in ("caldav", "google"):
+        if src["source_type"] == "caldav":
             return await self._sync_caldav(src)
         return 0
 
@@ -276,16 +268,7 @@ class CalendarSourceManager:
             raise
 
     def _build_auth(self, source: dict) -> httpx.Auth | None:
-        """Build httpx auth for a source (Basic or Bearer). Returns None for ICS."""
-        if source["source_type"] == "google":
-            if not source.get("google_refresh_token"):
-                raise ValueError("Google source missing refresh token")
-            return GoogleCalendarAuth(
-                refresh_token=source["google_refresh_token"],
-                client_id=self.settings.google_client_id,
-                client_secret=self.settings.google_client_secret,
-                client=self._google_client,
-            )
+        """Build httpx auth for a source. Returns None for ICS."""
         if source["source_type"] == "caldav":
             return httpx.BasicAuth(
                 source["auth_user"] or "", source["auth_password"] or ""
@@ -303,7 +286,7 @@ class CalendarSourceManager:
         description: str = "",
         location: str = "",
     ) -> dict:
-        """Create an event on a writable CalDAV/Google source."""
+        """Create an event on a writable CalDAV source."""
         auth = self._build_auth(source)
         sync = CalDAVSync(
             pool=self.pool,

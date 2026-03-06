@@ -17,6 +17,7 @@ from ...actions.signal import SignalAction
 from ...actions.whatsapp import WhatsAppAction
 from ...config import Settings
 from ...mcp.client import MCPManager
+from ...mcp.user_pool import UserMCPPool
 from ...memory.store import MemoryStore
 from ...signal_store import SignalMessageStore
 from ...sync.manager import CalendarSourceManager
@@ -48,6 +49,8 @@ class ToolContext:
     get_own_phone_number: Callable[..., Awaitable[str | None]]
     pending_phone_choices: dict[str, dict]
     notion_retriever: Any = None  # actions.notion.NotionRetriever
+    user_mcp_pool: UserMCPPool | None = None
+    user_id: int | None = None
 
 
 ToolHandler = Callable[[dict, str, ToolContext], Awaitable[dict]]

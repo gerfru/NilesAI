@@ -38,6 +38,13 @@ async def settings_page(request: Request, error: str = Query(default="")):
         error_msg = "Google Kalender-Verbindung fehlgeschlagen. Bitte erneut versuchen."
 
     safe = _safe_settings_dict(request.app.state.settings)
+
+    # Check if user has connected Google Calendar
+    google_connected = False
+    token_store = getattr(request.app.state, "google_token_store", None)
+    if token_store:
+        google_connected = await token_store.has_tokens(user["uid"])
+
     response = templates.TemplateResponse(
         request,
         "settings.html",
@@ -47,6 +54,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
             "active_page": "settings",
             "user": user,
             "google_configured": _google_configured(request),
+            "google_connected": google_connected,
             "calendar_error": error_msg,
             "signal_api_url": bool(request.app.state.settings.signal_api_url),
             "vikunja_url": request.app.state.settings.vikunja_public_url or "",
