@@ -37,7 +37,7 @@ def _env(key: str, default: str = "") -> str:
 
 POSTGRES_HOST = _env("POSTGRES_HOST", "127.0.0.1")
 # POSTGRES_HOST_PORT: Docker Compose exposed port on the host (matches docker-compose.yml)
-POSTGRES_PORT = int(_env("POSTGRES_HOST_PORT", "5432"))
+POSTGRES_PORT = int(_env("POSTGRES_HOST_PORT", "5432") or "5432")
 POSTGRES_DB = _env("POSTGRES_DB", "evolution_db")
 POSTGRES_USER = _env("POSTGRES_USER", "evolution")
 POSTGRES_PASSWORD = _env("EVOLUTION_POSTGRES_PASSWORD", "")
