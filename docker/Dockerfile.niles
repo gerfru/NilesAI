@@ -26,6 +26,30 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
        -i src/niles/static/css/input.css \
        -o src/niles/static/css/style.css
 
+# --- Stage 1b: Download gws (Google Workspace CLI) ---
+FROM python:3.12-slim@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c AS gws-downloader
+
+ARG TARGETARCH=amd64
+ARG GWS_VERSION=0.4.4
+
+# Map Docker TARGETARCH to gws release naming
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && if [ "$TARGETARCH" = "arm64" ]; then \
+         GWS_ARCH="aarch64-unknown-linux-gnu"; \
+         GWS_SHA256="7b9ea644c20cfc8ac8d58cf52b3568e899bc18c1ed536f241c253d493f39753f"; \
+       else \
+         GWS_ARCH="x86_64-unknown-linux-gnu"; \
+         GWS_SHA256="651c1710d8c795e0b6b4e4b950c75540c23224bb5cb272e9d0dc2e30a9be8855"; \
+       fi \
+    && curl -fsSL "https://github.com/googleworkspace/cli/releases/download/v${GWS_VERSION}/gws-${GWS_ARCH}.tar.gz" \
+       -o /tmp/gws.tar.gz \
+    && echo "${GWS_SHA256}  /tmp/gws.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/gws.tar.gz -C /tmp/ \
+    && mv /tmp/gws-${GWS_ARCH}/gws /usr/local/bin/gws \
+    && chmod +x /usr/local/bin/gws \
+    && rm -rf /tmp/gws*
+
 # --- Stage 2: Runtime ---
 FROM python:3.12-slim@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c
 
@@ -38,6 +62,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Copy Python packages from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy gws binary (Google Workspace CLI for MCP)
+COPY --from=gws-downloader /usr/local/bin/gws /usr/local/bin/gws
 
 # Copy application source (with built CSS)
 COPY --from=builder /build/src/ ./src/

@@ -6,7 +6,6 @@ import httpx
 import pytest
 
 from niles.config import Settings
-from niles.sync.google_auth import GoogleCalendarAuth
 from niles.sync.manager import CalendarSourceManager, _split_vevents
 
 
@@ -181,8 +180,6 @@ END:VCALENDAR"""
             "source_type": "ics",
             "auth_user": None,
             "auth_password": None,
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -212,8 +209,6 @@ END:VCALENDAR"""
             "source_type": "ics",
             "auth_user": None,
             "auth_password": None,
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -237,8 +232,6 @@ END:VCALENDAR"""
             "source_type": "ics",
             "auth_user": None,
             "auth_password": None,
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -266,8 +259,6 @@ END:VCALENDAR"""
             "source_type": "ics",
             "auth_user": None,
             "auth_password": None,
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         mock_client = AsyncMock()
@@ -294,8 +285,6 @@ class TestSyncICSRedirect:
             "source_type": "ics",
             "auth_user": None,
             "auth_password": None,
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         mock_response = MagicMock()
@@ -322,8 +311,6 @@ class TestSyncCalDAV:
             "source_type": "caldav",
             "auth_user": "user",
             "auth_password": "pass",
-            "google_refresh_token": None,
-            "google_token_expiry": None,
         }
 
         with patch("niles.sync.manager.CalDAVSync") as mock_cls:
@@ -469,22 +456,6 @@ class TestBuildAuth:
         }
         auth = manager._build_auth(source)
         assert isinstance(auth, httpx.BasicAuth)
-
-    def test_google_returns_google_auth(self, manager):
-        source = {
-            "source_type": "google",
-            "google_refresh_token": "refresh-tok",
-        }
-        auth = manager._build_auth(source)
-        assert isinstance(auth, GoogleCalendarAuth)
-
-    def test_google_missing_refresh_token_raises(self, manager):
-        source = {
-            "source_type": "google",
-            "google_refresh_token": None,
-        }
-        with pytest.raises(ValueError, match="refresh token"):
-            manager._build_auth(source)
 
     def test_caldav_none_credentials(self, manager):
         source = {
