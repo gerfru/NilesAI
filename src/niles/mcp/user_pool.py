@@ -185,6 +185,18 @@ class UserMCPPool:
         """Check if user has stored Google refresh token."""
         return await self._token_store.has_tokens(user_id)
 
+    async def disconnect_user(self, user_id: int) -> None:
+        """Remove tokens and stop the gws instance for a user."""
+        inst: _UserMCPInstance | None = None
+        async with self._get_lock(user_id):
+            if user_id in self._instances:
+                inst = self._instances.pop(user_id)
+        if inst:
+            await inst.stop()
+            self._locks.pop(user_id, None)
+        await self._token_store.delete_tokens(user_id)
+        logger.info("Google disconnected for user %d", user_id)
+
     async def get_openai_tools(self, user_id: int) -> list[dict]:
         """Return gws tools in OpenAI format if user has Google connected.
 
@@ -344,7 +356,11 @@ class UserMCPPool:
                 if now - inst.last_used > _IDLE_TIMEOUT:
                     to_remove.append(uid)
             for uid in to_remove:
-                inst = self._instances.pop(uid)
-                await inst.stop()
-                self._locks.pop(uid, None)
-                logger.info("Stopped idle gws instance for user %d", uid)
+                stopped: _UserMCPInstance | None = None
+                async with self._get_lock(uid):
+                    if uid in self._instances:
+                        stopped = self._instances.pop(uid)
+                if stopped:
+                    await stopped.stop()
+                    self._locks.pop(uid, None)
+                    logger.info("Stopped idle gws instance for user %d", uid)

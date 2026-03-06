@@ -18,6 +18,7 @@ from niles.sources.web import (
     admin_delete_user,
     admin_reset_password,
     callback_google_calendar,
+    google_calendar_disconnect,
     chat_clear,
     chat_page,
     chat_send,
@@ -847,6 +848,45 @@ class TestGoogleCalendarCallback:
         call_kwargs = token_store.upsert_tokens.call_args[1]
         assert call_kwargs["refresh_token"] == "rt"
         assert call_kwargs["access_token"] == "at"
+
+
+class TestGoogleCalendarDisconnect:
+    """Tests for google_calendar_disconnect endpoint."""
+
+    async def test_disconnect_requires_auth(self):
+        """Disconnect without session returns 401."""
+        request = _make_request(cookies={})
+        response = await google_calendar_disconnect(request)
+        assert response.status_code == 401
+
+    async def test_disconnect_calls_pool(self):
+        """Disconnect with valid auth calls user_mcp_pool.disconnect_user."""
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        mock_pool = AsyncMock()
+        request.app.state.user_mcp_pool = mock_pool
+
+        response = await google_calendar_disconnect(request)
+
+        assert response.status_code == 200
+        assert response.headers.get("hx-redirect") == "/ui/settings"
+        mock_pool.disconnect_user.assert_called_once_with(_TEST_USER["uid"])
+
+    async def test_disconnect_fallback_to_token_store(self):
+        """Without user_mcp_pool, falls back to token_store.delete_tokens."""
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        request.app.state.user_mcp_pool = None
+
+        response = await google_calendar_disconnect(request)
+
+        assert response.status_code == 200
+        token_store = request.app.state.google_token_store
+        token_store.delete_tokens.assert_called_once_with(_TEST_USER["uid"])
 
 
 def _admin_cookies():

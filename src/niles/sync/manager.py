@@ -286,7 +286,7 @@ class CalendarSourceManager:
         description: str = "",
         location: str = "",
     ) -> dict:
-        """Create an event on a writable CalDAV/Google source."""
+        """Create an event on a writable CalDAV source."""
         auth = self._build_auth(source)
         sync = CalDAVSync(
             pool=self.pool,
