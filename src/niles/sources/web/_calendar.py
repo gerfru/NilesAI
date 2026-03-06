@@ -1,6 +1,5 @@
-"""Calendar routes: CalDAV discovery, calendar sources, Google Calendar OAuth."""
+"""Calendar routes: CalDAV discovery, calendar sources, Google OAuth for gws."""
 
-import asyncio
 import hmac
 import logging
 import secrets
@@ -12,7 +11,7 @@ import httpx
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ...sync.google_auth import GOOGLE_TOKEN_URL
+from ...mcp.user_pool import GOOGLE_TOKEN_URL
 from ._core import (
     _GOOGLE_AUTH_URL,
     _build_redirect_uri,
@@ -26,19 +25,10 @@ from ._core import (
 
 logger = logging.getLogger(__name__)
 
-# --- Google Calendar OAuth (Phase B) ---
+# --- Google OAuth for gws MCP ---
 
 _GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
-_GOOGLE_CALENDAR_LIST_URL = (
-    "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-)
 _GCAL_OAUTH_COOKIE = "gcal_oauth_state"
-
-
-def _log_task_exception(task: asyncio.Task) -> None:
-    """Done-callback for fire-and-forget tasks: log exceptions instead of losing them."""
-    if not task.cancelled() and task.exception():
-        logger.error("Background task failed: %s", task.exception())
 
 
 # --- CalDAV discovery ---
@@ -124,7 +114,7 @@ async def calendar_source_add(
     if not name.strip():
         name = url.split("//", 1)[-1].split("/")[0][:80]
 
-    writable = source_type in ("caldav", "google")
+    writable = source_type == "caldav"
 
     try:
         await manager.add_source(
@@ -260,14 +250,9 @@ async def callback_google_calendar(
     state: str = "",
     error: str = "",
 ):
-    """Handle Google Calendar OAuth callback.
-
-    Exchanges code for tokens, discovers calendars via Google Calendar API,
-    and creates calendar_sources entries for each discovered calendar.
-    """
+    """Handle Google OAuth callback — store tokens for gws MCP server."""
     _fail_url = "/ui/settings?error=calendar_connect_failed"
 
-    # Verify user session (match connect endpoint auth requirement)
     user = _get_session_user(request)
     if user is None:
         return RedirectResponse(url="/ui/login", status_code=303)
@@ -322,59 +307,16 @@ async def callback_google_calendar(
 
     token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
-    # Discover calendars via Google Calendar REST API
-    try:
-        cal_resp = await google_client.get(
-            _GOOGLE_CALENDAR_LIST_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-    except httpx.HTTPError as e:
-        logger.error("Google Calendar list HTTP error: %s", e)
-        return RedirectResponse(url=_fail_url, status_code=303)
-
-    if cal_resp.status_code != 200:
-        logger.error("Google Calendar list failed: %d", cal_resp.status_code)
-        return RedirectResponse(url=_fail_url, status_code=303)
-
-    calendars = cal_resp.json().get("items", [])
-    manager = getattr(request.app.state, "calendar_manager", None)
-    if not manager:
-        return RedirectResponse(url=_fail_url, status_code=303)
-
-    added = 0
-    for cal in calendars:
-        cal_id = cal.get("id", "")
-        summary = cal.get("summary", cal_id)
-        access_role = cal.get("accessRole", "reader")
-        writable = access_role in ("owner", "writer")
-
-        # Build Google CalDAV URL
-        encoded_id = urllib.parse.quote(cal_id, safe="")
-        caldav_url = (
-            f"https://apidata.googleusercontent.com/caldav/v2/{encoded_id}/events/"
-        )
-
-        try:
-            await manager.add_source(
-                name=summary,
-                url=caldav_url,
-                source_type="google",
-                writable=writable,
-                google_refresh_token=refresh_token,
-                google_token_expiry=token_expiry,
-            )
-            added += 1
-        except asyncpg.UniqueViolationError:
-            logger.debug("Skipping calendar %s (already exists)", cal_id)
-        except Exception:
-            logger.warning("Failed to add calendar %s", cal_id, exc_info=True)
-
-    logger.info("Google Calendar OAuth: added %d calendar(s)", added)
-
-    # Trigger initial sync in background (store reference to prevent GC)
-    if added > 0:
-        task = asyncio.create_task(manager.sync_all())
-        task.add_done_callback(_log_task_exception)
+    # Store tokens per user for gws MCP server
+    token_store = request.app.state.google_token_store
+    await token_store.upsert_tokens(
+        user_id=user["uid"],
+        refresh_token=refresh_token,
+        access_token=access_token,
+        token_expiry=token_expiry,
+        scopes=_GOOGLE_CALENDAR_SCOPE,
+    )
+    logger.info("Google OAuth: tokens stored for user %d", user["uid"])
 
     response = RedirectResponse(url="/ui/settings", status_code=303)
     response.delete_cookie(_GCAL_OAUTH_COOKIE)
