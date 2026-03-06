@@ -35,6 +35,6 @@ async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
             return {"result": result_text}
         except Exception as e:
             logger.error("gws tool call failed [%s] user=%s: %s", name, ctx.user_id, e)
-            return {"error": f"Google Workspace Fehler: {e}"}
+            return {"error": "Google Workspace Fehler. Bitte erneut versuchen."}
 
     return {"error": f"Unknown tool: {name}"}
