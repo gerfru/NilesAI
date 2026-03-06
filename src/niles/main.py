@@ -43,6 +43,8 @@ from .sources.web import router as web_router
 from .user_store import UserStore
 from .signal_store import SignalMessageStore
 from .sources.signal import signal_listener
+from .google_token_store import GoogleTokenStore
+from .mcp.user_pool import UserMCPPool
 from .vikunja_store import VikunjaCredentialStore
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
@@ -177,12 +179,11 @@ async def lifespan(app: FastAPI):
             client=http_clients.general,
         )
 
-    # Calendar Source Manager (unified sync for ICS + CalDAV + Google)
+    # Calendar Source Manager (unified sync for ICS + CalDAV)
     calendar_manager = CalendarSourceManager(
         pool,
         settings,
         client=http_clients.general,
-        google_client=http_clients.google_oauth,
     )
     await calendar_manager.initialize()
     calendar_sources = await calendar_manager.get_sources()
@@ -291,6 +292,19 @@ async def lifespan(app: FastAPI):
     mcp_manager = MCPManager()
     await mcp_manager.start_all()
 
+    # Per-user Google MCP pool (gws instances per user)
+    google_token_store = GoogleTokenStore(pool)
+    user_mcp_pool = None
+    if settings.google_client_id and settings.google_client_secret:
+        user_mcp_pool = UserMCPPool(
+            token_store=google_token_store,
+            google_client_id=settings.google_client_id,
+            google_client_secret=settings.google_client_secret,
+            google_client=http_clients.google_oauth,
+        )
+        await user_mcp_pool.start()
+        logger.info("Per-user Google MCP pool initialized")
+
     # Actions
     contacts = ContactsAction(pool)
     whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
@@ -319,6 +333,7 @@ async def lifespan(app: FastAPI):
         signal=signal_action,
         signal_store=signal_store,
         http_client=http_clients.general,
+        user_mcp_pool=user_mcp_pool,
     )
 
     # Notion RAG sync + embeddings + retrieval
@@ -396,6 +411,8 @@ async def lifespan(app: FastAPI):
     app.state.signal_action = signal_action
     app.state.signal_store = signal_store
     app.state.http_clients = http_clients
+    app.state.google_token_store = google_token_store
+    app.state.user_mcp_pool = user_mcp_pool
     app.state.notion_sync = notion_sync
     app.state.notion_embedder = notion_embedder
     app.state.notion_retriever = notion_retriever
@@ -443,6 +460,8 @@ async def lifespan(app: FastAPI):
 
     if ollama_embedder:
         await ollama_embedder.close()
+    if user_mcp_pool:
+        await user_mcp_pool.stop()
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)
     await http_clients.close_all()
