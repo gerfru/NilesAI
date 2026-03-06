@@ -54,6 +54,7 @@ from ._calendar import (  # noqa: F401, E402
     calendar_source_sync,
     calendar_sources_list,
     google_calendar_connect,
+    google_calendar_disconnect,
 )
 from ._chat import (  # noqa: F401, E402
     chat_clear,

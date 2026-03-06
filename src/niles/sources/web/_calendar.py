@@ -321,3 +321,23 @@ async def callback_google_calendar(
     response = RedirectResponse(url="/ui/settings", status_code=303)
     response.delete_cookie(_GCAL_OAUTH_COOKIE)
     return response
+
+
+@router.post("/api/calendar/google/disconnect")
+async def google_calendar_disconnect(request: Request):
+    """Remove stored Google tokens and stop the user's gws MCP instance."""
+    user, error = await _require_auth_and_csrf(request)
+    if error:
+        return error
+    assert user is not None
+
+    user_mcp_pool = getattr(request.app.state, "user_mcp_pool", None)
+    if user_mcp_pool:
+        await user_mcp_pool.disconnect_user(user["uid"])
+    else:
+        token_store = getattr(request.app.state, "google_token_store", None)
+        if token_store:
+            await token_store.delete_tokens(user["uid"])
+
+    # HX-Redirect triggers full page reload in htmx
+    return Response(status_code=200, headers={"HX-Redirect": "/ui/settings"})
