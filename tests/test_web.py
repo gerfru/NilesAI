@@ -18,6 +18,7 @@ from niles.sources.web import (
     admin_delete_user,
     admin_reset_password,
     callback_google_calendar,
+    google_calendar_disconnect,
     chat_clear,
     chat_page,
     chat_send,
@@ -95,6 +96,7 @@ def _make_request(
     request.app.state.wa_store = wa_store
     request.app.state.vikunja_provisioner = None
     request.app.state.shutdown_event = None
+    request.app.state.google_token_store = AsyncMock()
     request.app.state.http_clients = http_clients or MagicMock()
     request.client.host = client_ip
     request.url.scheme = "http"
@@ -814,8 +816,8 @@ class TestGoogleCalendarCallback:
         assert response.status_code == 303
         assert "error=calendar_connect_failed" in response.headers["location"]
 
-    async def test_successful_calendar_discovery(self):
-        """Successful flow adds calendars and redirects to settings."""
+    async def test_successful_token_storage(self):
+        """Successful flow stores tokens and redirects to settings."""
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
@@ -824,33 +826,12 @@ class TestGoogleCalendarCallback:
             "expires_in": 3600,
         }
 
-        mock_cal_resp = MagicMock()
-        mock_cal_resp.status_code = 200
-        mock_cal_resp.json.return_value = {
-            "items": [
-                {
-                    "id": "primary@gmail.com",
-                    "summary": "Mein Kalender",
-                    "accessRole": "owner",
-                },
-                {
-                    "id": "holidays@google.com",
-                    "summary": "Feiertage",
-                    "accessRole": "reader",
-                },
-            ],
-        }
-
         mock_http_clients = MagicMock()
         mock_google = AsyncMock()
         mock_google.post = AsyncMock(return_value=mock_token_resp)
-        mock_google.get = AsyncMock(return_value=mock_cal_resp)
         mock_http_clients.google_oauth = mock_google
 
         request = self._gcal_request(http_clients=mock_http_clients)
-        manager = request.app.state.calendar_manager
-        manager.add_source = AsyncMock(return_value={"id": 1})
-        manager.sync_all = AsyncMock()
 
         response = await callback_google_calendar(
             request,
@@ -861,20 +842,51 @@ class TestGoogleCalendarCallback:
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/settings"
 
-        # Verify both calendars were added
-        assert manager.add_source.call_count == 2
+        # Verify tokens were stored via GoogleTokenStore
+        token_store = request.app.state.google_token_store
+        token_store.upsert_tokens.assert_called_once()
+        call_kwargs = token_store.upsert_tokens.call_args[1]
+        assert call_kwargs["refresh_token"] == "rt"
+        assert call_kwargs["access_token"] == "at"
 
-        # First call: owner → writable
-        first_call = manager.add_source.call_args_list[0]
-        assert first_call[1]["name"] == "Mein Kalender"
-        assert first_call[1]["source_type"] == "google"
-        assert first_call[1]["writable"] is True
-        assert "primary%40gmail.com" in first_call[1]["url"]
 
-        # Second call: reader → not writable
-        second_call = manager.add_source.call_args_list[1]
-        assert second_call[1]["name"] == "Feiertage"
-        assert second_call[1]["writable"] is False
+class TestGoogleCalendarDisconnect:
+    """Tests for google_calendar_disconnect endpoint."""
+
+    async def test_disconnect_requires_auth(self):
+        """Disconnect without session returns 401."""
+        request = _make_request(cookies={})
+        response = await google_calendar_disconnect(request)
+        assert response.status_code == 401
+
+    async def test_disconnect_calls_pool(self):
+        """Disconnect with valid auth calls user_mcp_pool.disconnect_user."""
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        mock_pool = AsyncMock()
+        request.app.state.user_mcp_pool = mock_pool
+
+        response = await google_calendar_disconnect(request)
+
+        assert response.status_code == 200
+        assert response.headers.get("hx-redirect") == "/ui/settings"
+        mock_pool.disconnect_user.assert_called_once_with(_TEST_USER["uid"])
+
+    async def test_disconnect_fallback_to_token_store(self):
+        """Without user_mcp_pool, falls back to token_store.delete_tokens."""
+        request = _make_request(
+            cookies=_admin_cookies(),
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        request.app.state.user_mcp_pool = None
+
+        response = await google_calendar_disconnect(request)
+
+        assert response.status_code == 200
+        token_store = request.app.state.google_token_store
+        token_store.delete_tokens.assert_called_once_with(_TEST_USER["uid"])
 
 
 def _admin_cookies():
