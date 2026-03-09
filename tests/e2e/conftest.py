@@ -7,9 +7,11 @@ running real DB queries through ContactsAction, MemoryStore, etc.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import asyncpg
@@ -24,6 +26,31 @@ from niles.memory.history import ConversationHistory
 from niles.memory.store import MemoryStore
 
 from .fake_llm import FakeLLM
+
+
+# ---------------------------------------------------------------------------
+# Score collection for benchmark
+# ---------------------------------------------------------------------------
+
+_score_results: list[dict] = []
+
+
+def record_score(test_name: str, scores: dict) -> None:
+    """Record judge scores for benchmark output."""
+    _score_results.append(
+        {
+            "test": test_name,
+            "model": os.environ.get("LLM_MODEL", "unknown"),
+            "scores": scores,
+        }
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write collected scores to JSON if SCORE_OUTPUT is set."""
+    output = os.environ.get("SCORE_OUTPUT")
+    if output and _score_results:
+        Path(output).write_text(json.dumps(_score_results, indent=2))
 
 
 # ---------------------------------------------------------------------------
