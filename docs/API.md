@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-03-02
+> **Updated:** 2026-03-09
 
 ---
 
@@ -266,11 +266,11 @@ Clears the chat history of the current user. Requires CSRF token.
 
 ### GET /ui/api/calendar/sources
 
-Returns the list of all configured calendar sources as an HTML fragment (htmx). Shows name, URL, type badge (ICS/CalDAV/Google), sync status, and errors.
+Returns the list of all configured calendar sources as an HTML fragment (htmx). Shows name, URL, type badge (ICS/CalDAV), sync status, and errors.
 
 ### POST /ui/api/calendar/sources
 
-Adds a new calendar source. Expects form fields: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Google calendars are not added through this form but via the OAuth flow (see below). Returns the updated source list as HTML fragment.
+Adds a new calendar source. Expects form fields: `source_type` (ics/caldav), `name`, `url`, optional `auth_user`, `auth_password`. Returns the updated source list as HTML fragment.
 
 **Validation:** Only HTTPS URLs, max 2048 characters URL, max 200 characters name.
 
@@ -288,7 +288,11 @@ Redirects to Google OAuth with calendar scope (requires login session). Sets a `
 
 ### GET /ui/callback/google/calendar
 
-Google OAuth callback for calendar connection. Exchanges authorization code for access + refresh tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries (owner/writer as writable, reader as read-only). Triggers initial sync in the background. Redirect URI must be registered in the Google Cloud Console: `https://<HOST>/ui/callback/google/calendar`.
+Google OAuth callback for calendar connection. Exchanges authorization code for access + refresh tokens, stores per-user tokens in `user_google_tokens` for the gws MCP server. Redirect URI must be registered in the Google Cloud Console: `https://<HOST>/ui/callback/google/calendar`.
+
+### POST /ui/api/calendar/google/disconnect
+
+Removes stored Google tokens and stops the user's gws MCP instance. Requires CSRF token. Returns `HX-Redirect: /ui/settings`.
 
 ### POST /ui/api/settings/{key}
 
@@ -539,7 +543,7 @@ Retrieves a stored fact from memory.
 
 ### find_event
 
-Searches calendar events from all configured calendar sources (ICS, CalDAV, Google). Max 10 results, sorted by start time.
+Searches calendar events from all configured calendar sources (ICS, CalDAV). Max 10 results, sorted by start time.
 
 **Parameters:**
 
@@ -716,6 +720,10 @@ Web search via SearXNG meta search engine. Only available when `FEATURE_SEARCH=t
 | `time_range` | string | No | Time filter (e.g., `day`, `week`, `month`) |
 
 **Return:** Search results with title, URL, and snippet. Formatted for LLM context (low token usage).
+
+### mcp__gws__*
+
+Google Workspace tools via per-user gws MCP server instances. Only available when the user has connected their Google account (Settings > Calendar Sources > Connect Google Calendar). Each user gets a dedicated gws subprocess with their own OAuth token. Tools include calendar operations (list, create, update events). Tool names are prefixed with `mcp__gws__` (e.g., `mcp__gws__list_events`).
 
 ### mcp__weather__*
 
