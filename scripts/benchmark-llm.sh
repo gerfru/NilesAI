@@ -22,11 +22,12 @@ if [ -f .env ]; then
     set -a; source .env; set +a
 fi
 
-# Host addresses for local execution
+# Host addresses for local execution (override Docker-internal defaults from config.py)
 export POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
 export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-5432}"
 export POSTGRES_USER="${POSTGRES_USER:-evolution}"
 export POSTGRES_DB="${POSTGRES_DB:-evolution_db}"
+export LLM_BASE_URL="${LLM_BASE_URL:-http://127.0.0.1:11434/v1}"
 
 # Activate venv
 if [ ! -d .venv ]; then
