@@ -72,8 +72,9 @@ if ! curl -sf "$OLLAMA_BASE/api/tags" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Track per-model results
-declare -A MODEL_STATUS
+# Track per-model results via temp files (bash 3.2 compatible — no declare -A)
+STATUS_DIR="$SCORE_DIR/status"
+mkdir -p "$STATUS_DIR"
 FAILED=0
 
 # Run benchmark for each model
@@ -82,17 +83,26 @@ for MODEL in "${MODELS[@]}"; do
     echo "Model: $MODEL"
     echo "---------------------------------------"
 
-    # Pull model if not available
+    # Sanitize model name for filename
+    MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
+
+    # Pull model if not available (capture exit code separately from output)
     echo "  Pulling model (if needed)..."
-    if ! ollama pull "$MODEL" 2>&1 | grep -v "pulling\|verifying\|writing\|using existing"; then
+    pull_log=$(mktemp)
+    set +e
+    ollama pull "$MODEL" > "$pull_log" 2>&1
+    PULL_EXIT=$?
+    set -e
+    if [ "$PULL_EXIT" -ne 0 ]; then
         echo "  ERROR: Failed to pull $MODEL"
-        MODEL_STATUS[$MODEL]="PULL_FAILED"
+        cat "$pull_log" | while IFS= read -r line; do echo "    $line"; done
+        rm -f "$pull_log"
+        echo "PULL_FAILED" > "$STATUS_DIR/$MODEL_SAFE"
         FAILED=1
         continue
     fi
+    rm -f "$pull_log"
 
-    # Sanitize model name for filename
-    MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
     SCORE_FILE="$SCORE_DIR/scores_${MODEL_SAFE}.json"
 
     # Per-model timeout: 10 min (guard against hung Ollama)
@@ -109,15 +119,15 @@ for MODEL in "${MODELS[@]}"; do
 
     if [ "$PYTEST_EXIT" -eq 124 ]; then
         echo "  TIMEOUT: Tests exceeded ${TIMEOUT_SEC}s"
-        MODEL_STATUS[$MODEL]="TIMEOUT"
+        echo "TIMEOUT" > "$STATUS_DIR/$MODEL_SAFE"
         FAILED=1
         continue
     fi
 
     if [ "$PYTEST_EXIT" -eq 0 ]; then
-        MODEL_STATUS[$MODEL]="PASS"
+        echo "PASS" > "$STATUS_DIR/$MODEL_SAFE"
     else
-        MODEL_STATUS[$MODEL]="FAIL (exit $PYTEST_EXIT)"
+        echo "FAIL (exit $PYTEST_EXIT)" > "$STATUS_DIR/$MODEL_SAFE"
         FAILED=1
     fi
 
@@ -133,7 +143,12 @@ echo ""
 # Export model status for Python
 for MODEL in "${MODELS[@]}"; do
     MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
-    export "MODEL_STATUS_${MODEL_SAFE}=${MODEL_STATUS[$MODEL]:-UNKNOWN}"
+    STATUS_FILE="$STATUS_DIR/$MODEL_SAFE"
+    if [ -f "$STATUS_FILE" ]; then
+        export "MODEL_STATUS_${MODEL_SAFE}=$(cat "$STATUS_FILE")"
+    else
+        export "MODEL_STATUS_${MODEL_SAFE}=UNKNOWN"
+    fi
 done
 
 # Parse and display results table
