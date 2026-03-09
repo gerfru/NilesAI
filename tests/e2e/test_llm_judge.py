@@ -72,6 +72,7 @@ class TestContactsJudge:
             agent=real_agent,
             message="Wie ist die Telefonnummer von Max Mustermann?",
         )
+        record_score("find_contact", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -91,6 +92,7 @@ class TestMemoryJudge:
             agent=real_agent,
             message="Merk dir bitte: Mein Lieblingsgericht ist Wiener Schnitzel",
         )
+        record_score("remember", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -109,6 +111,7 @@ class TestCalendarJudge:
             agent=real_agent,
             message="Was steht morgen im Kalender?",
         )
+        record_score("find_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -127,6 +130,7 @@ class TestNoToolJudge:
             agent=real_agent,
             message="Guten Morgen, Niles!",
         )
+        record_score("greeting", result["scores"])
         assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
             f"personality={result['scores']['personality']}: {result['reasoning']}"
         )
@@ -145,6 +149,7 @@ class TestTasksJudge:
             agent=real_agent,
             message="Erstelle eine Aufgabe: Einkaufen gehen",
         )
+        record_score("create_task", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -283,11 +288,15 @@ class TestMessagingJudge:
             f"{result['reasoning']}"
         )
 
-    async def test_get_whatsapp_messages(self, real_agent):
-        """Agent should use get_whatsapp_messages to read messages."""
+    async def test_get_whatsapp_messages(self, real_agent, seed_contact):
+        """Agent should use get_whatsapp_messages to read messages.
+
+        Uses seed_contact (Max) but asks about messages — the LLM should
+        select get_whatsapp_messages regardless of whether messages exist.
+        """
         result = await run_and_judge(
             agent=real_agent,
-            message="Was hat Julia geschrieben?",
+            message="Was hat Max geschrieben?",
         )
         record_score("get_whatsapp_messages", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
