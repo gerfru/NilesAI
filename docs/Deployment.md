@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-02-27
+> **Updated:** 2026-03-09
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -50,7 +50,7 @@ For technical details on architecture and development, see [Development.md](Deve
 
 | Account | Purpose |
 | ------- | ------- |
-| Google Cloud | OAuth login for web UI + Google Calendar sync |
+| Google Cloud | OAuth login for web UI + Google Calendar (via gws MCP) |
 | CardDAV provider (e.g., mailbox.org) | Contact sync |
 | CalDAV provider (e.g., mailbox.org) | Calendar sync |
 
@@ -365,10 +365,15 @@ Niles supports multiple calendar sources simultaneously. Management is done via 
 
 ### Connecting Google Calendar
 
+Google Calendar uses per-user gws (Google Workspace CLI) MCP server instances. Each user gets a dedicated subprocess with their own OAuth token.
+
 1. Google OAuth must be configured (see [Section 4](#4-google-oauth-web-ui-login))
 2. Settings > Calendar Sources > **Connect Google Calendar**
 3. Complete Google login and allow calendar access
-4. Select desired calendars
+4. Tokens are stored per-user in `user_google_tokens`
+5. The gws MCP subprocess starts lazily on first tool call (auto-refreshes tokens, auto-stops after 30 min idle)
+
+To disconnect: Settings > Calendar Sources > **Trennen** (removes tokens and stops the gws instance).
 
 ### Legacy Migration
 
@@ -874,6 +879,15 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `SEARXNG_URL` | `http://searxng:8080` | SearXNG endpoint (Docker-internal) |
 | `SEARXNG_SECRET_KEY` | `niles-local-default` | SearXNG secret key (generate with `openssl rand -hex 32`) |
 
+**Notion (optional):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `FEATURE_NOTION` | `false` | Enable Notion knowledge base (RAG) |
+| `NOTION_TOKEN` | -- | Notion Internal Integration Token (`ntn_...`) |
+| `NOTION_SYNC_INTERVAL` | `60` | Minutes between Notion syncs |
+| `NOTION_EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` | Ollama embedding model |
+
 **Feature Flags:**
 
 | Variable | Default | Description |
@@ -881,8 +895,9 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 | `FEATURE_SEARCH` | `false` | Enable SearXNG web search (requires Docker profile `search`) |
+| `FEATURE_NOTION` | `false` | Enable Notion knowledge base (requires `NOTION_TOKEN` + `ollama pull nomic-embed-text`) |
 
-Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
+Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). Google Calendar is connected per-user via OAuth (Settings > Calendar Sources > Connect Google Calendar). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
 
 ### Ports
 

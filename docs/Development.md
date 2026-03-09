@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-03-02
+> **Updated:** 2026-03-09
 
 ---
 
@@ -171,7 +171,9 @@ tests/
 ├── test_rrule_expansion.py       # RRULE expansion (recurring events)
 ├── test_calendar_manager.py      # CalendarSourceManager (CRUD, sync, migration)
 ├── test_calendar_improvements.py # Calendar query improvements
-├── test_google_auth.py           # Google Calendar OAuth (token refresh)
+├── test_google_token_store.py     # Per-user Google OAuth token store
+├── test_user_mcp_pool.py         # Per-user gws MCP server pool
+├── test_http_retry.py            # HTTP client retry logic
 ├── test_mcp.py                   # MCP integration
 ├── test_migrations.py            # Alembic migration chain validation
 ├── test_security.py              # API auth, rate limiting
@@ -189,7 +191,8 @@ tests/
 ├── test_notion_embeddings.py     # Notion embedding pipeline (chunking, Ollama calls)
 ├── test_notion_retriever.py      # NotionRetriever (pgvector search, threshold)
 ├── test_notion_tool.py           # search_notion tool handler
-└── test_notion_web.py            # Notion web routes (status/connect/disconnect/sync/search)
+├── test_notion_web.py            # Notion web routes (status/connect/disconnect/sync/search)
+└── test_notion_rag_prompt.py     # Notion RAG context injection into prompts
 ```
 
 ### Conventions
@@ -301,11 +304,12 @@ DATABASE_URL="..." alembic history
 
 ### Existing Migrations
 
-| File                             | Description                                                |
-|----------------------------------|------------------------------------------------------------|
-| `001_baseline.py`                | Initial schema (all 11 tables + indexes)                   |
-| `002_migrate_contact_phones.py`  | Data migration: legacy phone columns → contact_phones      |
-| `003_add_notion_rag.py`          | pgvector extension, `notion_pages` + `notion_embeddings` tables |
+| File                             | Description                                                       |
+|----------------------------------|-------------------------------------------------------------------|
+| `001_baseline.py`                | Initial schema (all 11 tables + indexes)                          |
+| `002_migrate_contact_phones.py`  | Data migration: legacy phone columns → contact_phones             |
+| `003_add_notion_rag.py`          | pgvector extension, `notion_pages` + `notion_embeddings` tables   |
+| `004_user_google_tokens.py`      | Per-user Google OAuth tokens for gws MCP server                   |
 
 ---
 
