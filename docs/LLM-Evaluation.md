@@ -8,7 +8,7 @@
 - **Hardware:** Apple Mac Mini M4, XX GB unified memory
 - **Ollama version:** `ollama --version`
 - **Test framework:** Claude-as-Judge (`tests/e2e/test_llm_judge.py`)
-- **Judge model:** Claude Sonnet 4.6
+- **Judge model:** see `tests/e2e/judge.py` (currently `claude-sonnet-4-6`)
 - **Score threshold:** 7/10 (passing)
 - **Test count:** ~22 scenarios (tool selection, no-tool, ambiguous, multi-tool)
 

@@ -72,6 +72,10 @@ if ! curl -sf "$OLLAMA_BASE/api/tags" >/dev/null 2>&1; then
     exit 1
 fi
 
+# Track per-model results
+declare -A MODEL_STATUS
+FAILED=0
+
 # Run benchmark for each model
 for MODEL in "${MODELS[@]}"; do
     echo "---------------------------------------"
@@ -80,16 +84,42 @@ for MODEL in "${MODELS[@]}"; do
 
     # Pull model if not available
     echo "  Pulling model (if needed)..."
-    ollama pull "$MODEL" 2>&1 | tail -1
+    if ! ollama pull "$MODEL" 2>&1 | grep -v "pulling\|verifying\|writing\|using existing"; then
+        echo "  ERROR: Failed to pull $MODEL"
+        MODEL_STATUS[$MODEL]="PULL_FAILED"
+        FAILED=1
+        continue
+    fi
 
     # Sanitize model name for filename
     MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
     SCORE_FILE="$SCORE_DIR/scores_${MODEL_SAFE}.json"
 
-    echo "  Running judge tests..."
-    LLM_MODEL="$MODEL" SCORE_OUTPUT="$SCORE_FILE" \
-        python -m pytest tests/e2e/test_llm_judge.py -v -m "llm_judge" \
-        --tb=short 2>&1 | while IFS= read -r line; do echo "    $line"; done || true
+    # Per-model timeout: 10 min (guard against hung Ollama)
+    TIMEOUT_SEC="${BENCHMARK_TIMEOUT:-600}"
+    echo "  Running judge tests (timeout: ${TIMEOUT_SEC}s)..."
+    set +e
+    timeout "$TIMEOUT_SEC" bash -c "
+        LLM_MODEL='$MODEL' SCORE_OUTPUT='$SCORE_FILE' \
+            python -m pytest tests/e2e/test_llm_judge.py -v -m 'llm_judge' \
+            --tb=short 2>&1
+    " | while IFS= read -r line; do echo "    $line"; done
+    PYTEST_EXIT=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$PYTEST_EXIT" -eq 124 ]; then
+        echo "  TIMEOUT: Tests exceeded ${TIMEOUT_SEC}s"
+        MODEL_STATUS[$MODEL]="TIMEOUT"
+        FAILED=1
+        continue
+    fi
+
+    if [ "$PYTEST_EXIT" -eq 0 ]; then
+        MODEL_STATUS[$MODEL]="PASS"
+    else
+        MODEL_STATUS[$MODEL]="FAIL (exit $PYTEST_EXIT)"
+        FAILED=1
+    fi
 
     echo ""
 done
@@ -100,9 +130,16 @@ echo "Results"
 echo "======================================="
 echo ""
 
+# Export model status for Python
+for MODEL in "${MODELS[@]}"; do
+    MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
+    export "MODEL_STATUS_${MODEL_SAFE}=${MODEL_STATUS[$MODEL]:-UNKNOWN}"
+done
+
 # Parse and display results table
 python3 - "$SCORE_DIR" "${MODELS[@]}" <<'PYEOF'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -117,8 +154,8 @@ criteria = [
     "language",
 ]
 
-headers = ["Model", "Tool Sel.", "Tool Args", "Response", "Personality", "Language", "Avg"]
-widths = [20, 10, 10, 10, 12, 10, 6]
+headers = ["Model", "Tool Sel.", "Tool Args", "Response", "Personality", "Language", "Avg", "Status"]
+widths = [20, 10, 10, 10, 12, 10, 6, 12]
 
 # Header
 header_line = " | ".join(h.ljust(w) for h, w in zip(headers, widths))
@@ -129,10 +166,13 @@ print(f"|-{sep_line}-|")
 for model in models:
     model_safe = model.replace(":", "__").replace("/", "__")
     score_file = score_dir / f"scores_{model_safe}.json"
+    status = os.environ.get(f"MODEL_STATUS_{model_safe}", "UNKNOWN")
 
-    if not score_file.exists():
+    if not score_file.exists() or status.startswith("PULL_FAILED"):
         row = " | ".join(
-            [model.ljust(widths[0])] + ["n/a".ljust(w) for w in widths[1:]]
+            [model.ljust(widths[0])]
+            + ["n/a".ljust(w) for w in widths[1:-1]]
+            + [status.ljust(widths[-1])]
         )
         print(f"| {row} |")
         continue
@@ -140,7 +180,9 @@ for model in models:
     data = json.loads(score_file.read_text())
     if not data:
         row = " | ".join(
-            [model.ljust(widths[0])] + ["n/a".ljust(w) for w in widths[1:]]
+            [model.ljust(widths[0])]
+            + ["n/a".ljust(w) for w in widths[1:-1]]
+            + [status.ljust(widths[-1])]
         )
         print(f"| {row} |")
         continue
@@ -153,10 +195,11 @@ for model in models:
 
     overall = sum(avgs.values()) / len(avgs) if avgs else 0.0
 
-    values = [f"{avgs[c]:.1f}".ljust(w) for c, w in zip(criteria, widths[1:-1])]
-    avg_str = f"{overall:.1f}".ljust(widths[-1])
+    values = [f"{avgs[c]:.1f}".ljust(w) for c, w in zip(criteria, widths[1:-2])]
+    avg_str = f"{overall:.1f}".ljust(widths[-2])
+    status_str = status.ljust(widths[-1])
 
-    row = " | ".join([model.ljust(widths[0])] + values + [avg_str])
+    row = " | ".join([model.ljust(widths[0])] + values + [avg_str, status_str])
     print(f"| {row} |")
 
 print()
@@ -166,3 +209,10 @@ PYEOF
 # Cleanup hint
 echo ""
 echo "To clean up temporary files: rm -rf $SCORE_DIR"
+
+# Exit with failure if any model failed
+if [ "$FAILED" -ne 0 ]; then
+    echo ""
+    echo "WARNING: One or more models had failures (see Status column)."
+    exit 1
+fi
