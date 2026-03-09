@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Legal Notices - Niles AI{% endblock %}
+{% block content %}
+<div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6">
+    <div id="legal-content" class="prose dark:prose-invert max-w-none text-sm text-zinc-700 dark:text-zinc-300"></div>
+    <noscript>
+        <pre class="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{{ content }}</pre>
+    </noscript>
+</div>
+<script nonce="{{ csp_nonce }}">
+    (function() {
+        var raw = {{ content | tojson }};
+        var el = document.getElementById('legal-content');
+        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+            el.innerHTML = DOMPurify.sanitize(marked.parse(raw));
+        } else {
+            el.textContent = raw;
+        }
+    })();
+</script>
+{% endblock %}

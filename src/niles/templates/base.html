@@ -49,6 +49,15 @@
     <main id="main-content" class="max-w-5xl mx-auto px-4 py-4 sm:py-6">
         {% block content %}{% endblock %}
     </main>
+    {% block footer %}
+    <footer class="text-center text-xs text-zinc-400 dark:text-zinc-600 py-4 border-t border-zinc-200 dark:border-zinc-700">
+        Powered by
+        <a href="https://github.com/EvolutionAPI/evolution-api" class="underline hover:text-zinc-600 dark:hover:text-zinc-400" target="_blank" rel="noopener">Evolution API</a> ·
+        <a href="https://vikunja.io" class="underline hover:text-zinc-600 dark:hover:text-zinc-400" target="_blank" rel="noopener">Vikunja</a> ·
+        <a href="https://ollama.com" class="underline hover:text-zinc-600 dark:hover:text-zinc-400" target="_blank" rel="noopener">Ollama</a>
+        · <a href="/ui/legal" class="underline hover:text-zinc-600 dark:hover:text-zinc-400">Legal Notices</a>
+    </footer>
+    {% endblock %}
     <script nonce="{{ csp_nonce }}" src="/static/js/app.js"></script>
 </body>
 </html>
