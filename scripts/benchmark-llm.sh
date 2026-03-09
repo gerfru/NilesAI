@@ -72,6 +72,17 @@ if ! curl -sf "$OLLAMA_BASE/api/tags" >/dev/null 2>&1; then
     exit 1
 fi
 
+# macOS doesn't ship GNU timeout; fall back to gtimeout (brew install coreutils)
+if ! command -v timeout &>/dev/null; then
+    if command -v gtimeout &>/dev/null; then
+        timeout() { gtimeout "$@"; }
+    else
+        echo "WARNING: 'timeout' not found (install coreutils: brew install coreutils)"
+        echo "         Running without per-model timeout."
+        timeout() { shift; "$@"; }
+    fi
+fi
+
 # Track per-model results via temp files (bash 3.2 compatible — no declare -A)
 STATUS_DIR="$SCORE_DIR/status"
 mkdir -p "$STATUS_DIR"
@@ -84,7 +95,7 @@ for MODEL in "${MODELS[@]}"; do
     echo "---------------------------------------"
 
     # Sanitize model name for filename
-    MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
+    MODEL_SAFE=$(echo "$MODEL" | tr ':./' '___')
 
     # Pull model if not available (capture exit code separately from output)
     echo "  Pulling model (if needed)..."
@@ -142,7 +153,7 @@ echo ""
 
 # Export model status for Python
 for MODEL in "${MODELS[@]}"; do
-    MODEL_SAFE=$(echo "$MODEL" | tr ':/' '__')
+    MODEL_SAFE=$(echo "$MODEL" | tr ':./' '___')
     STATUS_FILE="$STATUS_DIR/$MODEL_SAFE"
     if [ -f "$STATUS_FILE" ]; then
         export "MODEL_STATUS_${MODEL_SAFE}=$(cat "$STATUS_FILE")"
@@ -179,7 +190,7 @@ print(f"| {header_line} |")
 print(f"|-{sep_line}-|")
 
 for model in models:
-    model_safe = model.replace(":", "__").replace("/", "__")
+    model_safe = model.replace(":", "__").replace(".", "__").replace("/", "__")
     score_file = score_dir / f"scores_{model_safe}.json"
     status = os.environ.get(f"MODEL_STATUS_{model_safe}", "UNKNOWN")
 
