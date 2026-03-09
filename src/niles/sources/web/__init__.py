@@ -23,6 +23,7 @@ from . import (  # noqa: F401, E402
     _calendar,
     _chat,
     _contacts,
+    _legal,
     _notion,
     _settings,
     _signal,
@@ -70,6 +71,7 @@ from ._notion import (  # noqa: F401, E402
     notion_status,
     notion_sync_trigger,
 )
+from ._legal import legal_page  # noqa: F401, E402
 from ._contacts import (  # noqa: F401, E402
     contacts_connect,
     contacts_disconnect,
