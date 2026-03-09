@@ -342,9 +342,11 @@ Entry point. Manages the application lifecycle via `lifespan()`:
 11. Initialize CalendarSourceManager (DB schema, auto-migration from .env CalDAV config, sync scheduler)
 12. Start APScheduler (CardDAV 03:00, calendar sources 03:20)
 13. Start MCP manager
-14. Initialize Signal (when `feature_signal=true`): SignalAction, SignalMessageStore, WebSocket listener task
-15. Instantiate actions and agent (incl. wa_store, signal, signal_store)
-16. Save everything to `app.state`
+14. Initialize GoogleTokenStore (per-user Google OAuth token CRUD)
+15. Initialize UserMCPPool (when google_client_id + google_client_secret configured): starts idle-cleanup timer, manages per-user gws subprocesses
+16. Initialize Signal (when `feature_signal=true`): SignalAction, SignalMessageStore, WebSocket listener task
+17. Instantiate actions and agent (incl. wa_store, signal, signal_store, user_mcp_pool)
+18. Save everything to `app.state`
 
 **Middleware** (execution order, outermost first):
 
@@ -417,6 +419,11 @@ class Settings(BaseSettings):
     feature_briefing_weekly: bool = False
     briefing_daily_time: str = "07:30"        # HH:MM, Mon-Fri
     briefing_weekly_time: str = "07:15"       # HH:MM, Monday
+    # Notion RAG
+    feature_notion: bool = False
+    notion_token: str = ""
+    notion_sync_interval: int = 30            # minutes between syncs
+    notion_embedding_model: str = "nomic-embed-text-v2-moe"
 ```
 
 Loads from `.env` and environment variables. `extra = "ignore"`.
@@ -434,7 +441,8 @@ class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
                  mcp_manager, calendar, calendar_manager, wa_store,
                  vikunja_store=None,
-                 signal=None, signal_store=None): ...
+                 signal=None, signal_store=None,
+                 http_client=None, user_mcp_pool=None): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call, chat_id) -> dict: ...
