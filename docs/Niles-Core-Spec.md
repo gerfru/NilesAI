@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 7.5
-> **Updated:** 2026-03-02
+> **Version:** 8.0
+> **Updated:** 2026-03-09
 
 ---
 
@@ -107,6 +107,8 @@ Niles/
 │       ├── signal_store.py          # Signal message store (PostgreSQL)
 │       ├── vikunja_store.py         # Per-user Vikunja credentials (PostgreSQL)
 │       ├── vikunja_provisioning.py  # Auto-provision Vikunja accounts on login
+│       ├── google_token_store.py   # Per-user Google OAuth tokens (PostgreSQL)
+│       ├── http_clients.py         # Shared httpx.AsyncClient instances
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, tool definitions, pipeline
 │       │   ├── prompts.py            # System prompt loading/building
@@ -156,13 +158,13 @@ Niles/
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV contact sync
 │       │   ├── caldav.py             # CalDAV calendar sync
-│       │   ├── google_auth.py        # Google Calendar OAuth (Bearer + Refresh)
 │       │   ├── ical_parser.py        # Shared iCalendar parser
 │       │   ├── manager.py            # CalendarSourceManager (CRUD, sync, migration)
 │       │   ├── notion.py            # Notion API sync (pages → notion_pages)
 │       │   └── notion_embeddings.py # Ollama embedding pipeline (→ notion_embeddings)
 │       ├── mcp/
 │       │   ├── client.py             # MCP server manager
+│       │   ├── user_pool.py          # Per-user gws MCP server pool
 │       │   ├── weather/              # Weather MCP server (Open-Meteo)
 │       │   │   ├── __init__.py
 │       │   │   ├── __main__.py
@@ -203,7 +205,9 @@ Niles/
 │   ├── test_rrule_expansion.py      # RRULE expansion (recurring events)
 │   ├── test_calendar_manager.py     # CalendarSourceManager (CRUD, sync, migration)
 │   ├── test_calendar_improvements.py # Calendar query improvements
-│   ├── test_google_auth.py          # Google Calendar OAuth (token refresh)
+│   ├── test_google_token_store.py    # Per-user Google OAuth token store
+│   ├── test_user_mcp_pool.py        # Per-user gws MCP server pool
+│   ├── test_http_retry.py           # HTTP client retry logic
 │   ├── test_mcp.py                  # MCP integration
 │   ├── test_security.py             # API auth, rate limiting
 │   ├── test_settings_store.py       # Runtime settings store
@@ -218,11 +222,17 @@ Niles/
 │   ├── test_signal.py               # Signal action, listener, echo guard, triggers
 │   ├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
 │   ├── test_logging.py              # Structured logging + Prometheus metrics
-│   └── test_fetch_mcp.py            # Web Fetch MCP server (SSRF, extraction, truncation)
+│   ├── test_fetch_mcp.py            # Web Fetch MCP server (SSRF, extraction, truncation)
+│   ├── test_notion_sync.py          # Notion API sync (block-to-text, pagination, MD5)
+│   ├── test_notion_embeddings.py    # Notion embedding pipeline (chunking, Ollama calls)
+│   ├── test_notion_retriever.py     # NotionRetriever (pgvector search, threshold)
+│   ├── test_notion_tool.py          # search_notion tool handler
+│   ├── test_notion_web.py           # Notion web routes (status/connect/disconnect/sync/search)
+│   └── test_notion_rag_prompt.py    # Notion RAG context injection into prompts
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
-│   └── versions/                    # Migration files (001_baseline, 002_...)
+│   └── versions/                    # Migration files (001_baseline, ..., 004_...)
 ├── config/
 │   ├── soul.md                       # Agent personality
 │   ├── mcp_servers.yaml              # MCP server configuration
@@ -458,6 +468,7 @@ class NilesAgent:
 | `list_tasks` | `project?, include_done?` | List open tasks from Vikunja (max 50). Feature flag: `feature_vikunja`. |
 | `create_task` | `title: str, description?, due_date?, priority?, project?` | Create new task in Vikunja. |
 | `complete_task` | `title: str` | Mark task as done (search by title). |
+| `mcp__gws__*` | varies | Google Calendar tools via per-user gws MCP (when Google connected). |
 | `mcp__weather__*` | varies | Weather tools via MCP (Open-Meteo, always active). |
 | `mcp__fetch__fetch_url` | `url: str, max_chars?: int` | Fetch and extract text from a web page (always active). SSRF-protected. |
 | `mcp__searxng__search` | `query: str, max_results?: int, ...` | Web search via SearXNG (when `feature_search=true`). |
@@ -730,15 +741,13 @@ APScheduler for daily sync (03:00, when `carddav_url` configured). CardDAV crede
 
 ### 3.18 Calendar Sync (`src/niles/sync/`)
 
-**CalendarSourceManager** (`manager.py`) manages all calendar sources (ICS, CalDAV, Google) via the `calendar_sources` table. CRUD operations, sync orchestration, and auto-migration from `.env` CalDAV config on first start.
+**CalendarSourceManager** (`manager.py`) manages calendar sources (ICS, CalDAV) via the `calendar_sources` table. CRUD operations, sync orchestration, and auto-migration from `.env` CalDAV config on first start.
 
-**CalDAVSync** (`caldav.py`) synchronizes individual CalDAV and Google sources via PROPFIND/REPORT. Parameterized constructor (URL, auth, timezone, source_id). Google sources use the same CalDAV logic with Bearer token instead of Basic auth.
-
-**GoogleCalendarAuth** (`google_auth.py`) is an httpx.Auth class for Google Calendar OAuth. Maintains an in-memory cache of the access token and automatically refreshes via `refresh_token` when expired. Instantiated per sync run.
+**CalDAVSync** (`caldav.py`) synchronizes individual CalDAV sources via PROPFIND/REPORT. Parameterized constructor (URL, auth, timezone, source_id).
 
 **iCalendar Parser** (`ical_parser.py`) is a shared parser for VEVENT data, used by CalDAV and ICS sync. Supports RRULE expansion for recurring events (DAILY, WEEKLY, MONTHLY, YEARLY, BYDAY, BYMONTH, EXDATE, UNTIL, COUNT). Max 500 occurrences per event. Dependency: `python-dateutil`.
 
-**Google Calendar OAuth flow** (`web/_calendar.py`): `/ui/api/calendar/google/connect` redirects to Google OAuth with calendar scope. The callback `/ui/callback/google/calendar` exchanges the code for tokens, discovers all calendars via Google Calendar REST API, and automatically creates `calendar_sources` entries. Separate flow from login OAuth (different scope, different callback).
+**Google Calendar** is handled via per-user gws MCP server instances (see §3.22). The OAuth flow (`web/_calendar.py`) stores per-user tokens — the gws subprocess uses these for direct Google Calendar API access. Separate flow from login OAuth (different scope, different callback).
 
 APScheduler for daily sync: CardDAV 03:00 (when `carddav_url` configured), calendar sources 03:20 (when sources exist). New calendar sources are managed via the web UI and synced automatically.
 
@@ -810,6 +819,42 @@ class BriefingGenerator:
   - `signal`: Via `SignalAction.send_message()` to own Signal number (from `signal_phone_number`)
   - `both`: Send via both channels (failure on one does not block the other)
 - **Settings UI:** Toggle, times, and channel configurable. At least one messenger must be connected
+
+### 3.22 Per-User Google Calendar (`src/niles/mcp/user_pool.py`, `src/niles/google_token_store.py`)
+
+Google Calendar access is handled via per-user **gws** (Google Workspace CLI) MCP server instances. Each user who connects their Google account gets a dedicated gws subprocess.
+
+**GoogleTokenStore** (`google_token_store.py`) manages per-user OAuth tokens in PostgreSQL (table `user_google_tokens`):
+
+```python
+class GoogleTokenStore:
+    async def upsert_tokens(self, user_id, refresh_token, access_token, token_expiry, scopes="") -> None
+    async def get_tokens(self, user_id) -> dict | None
+    async def has_tokens(self, user_id) -> bool
+    async def delete_tokens(self, user_id) -> None
+```
+
+**UserMCPPool** (`mcp/user_pool.py`) manages the lifecycle of gws MCP server processes:
+
+```python
+class UserMCPPool:
+    async def start(self) -> None         # Start cleanup timer
+    async def stop(self) -> None          # Stop all instances
+    async def has_google_tokens(self, user_id) -> bool
+    async def disconnect_user(self, user_id) -> None  # Remove tokens + stop instance
+    async def get_openai_tools(self, user_id) -> list[dict]  # Tool discovery (cached)
+    def is_gws_tool(self, name) -> bool   # Check if tool name starts with mcp__gws__
+    async def call_tool(self, user_id, prefixed_name, arguments) -> str
+```
+
+**Lifecycle:**
+
+- **Lazy start:** gws subprocess starts on first tool call for a user
+- **Token refresh:** Access tokens are refreshed automatically 5 min before expiry (restart subprocess)
+- **Idle cleanup:** Instances are stopped after 30 min of inactivity
+- **Disconnect:** `POST /api/calendar/google/disconnect` removes tokens and stops the instance
+
+**OAuth flow:** `/ui/api/calendar/google/connect` redirects to Google OAuth with `https://www.googleapis.com/auth/calendar` scope. The callback stores tokens via `GoogleTokenStore.upsert_tokens()`. Tokens are separate from login OAuth (different scope, different callback).
 
 ---
 
@@ -950,19 +995,19 @@ CREATE TABLE IF NOT EXISTS calendar_sources (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     url TEXT NOT NULL,
-    source_type TEXT NOT NULL DEFAULT 'ics',   -- 'ics', 'caldav', 'google'
+    source_type TEXT NOT NULL DEFAULT 'ics',   -- 'ics', 'caldav'
     writable BOOLEAN DEFAULT FALSE,
     enabled BOOLEAN DEFAULT TRUE,
     auth_user TEXT,
     auth_password TEXT,
-    google_refresh_token TEXT,
-    google_token_expiry TIMESTAMP WITH TIME ZONE,
     last_synced TIMESTAMP WITH TIME ZONE,
     last_error TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(url, source_type)
 );
 ```
+
+Note: Google Calendar is no longer managed via `calendar_sources`. Per-user Google tokens are stored in `user_google_tokens` (see below), and calendar operations go through the gws MCP server.
 
 ### events (extension)
 
@@ -1022,6 +1067,21 @@ CREATE TABLE IF NOT EXISTS notion_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_notion_embeddings_cosine
     ON notion_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+### user_google_tokens
+
+```sql
+-- Created by Alembic migration 004 (per-user Google OAuth for gws MCP)
+CREATE TABLE IF NOT EXISTS user_google_tokens (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token TEXT NOT NULL,
+    access_token  TEXT NOT NULL DEFAULT '',
+    token_expiry  TIMESTAMPTZ,
+    scopes        TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
 
 ---
@@ -1089,7 +1149,8 @@ Niles follows the principle **"Read and create, never delete"**:
 | Integration | Read | Create | Modify | Delete |
 | ----------- | ---- | ------ | ------ | ------ |
 | WhatsApp (Evolution) | Yes | Yes (send) | No | No |
-| Calendar (CalDAV/Google) | Yes | Yes | No | No |
+| Calendar (CalDAV) | Yes | Yes | No | No |
+| Google Calendar (gws MCP) | Yes | Yes | Yes (update) | No |
 | Tasks (Vikunja) | Yes | Yes | Yes (complete) | No |
 | Signal (signal-cli-rest-api) | Yes | Yes (send) | No | No |
 | Contacts (CardDAV) | Yes | No | No | No |
