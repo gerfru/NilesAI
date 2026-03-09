@@ -1,21 +1,21 @@
 # Technical Quality Assessment
 
-> Last updated: 2026-03-03 | After Phase 1 + Phase 2
+> Last updated: 2026-03-09 | After Phase 1 + Phase 2 + Notion RAG + Per-User Google MCP
 
 ## Score Overview
 
-| Dimension          | Score | Trend   | Next Lever                          |
-|--------------------|-------|---------|-------------------------------------|
-| KISS / Complexity  | 8.5   | +1.0    | Extract `main.py` startup logic     |
-| Security           | 9.5   | +0.5    | HSTS at app level, SBOM            |
-| Architecture       | 8.5   | =       | Extract `main.py` lifespan into builder/factory |
-| DevOps             | 9.5   | +0.5    | Staging environment, rollback docs  |
-| UI/UX              | 8.0   | +1.0    | axe-core CI integration, HTMX focus management |
-| Maintainability    | 8.5   | +0.5    | Reduce remaining 10 mypy overrides  |
-| Observability      | 7.0   | =       | Sentry or equivalent                |
-| Resilience         | 8.0   | +1.5    | Circuit breakers, Ollama retry      |
-| Performance        | 8.5   | +1.0    | Query result caching, remaining 3 raw clients |
-| API Design         | 8.0   | +0.5    | OpenAPI schema curation             |
+| Dimension          | Score | Trend | Next Lever                                      |
+|--------------------|-------|-------|-------------------------------------------------|
+| KISS / Complexity  | 8.5   | =     | Extract `main.py` startup logic                 |
+| Security           | 9.5   | =     | HSTS at app level, SBOM                         |
+| Architecture       | 8.5   | =     | Extract `main.py` lifespan into builder/factory |
+| DevOps             | 9.5   | =     | Staging environment, rollback docs              |
+| UI/UX              | 8.0   | =     | axe-core CI integration, HTMX focus management  |
+| Maintainability    | 8.5   | =     | Reduce remaining 10 mypy overrides              |
+| Observability      | 7.0   | =     | Sentry or equivalent                            |
+| Resilience         | 8.0   | =     | Circuit breakers, Ollama retry                  |
+| Performance        | 8.5   | =     | Query result caching, remaining 3 raw clients   |
+| API Design         | 8.0   | =     | OpenAPI schema curation                         |
 
 **Average: 8.4/10** | Weighted (Security, Architecture, Maintainability x1.3; UI x0.8): **8.5/10**
 
@@ -23,12 +23,13 @@
 
 ## History
 
-| Date       | Event                        | Score |
-|------------|------------------------------|-------|
-| 2026-02-28 | Initial evaluation (6 dims)  | 7.8   |
-| 2026-03-01 | After core.py refactoring    | 8.2   |
-| 2026-03-02 | +4 new dimensions, web split | 7.9   |
-| 2026-03-03 | Phase 1 (PR #45) + Phase 2 (PR #46) | 8.5   |
+| Date       | Event                                          | Score |
+|------------|------------------------------------------------|-------|
+| 2026-02-28 | Initial evaluation (6 dims)                    | 7.8   |
+| 2026-03-01 | After core.py refactoring                      | 8.2   |
+| 2026-03-02 | +4 new dimensions, web split                   | 7.9   |
+| 2026-03-03 | Phase 1 (PR #45) + Phase 2 (PR #46)            | 8.5   |
+| 2026-03-09 | Notion RAG + Per-User Google MCP (PRs #50-#52) | 8.5   |
 
 The drop from 8.2 to 7.9 (2026-03-02) was due to adding four new dimensions
 (Observability, Resilience, Performance, API Design) that scored lower. Phase 1
@@ -40,29 +41,30 @@ Security +0.5, DevOps +0.5, API Design +0.5).
 
 ## 1. KISS / Complexity — 8.5/10
 
-| Metric              | Value                                |
-|---------------------|--------------------------------------|
-| Largest file        | `agent/core.py` — 821 LOC (was 1,126) |
-| Agent modules       | `core.py` 821, `context.py` 305, `text_tool_parser.py` 121 |
-| Web module max      | 381 LOC (`_calendar.py`) — was 2,444 |
-| Direct dependencies | 29 (pyproject.toml)                  |
-| Avg file size       | ~146 LOC across 75 Python files      |
+| Metric              | Value                                                       |
+|---------------------|-------------------------------------------------------------|
+| Largest file        | `agent/core.py` — 866 LOC (was 1,126)                      |
+| Agent modules       | `core.py` 866, `context.py` 346, `text_tool_parser.py` 121 |
+| Web module max      | 365 LOC (`_notion.py`) — was 2,444                         |
+| Direct dependencies | 26 (pyproject.toml)                                         |
+| Avg file size       | ~153 LOC across 82 Python files                             |
 
 ### Evidence
 
 **Why 8.5 and not higher:**
 
-`main.py` at 675 LOC still mixes app factory, middleware setup, lifespan
+`main.py` at 756 LOC still mixes app factory, middleware setup, lifespan
 management, health endpoints, and metrics endpoint in one file. The lifespan
-handler alone initializes 18+ `app.state` attributes.
+handler alone initializes 20+ `app.state` attributes (grew with Notion RAG
+and per-user Google MCP pool).
 
 **Why 8.5 and not lower:**
 
-- NilesAgent split into 3 focused modules: `core.py` (orchestration, ~500 LOC
-  class + 315 LOC TOOLS constant), `context.py` (context assembly, user/resource
+- NilesAgent split into 3 focused modules: `core.py` (orchestration, ~486 LOC
+  class + 340 LOC TOOLS constant), `context.py` (context assembly, user/resource
   resolution), `text_tool_parser.py` (pure functions for JSON tool-call detection)
 - 80% of files under 400 LOC
-- Web split (13 modules, max 381 LOC) demonstrates the target structure
+- Web split (14 modules, max 365 LOC) demonstrates the target structure
 
 **Score change (Phase 2):** +1.0 from 7.5 — NilesAgent split eliminated the
 last >1,000 LOC file. Each module now has a single responsibility.
@@ -142,7 +144,9 @@ malformed JSON. Rate limiting applies via existing middleware.
 **Dependency vulnerability scanning:**
 
 `pip-audit --desc --skip-editable` runs in CI (`dependency-audit` job).
-Fails the pipeline on any known vulnerability. Runs independently of lint/test.
+Fails the pipeline on any known vulnerability (one documented exception:
+CVE-2025-69872, diskcache pickle deserialization — transitive via trafilatura,
+no upstream fix available). Runs independently of lint/test.
 
 **Why 9.5 and not 10:**
 
@@ -183,19 +187,21 @@ No circular imports detected. Dependency arrows point strictly downward.
 **Tool handler registry** (`agent/tools/__init__.py`):
 
 ```python
+ToolHandler = Callable[[dict, str, ToolContext], Awaitable[dict]]
 TOOL_REGISTRY: dict[str, ToolHandler] = {}
 
-def register_tool(*names):
-    def decorator(cls):
-        for name in names:
-            TOOL_REGISTRY[name] = cls()
-        return cls
+def register_tool(name: str):
+    def decorator(func: ToolHandler) -> ToolHandler:
+        TOOL_REGISTRY[name] = func
+        return func
     return decorator
 ```
 
-Each tool handler is a class implementing `async def run(self, agent, args)`.
-The agent calls `TOOL_REGISTRY[name].run(...)` — no switch/case, no agent
-knowledge of tool internals.
+Each tool handler is an async function with signature
+`async def handle_X(args, chat_id, ctx) -> dict`. The agent calls
+`TOOL_REGISTRY[name](args, chat_id, ctx)` — no switch/case, no agent
+knowledge of tool internals. 10 handler modules auto-registered via
+side-effect imports in `__init__.py`.
 
 **Web feature modules** (`web/__init__.py`):
 Side-effect imports register routes on shared `router`. Each module imports
@@ -215,8 +221,8 @@ re-exports public names — no logic.
 
 **Docker** (`docker/Dockerfile.niles`):
 
-- Multi-stage: Builder (compiles Tailwind + installs deps), runtime copies
-  only artifacts
+- Multi-stage (3 stages): Builder (compiles Tailwind + installs deps),
+  gws-downloader (fetches gws binary with SHA256 verification), runtime
 - Base image pinned with SHA256 digest: `python:3.12-slim@sha256:...`
 - Non-root user: `useradd --uid 1000 niles`, `USER niles`
 - HEALTHCHECK: `curl -f http://localhost:8000/health`
@@ -245,8 +251,9 @@ of lint/test. Fails on any known vulnerability in the dependency tree.
 
 **Renovate** (`renovate.json`):
 
-Configured with `config:recommended` + `pep621` manager. devDeps patch
-auto-merge, major updates require manual review.
+Configured with `config:recommended` + `docker:pinDigests` +
+`helpers:pinGitHubActionDigests`. devDeps patch auto-merge, major updates
+require dashboard approval.
 
 **Why 9.5 and not 10:**
 
@@ -276,11 +283,11 @@ for HTMX swaps. No full-page reloads for interactive actions.
 
 **Accessibility improvements (Phase 1, PR #45):**
 
-- 31 `<label>` elements added across forms (login, settings, admin, weather,
-  CalDAV, Vikunja). Many use `sr-only` class for visually hidden labels on
-  inputs that already have placeholders.
-- 9 `aria-label` attributes: theme toggle, settings toggles, chat nav,
-  search toggle, send button.
+- 32 `<label>` elements across forms (login, settings, admin, weather,
+  CalDAV, Vikunja, Notion). Many use `sr-only` class for visually hidden
+  labels on inputs that already have placeholders.
+- 10 `aria-label` attributes: theme toggle, settings toggles, chat nav,
+  channel selector, search toggle, send button.
 - 7 `role` attributes: `role="alert"` on error messages, `role="status"` on
   success messages, `role="combobox"` on autocomplete, `role="log"` on chat
   container.
@@ -310,27 +317,29 @@ pass addresses BFSG/EU Accessibility Act basics.
 
 **Test suite:**
 
-- 596 test functions across 31 files (`tests/test_*.py`)
-- Code-to-test ratio: ~10,963 LOC source / ~18,900 LOC tests = 1:1.7
+- 782 test functions across 48 files (36 unit + 9 integration + 3 E2E)
+- Code-to-test ratio: ~12,528 LOC source / ~13,405 LOC tests = 1:1.07
 - Coverage threshold: 65% minimum enforced in CI (`pyproject.toml`)
 - Test categories: unit tests for stores, agent core, security, calendar sync,
-  web routes, signal integration, migrations
+  web routes, signal integration, migrations, Notion RAG, Google MCP pool,
+  integration tests (multi-component), E2E tests (Docker-based)
 
 **Modules with tests vs without:**
 
-| Module                 | Test file              | Tests |
-|------------------------|------------------------|-------|
-| agent/core.py          | test_core.py           | ~120  |
-| web routes             | test_web.py            | ~63   |
-| security               | test_security.py       | ~40   |
-| calendar manager       | test_calendar_manager  | ~50   |
-| CalDAV sync            | test_caldav.py         | ~30   |
-| iCal parser            | test_ical_parser.py    | ~40   |
-| Signal                 | test_signal.py         | ~25   |
-| Settings store         | test_settings_store    | ~20   |
-| Contacts               | test_contacts.py       | ~25   |
-| **MCP subprocesses**   | **none**               | 0     |
-| **Docker deployment**  | **none (no E2E)**      | 0     |
+| Module                 | Test file                    | Tests |
+|------------------------|------------------------------|-------|
+| agent/core.py          | test_core.py                 | ~120  |
+| web routes             | test_web.py                  | ~63   |
+| security               | test_security.py             | ~40   |
+| calendar manager       | test_calendar_manager        | ~50   |
+| CalDAV sync            | test_caldav.py               | ~30   |
+| iCal parser            | test_ical_parser.py          | ~40   |
+| Signal                 | test_signal.py               | ~25   |
+| Settings store         | test_settings_store          | ~20   |
+| Contacts               | test_contacts.py             | ~25   |
+| MCP / Google pool      | test_mcp, test_user_mcp_pool | ~40   |
+| Notion RAG             | 5 test files                 | ~80   |
+| Docker deployment      | tests/e2e/ (3 files)         | ~30   |
 
 **Structured logging** (`logging_config.py`):
 structlog configured with JSON renderer, context variable merging, and
@@ -354,15 +363,15 @@ Remaining overrides: `sync.manager`, `main`, `sync.ical_parser`,
 - 10 mypy override modules still suppress real type errors
 - No architecture documentation or ADRs
 - 65% coverage threshold is modest (CLAUDE.md spec: 70-80%)
-- MCP subprocesses have zero test coverage
 
 **Why 8.5 and not lower:**
 
-- 596 tests with good behavior-oriented style
+- 782 tests with good behavior-oriented style (+31% since Phase 2)
+- Integration tests (9 files) and E2E tests (3 files) add multi-layer coverage
 - structlog JSON logging is production-ready
 - AppState Protocol and removal of `web.*` overrides show type safety
   trend is improving
-- Code-to-test ratio of 1:1.7 shows strong test investment
+- MCP and Notion components have dedicated test coverage
 
 **Score change (Phase 1):** +0.5 from 8.0 — AppState Protocol and
 removal of 2 mypy override groups improve type safety.
@@ -418,17 +427,17 @@ conventions. Structured logging is the right foundation.
 
 **Timeouts — comprehensive:**
 
-| Service           | Timeout | Location                          |
-|-------------------|---------|-----------------------------------|
-| Ollama LLM        | SDK default (~120s) | agent/core.py (OpenAI SDK) |
-| Evolution API     | 30s     | http_clients.py (shared client)   |
-| Signal API        | 10-30s  | actions/signal.py                 |
-| CalDAV servers    | 30s     | sync/caldav.py                    |
-| Google OAuth      | 30s     | http_clients.py (shared client)   |
-| MCP subprocesses  | 30s     | mcp/client.py                     |
-| Weather API       | 10s     | http_clients.py (shared client)   |
-| Geocoding API     | 5s      | http_clients.py (shared client)   |
-| Vikunja API       | 10s     | actions/tasks.py                  |
+| Service          | Timeout             | Location                        |
+|------------------|---------------------|---------------------------------|
+| Ollama LLM       | SDK default (~120s) | agent/core.py (OpenAI SDK)      |
+| Evolution API    | 30s                 | http_clients.py (shared client) |
+| Signal API       | 10-30s              | actions/signal.py               |
+| CalDAV servers   | 60s                 | sync/caldav.py                  |
+| Google OAuth     | 30s                 | http_clients.py (shared client) |
+| MCP subprocesses | 30s                 | mcp/client.py                   |
+| Weather API      | 10s                 | http_clients.py (shared client) |
+| Geocoding API    | 5s                  | http_clients.py (shared client) |
+| Vikunja API      | 10s                 | actions/tasks.py                |
 
 Every external HTTP call has an explicit timeout. No unbounded waits.
 
@@ -441,13 +450,13 @@ Every external HTTP call has an explicit timeout. No unbounded waits.
 
 Applied to 8 callables across 5 modules:
 
-| Module               | Decorated methods                           |
-|----------------------|---------------------------------------------|
-| sync/carddav.py      | 2 methods (contact fetch/sync)              |
-| sync/caldav.py        | 2 methods (event fetch/sync)                |
-| sync/manager.py       | 1 method (source refresh)                   |
-| actions/briefing.py   | 2 methods (weather + event summary fetch)   |
-| mcp/weather/server.py | 1 function (weather data fetch)             |
+| Module                | Decorated methods                         |
+|-----------------------|-------------------------------------------|
+| sync/carddav.py       | 2 methods (propfind + vCard fetch)         |
+| sync/caldav.py        | 2 methods (REPORT + propfind)             |
+| sync/manager.py       | 1 method (ICS fetch)                      |
+| actions/briefing.py   | 2 methods (weather + Vikunja tasks fetch) |
+| mcp/weather/server.py | 1 function (Open-Meteo data fetch)        |
 
 **Graceful shutdown** (`main.py`):
 
@@ -614,32 +623,32 @@ the primary gap. The remaining HTMX/API duality is by design.
 
 ### Phase 1 — Quick Wins (done, PR #45)
 
-| # | Dimension        | Before | After | Measure                                                     |
-|---|------------------|--------|-------|-------------------------------------------------------------|
-| 1 | Resilience       | 6.5    | 8.0   | `@retry_http` decorator (tenacity) on 8 callables across 5 modules |
-| 2 | Performance      | 7.5    | 8.5   | `HttpClients` container with 5 shared clients, replacing 15+ per-request instances |
-| 3 | UI/UX            | 7.0    | 8.0   | 31 labels, 9 aria-labels, 7 roles, skip-link, table scopes |
-| 4 | Maintainability  | 8.0    | 8.5   | `AppState` Protocol, removed `web.*` and `sync.caldav` mypy overrides |
+| #   | Dimension       | Before | After | Measure                                                                          |
+|-----|-----------------|--------|-------|----------------------------------------------------------------------------------|
+| 1   | Resilience      | 6.5    | 8.0   | `@retry_http` decorator (tenacity) on 8 callables across 5 modules              |
+| 2   | Performance     | 7.5    | 8.5   | `HttpClients` container with 5 shared clients, replacing 15+ per-request clients |
+| 3   | UI/UX           | 7.0    | 8.0   | 31 labels, 9 aria-labels, 7 roles, skip-link, table scopes                      |
+| 4   | Maintainability | 8.0    | 8.5   | `AppState` Protocol, removed `web.*` and `sync.caldav` mypy overrides            |
 
 ### Phase 2 — Structural Improvements (done, PR #46)
 
-| # | Dimension        | Before | After | Measure                                                     |
-|---|------------------|--------|-------|-------------------------------------------------------------|
-| 5 | KISS / Complexity| 7.5    | 8.5   | Split NilesAgent into `core.py`, `context.py`, `text_tool_parser.py` |
-| 6 | API Design       | 7.5    | 8.0   | Unified `{"error": {"code", "message", "details"}}` via `errors.py` |
-| 7 | DevOps           | 9.0    | 9.5   | `pip-audit` CI job + Renovate configured                    |
-| 8 | Security         | 9.0    | 9.5   | CSP `report-uri /csp-report` endpoint + pip-audit           |
+| #   | Dimension        | Before | After | Measure                                                                     |
+|-----|------------------|--------|-------|-----------------------------------------------------------------------------|
+| 5   | KISS / Complexity| 7.5    | 8.5   | Split NilesAgent into `core.py`, `context.py`, `text_tool_parser.py`        |
+| 6   | API Design       | 7.5    | 8.0   | Unified `{"error": {"code", "message", "details"}}` via `errors.py`         |
+| 7   | DevOps           | 9.0    | 9.5   | `pip-audit` CI job + Renovate configured                                    |
+| 8   | Security         | 9.0    | 9.5   | CSP `report-uri /csp-report` endpoint + pip-audit                           |
 
 ### Phase 3 — Long-term (7.0-8.5 → ~9.0 avg)
 
-| # | Dimension        | Score | Measure                                                        | Effort |
-|---|------------------|-------|----------------------------------------------------------------|--------|
-| 9 | Observability    | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs | Large  |
-| 10| Architecture     | 8.5   | Extract `main.py` lifespan into builder/factory pattern        | Medium |
-| 11| Maintainability  | 8.5   | Reduce remaining 10 mypy overrides, raise coverage to 70%     | Medium |
-| 12| UI/UX            | 8.0   | axe-core in CI, HTMX focus management, aria-live on toasts    | Small  |
-| 13| Performance      | 8.5   | Settings/contact caching, Ollama model list caching            | Small  |
-| 14| Resilience       | 8.0   | Circuit breakers for CalDAV, Ollama retry with backoff         | Medium |
+| #   | Dimension       | Score | Measure                                                                | Effort |
+|-----|-----------------|-------|------------------------------------------------------------------------|--------|
+| 9   | Observability   | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs  | Large  |
+| 10  | Architecture    | 8.5   | Extract `main.py` lifespan into builder/factory pattern                | Medium |
+| 11  | Maintainability | 8.5   | Reduce remaining 10 mypy overrides, raise coverage to 70%              | Medium |
+| 12  | UI/UX           | 8.0   | axe-core in CI, HTMX focus management, aria-live on toasts             | Small  |
+| 13  | Performance     | 8.5   | Settings/contact caching, Ollama model list caching                    | Small  |
+| 14  | Resilience      | 8.0   | Circuit breakers for CalDAV, Ollama retry with backoff                 | Medium |
 
 ---
 
