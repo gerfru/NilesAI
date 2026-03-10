@@ -341,9 +341,11 @@ async def lifespan(app: FastAPI):
     notion_embedder = None
     notion_retriever = None
     ollama_embedder = None
+    notion_summarizer = None
     if settings.feature_notion and settings.notion_token:
         from .sync.notion import NotionSync
         from .sync.notion_embeddings import NotionEmbeddingPipeline
+        from .sync.notion_summarizer import NotionSummarizer
         from .sync.ollama_embedder import OllamaEmbedder
         from .actions.notion import NotionRetriever
 
@@ -351,12 +353,19 @@ async def lifespan(app: FastAPI):
             ollama_base_url=settings.llm_base_url,
             model=settings.notion_embedding_model,
         )
+        notion_summarizer = NotionSummarizer(
+            ollama_base_url=settings.llm_base_url,
+            model=settings.notion_summary_model or settings.llm_model,
+            max_input_chars=settings.notion_summary_max_input,
+            max_tokens=settings.notion_summary_max_tokens,
+        )
         notion_sync = NotionSync(pool, settings.notion_token)
         notion_embedder = NotionEmbeddingPipeline(
             pool=pool,
             embedder=ollama_embedder,
             chunk_size=settings.notion_chunk_size,
             chunk_overlap=settings.notion_chunk_overlap,
+            summarizer=notion_summarizer,
         )
         notion_retriever = NotionRetriever(
             pool=pool,
@@ -417,6 +426,7 @@ async def lifespan(app: FastAPI):
     app.state.notion_embedder = notion_embedder
     app.state.notion_retriever = notion_retriever
     app.state.ollama_embedder = ollama_embedder
+    app.state.notion_summarizer = notion_summarizer
 
     # Cache signal_disabled flag from DB overrides (avoids DB query on
     # every 3s HTMX poll in signal_status endpoint).
@@ -460,6 +470,8 @@ async def lifespan(app: FastAPI):
 
     if ollama_embedder:
         await ollama_embedder.close()
+    if notion_summarizer:
+        await notion_summarizer.close()
     if user_mcp_pool:
         await user_mcp_pool.stop()
     await mcp_manager.stop_all()

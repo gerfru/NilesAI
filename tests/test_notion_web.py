@@ -57,6 +57,7 @@ def _make_request(
     notion_embedder=None,
     notion_retriever=None,
     ollama_embedder=None,
+    notion_summarizer=None,
 ):
     """Build a mock Request with app.state for Notion tests."""
     request = MagicMock()
@@ -72,6 +73,7 @@ def _make_request(
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
     request.app.state.ollama_embedder = ollama_embedder
+    request.app.state.notion_summarizer = notion_summarizer
     request.client.host = "127.0.0.1"
     request.url.scheme = "http"
     return request
@@ -106,7 +108,8 @@ class TestNotionStatus:
         pool = AsyncMock()
         pool.fetchrow.side_effect = [
             {"cnt": 42, "last_sync": None},  # notion_pages count
-            {"cnt": 128},  # notion_embeddings count
+            {"cnt": 128},  # chunk_count (level 1)
+            {"cnt": 10},  # summary_count (level 0)
         ]
         request = _make_request(
             cookies=_auth_cookies(),
@@ -165,7 +168,8 @@ class TestNotionConnect:
         pool = AsyncMock()
         pool.fetchrow.side_effect = [
             {"cnt": 5, "last_sync": None},
-            {"cnt": 0},
+            {"cnt": 0},  # chunk_count (level 1)
+            {"cnt": 0},  # summary_count (level 0)
         ]
         settings_store = AsyncMock()
         agent = MagicMock()
@@ -186,6 +190,7 @@ class TestNotionConnect:
             patch("niles.sync.notion.NotionSync") as MockSync,
             patch("niles.sync.notion_embeddings.NotionEmbeddingPipeline"),
             patch("niles.sync.ollama_embedder.OllamaEmbedder"),
+            patch("niles.sync.notion_summarizer.NotionSummarizer"),
             patch("niles.actions.notion.NotionRetriever"),
             patch("niles.sources.web._notion.templates") as mock_tpl,
             patch("niles.sources.web._notion.asyncio") as mock_asyncio,
@@ -235,6 +240,7 @@ class TestNotionDisconnect:
             agent=agent,
             scheduler=scheduler,
             ollama_embedder=AsyncMock(),
+            notion_summarizer=AsyncMock(),
         )
 
         with patch("niles.sources.web._notion.templates") as mock_tpl:
@@ -283,7 +289,8 @@ class TestNotionSyncTrigger:
         pool = AsyncMock()
         pool.fetchrow.side_effect = [
             {"cnt": 10, "last_sync": None},
-            {"cnt": 50},
+            {"cnt": 50},  # chunk_count (level 1)
+            {"cnt": 5},  # summary_count (level 0)
         ]
 
         settings = _make_settings(feature_notion=True, notion_token="ntn_tok")
