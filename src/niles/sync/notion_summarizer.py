@@ -64,6 +64,7 @@ class NotionSummarizer:
                     "model": self._model,
                     "prompt": prompt,
                     "stream": False,
+                    "think": False,
                     "options": {"num_predict": self._max_tokens},
                 },
                 timeout=_GENERATE_TIMEOUT,
