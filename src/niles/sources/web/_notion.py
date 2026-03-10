@@ -44,16 +44,15 @@ async def _notion_status_ctx(request: Request) -> dict:
         logger.warning("Failed to fetch notion page count")
 
     try:
-        row = await pool.fetchrow(
-            "SELECT COUNT(*) AS cnt FROM notion_embeddings WHERE chunk_level = 1"
+        rows = await pool.fetch(
+            "SELECT chunk_level, COUNT(*) AS cnt"
+            " FROM notion_embeddings GROUP BY chunk_level"
         )
-        if row:
-            ctx["chunk_count"] = row["cnt"]
-        row = await pool.fetchrow(
-            "SELECT COUNT(*) AS cnt FROM notion_embeddings WHERE chunk_level = 0"
-        )
-        if row:
-            ctx["summary_count"] = row["cnt"]
+        for row in rows:
+            if row["chunk_level"] == 1:
+                ctx["chunk_count"] = row["cnt"]
+            elif row["chunk_level"] == 0:
+                ctx["summary_count"] = row["cnt"]
     except Exception:
         logger.warning("Failed to fetch notion chunk count")
 
@@ -137,13 +136,14 @@ async def notion_connect(
     from ...sync.ollama_embedder import OllamaEmbedder
     from ...actions.notion import NotionRetriever
 
-    # Close previous embedder/summarizer if any
-    old_embedder = getattr(request.app.state, "ollama_embedder", None)
-    if old_embedder:
-        await old_embedder.close()
-    old_summarizer = getattr(request.app.state, "notion_summarizer", None)
-    if old_summarizer:
-        await old_summarizer.close()
+    # Wait for any in-flight sync, then close previous embedder/summarizer
+    async with _notion_sync_lock:
+        old_embedder = getattr(request.app.state, "ollama_embedder", None)
+        if old_embedder:
+            await old_embedder.close()
+        old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+        if old_summarizer:
+            await old_summarizer.close()
 
     ollama_embedder = OllamaEmbedder(
         ollama_base_url=new_settings.llm_base_url,
@@ -184,28 +184,34 @@ async def notion_connect(
     # Register scheduler job
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler and not scheduler.get_job("notion_sync"):
+        if new_settings.notion_sync_interval > 0:
 
-        async def notion_sync_and_embed():
-            await notion_sync.sync_all()
-            await notion_embedder.embed_pending()
+            async def notion_sync_and_embed():
+                if _notion_sync_lock.locked():
+                    logger.info("Scheduled sync skipped (already running)")
+                    return
+                async with _notion_sync_lock:
+                    await notion_sync.sync_all()
+                    await notion_embedder.embed_pending()
 
-        scheduler.add_job(
-            notion_sync_and_embed,
-            "interval",
-            minutes=new_settings.notion_sync_interval,
-            id="notion_sync",
-            max_instances=1,
-            misfire_grace_time=600,
-        )
-        logger.info("Notion sync job registered via UI")
+            scheduler.add_job(
+                notion_sync_and_embed,
+                "interval",
+                minutes=new_settings.notion_sync_interval,
+                id="notion_sync",
+                max_instances=1,
+                misfire_grace_time=600,
+            )
+            logger.info("Notion sync job registered via UI")
 
     # Trigger initial sync in background
     async def _initial_sync():
-        try:
-            await notion_sync.sync_all()
-            await notion_embedder.embed_pending()
-        except Exception:
-            logger.exception("Initial Notion sync failed after connect")
+        async with _notion_sync_lock:
+            try:
+                await notion_sync.sync_all()
+                await notion_embedder.embed_pending()
+            except Exception:
+                logger.exception("Initial Notion sync failed after connect")
 
     asyncio.create_task(_initial_sync())
 
