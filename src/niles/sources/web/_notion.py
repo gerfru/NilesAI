@@ -44,9 +44,16 @@ async def _notion_status_ctx(request: Request) -> dict:
         logger.warning("Failed to fetch notion page count")
 
     try:
-        row = await pool.fetchrow("SELECT COUNT(*) AS cnt FROM notion_embeddings")
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM notion_embeddings WHERE chunk_level = 1"
+        )
         if row:
             ctx["chunk_count"] = row["cnt"]
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM notion_embeddings WHERE chunk_level = 0"
+        )
+        if row:
+            ctx["summary_count"] = row["cnt"]
     except Exception:
         logger.warning("Failed to fetch notion chunk count")
 
@@ -126,17 +133,27 @@ async def notion_connect(
 
     # Create sync/embed/retrieval instances (shared embedder for connection pooling)
     from ...sync.notion_embeddings import NotionEmbeddingPipeline
+    from ...sync.notion_summarizer import NotionSummarizer
     from ...sync.ollama_embedder import OllamaEmbedder
     from ...actions.notion import NotionRetriever
 
-    # Close previous embedder if any
+    # Close previous embedder/summarizer if any
     old_embedder = getattr(request.app.state, "ollama_embedder", None)
     if old_embedder:
         await old_embedder.close()
+    old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+    if old_summarizer:
+        await old_summarizer.close()
 
     ollama_embedder = OllamaEmbedder(
         ollama_base_url=new_settings.llm_base_url,
         model=new_settings.notion_embedding_model,
+    )
+    notion_summarizer = NotionSummarizer(
+        ollama_base_url=new_settings.llm_base_url,
+        model=new_settings.notion_summary_model or new_settings.llm_model,
+        max_input_chars=new_settings.notion_summary_max_input,
+        max_tokens=new_settings.notion_summary_max_tokens,
     )
     notion_sync = NotionSync(pool, token)
     notion_embedder = NotionEmbeddingPipeline(
@@ -144,6 +161,7 @@ async def notion_connect(
         embedder=ollama_embedder,
         chunk_size=new_settings.notion_chunk_size,
         chunk_overlap=new_settings.notion_chunk_overlap,
+        summarizer=notion_summarizer,
     )
     notion_retriever = NotionRetriever(
         pool=pool,
@@ -152,6 +170,7 @@ async def notion_connect(
     )
 
     request.app.state.ollama_embedder = ollama_embedder
+    request.app.state.notion_summarizer = notion_summarizer
     request.app.state.notion_sync = notion_sync
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
@@ -232,11 +251,15 @@ async def notion_disconnect(request: Request):
     except Exception:
         logger.exception("Failed to clear Notion data on disconnect")
 
-    # Close embedder and clear app state
+    # Close embedder/summarizer and clear app state
     old_embedder = getattr(request.app.state, "ollama_embedder", None)
     if old_embedder:
         await old_embedder.close()
+    old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+    if old_summarizer:
+        await old_summarizer.close()
     request.app.state.ollama_embedder = None
+    request.app.state.notion_summarizer = None
     request.app.state.notion_sync = None
     request.app.state.notion_embedder = None
     request.app.state.notion_retriever = None
