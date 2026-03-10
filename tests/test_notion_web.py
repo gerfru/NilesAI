@@ -57,6 +57,7 @@ def _make_request(
     notion_embedder=None,
     notion_retriever=None,
     ollama_embedder=None,
+    notion_summarizer=None,
 ):
     """Build a mock Request with app.state for Notion tests."""
     request = MagicMock()
@@ -72,6 +73,7 @@ def _make_request(
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
     request.app.state.ollama_embedder = ollama_embedder
+    request.app.state.notion_summarizer = notion_summarizer
     request.client.host = "127.0.0.1"
     request.url.scheme = "http"
     return request
@@ -104,9 +106,10 @@ class TestNotionStatus:
     async def test_connected_shows_page_count(self):
         settings = _make_settings(feature_notion=True, notion_token="ntn_test_12345678")
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 42, "last_sync": None},  # notion_pages count
-            {"cnt": 128},  # notion_embeddings count
+        pool.fetchrow.return_value = {"cnt": 42, "last_sync": None}
+        pool.fetch.return_value = [
+            {"chunk_level": 1, "cnt": 128},
+            {"chunk_level": 0, "cnt": 10},
         ]
         request = _make_request(
             cookies=_auth_cookies(),
@@ -122,6 +125,7 @@ class TestNotionStatus:
         assert ctx["connected"] is True
         assert ctx["page_count"] == 42
         assert ctx["chunk_count"] == 128
+        assert ctx["summary_count"] == 10
 
 
 # ---------- notion_connect ---------------------------------------------------
@@ -163,10 +167,8 @@ class TestNotionConnect:
 
     async def test_successful_connect(self):
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 5, "last_sync": None},
-            {"cnt": 0},
-        ]
+        pool.fetchrow.return_value = {"cnt": 5, "last_sync": None}
+        pool.fetch.return_value = []  # no embeddings yet
         settings_store = AsyncMock()
         agent = MagicMock()
         agent._ctx = MagicMock()
@@ -186,6 +188,7 @@ class TestNotionConnect:
             patch("niles.sync.notion.NotionSync") as MockSync,
             patch("niles.sync.notion_embeddings.NotionEmbeddingPipeline"),
             patch("niles.sync.ollama_embedder.OllamaEmbedder"),
+            patch("niles.sync.notion_summarizer.NotionSummarizer"),
             patch("niles.actions.notion.NotionRetriever"),
             patch("niles.sources.web._notion.templates") as mock_tpl,
             patch("niles.sources.web._notion.asyncio") as mock_asyncio,
@@ -235,6 +238,7 @@ class TestNotionDisconnect:
             agent=agent,
             scheduler=scheduler,
             ollama_embedder=AsyncMock(),
+            notion_summarizer=AsyncMock(),
         )
 
         with patch("niles.sources.web._notion.templates") as mock_tpl:
@@ -281,9 +285,10 @@ class TestNotionSyncTrigger:
         mock_sync = AsyncMock()
         mock_embedder = AsyncMock()
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 10, "last_sync": None},
-            {"cnt": 50},
+        pool.fetchrow.return_value = {"cnt": 10, "last_sync": None}
+        pool.fetch.return_value = [
+            {"chunk_level": 1, "cnt": 50},
+            {"chunk_level": 0, "cnt": 5},
         ]
 
         settings = _make_settings(feature_notion=True, notion_token="ntn_tok")
