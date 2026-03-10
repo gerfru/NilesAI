@@ -18,7 +18,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from .conftest import make_real_agent
+from .conftest import make_real_agent, record_score
 from .judge import run_and_judge
 
 pytestmark = [
@@ -72,6 +72,7 @@ class TestContactsJudge:
             agent=real_agent,
             message="Wie ist die Telefonnummer von Max Mustermann?",
         )
+        record_score("find_contact", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -91,6 +92,7 @@ class TestMemoryJudge:
             agent=real_agent,
             message="Merk dir bitte: Mein Lieblingsgericht ist Wiener Schnitzel",
         )
+        record_score("remember", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -109,6 +111,7 @@ class TestCalendarJudge:
             agent=real_agent,
             message="Was steht morgen im Kalender?",
         )
+        record_score("find_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
@@ -127,6 +130,7 @@ class TestNoToolJudge:
             agent=real_agent,
             message="Guten Morgen, Niles!",
         )
+        record_score("greeting", result["scores"])
         assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
             f"personality={result['scores']['personality']}: {result['reasoning']}"
         )
@@ -145,6 +149,325 @@ class TestTasksJudge:
             agent=real_agent,
             message="Erstelle eine Aufgabe: Einkaufen gehen",
         )
+        record_score("create_task", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ===========================================================================
+# Extended judge tests — new scenarios for LLM benchmark
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Search & fetch tools (MCP-dependent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    os.environ.get("FEATURE_SEARCH", "").lower() != "true",
+    reason="FEATURE_SEARCH not enabled",
+)
+class TestSearchToolJudge:
+    async def test_web_search(self, real_agent):
+        """Agent should use mcp__searxng__search for web research."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Recherchiere aktuelle Nachrichten zu KI",
+        )
+        record_score("web_search", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+    async def test_fetch_url(self, real_agent):
+        """Agent should use mcp__fetch__fetch_url to read a URL."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Lies diese Seite: https://example.com",
+        )
+        record_score("fetch_url", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Notion RAG (feature-gated)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    os.environ.get("FEATURE_NOTION", "").lower() != "true",
+    reason="FEATURE_NOTION not enabled",
+)
+class TestNotionToolJudge:
+    async def test_notion_search(self, real_agent):
+        """Agent should use search_notion for knowledge base queries."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Suche in meinen Notion-Notizen nach Projektplan",
+        )
+        record_score("notion_search", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Weather tools (MCP-dependent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    os.environ.get("MCP_TOOLS_AVAILABLE", "").lower() != "true",
+    reason="MCP tools not available",
+)
+class TestWeatherToolJudge:
+    async def test_weather_forecast(self, real_agent):
+        """Agent should use weather tool for forecast questions."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Wie wird das Wetter morgen?",
+        )
+        record_score("weather_forecast", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+    async def test_weather_current(self, real_agent):
+        """Agent should use weather tool for current weather."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Wie ist das Wetter gerade?",
+        )
+        record_score("weather_current", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Messaging tools
+# ---------------------------------------------------------------------------
+
+
+class TestMessagingJudge:
+    async def test_send_whatsapp(self, real_agent, seed_contact):
+        """Agent should use send_whatsapp to send a message."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Sende Max eine WhatsApp: Bin in 10 Min da",
+        )
+        record_score("send_whatsapp", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+    @pytest.mark.skipif(
+        not os.environ.get("SIGNAL_PHONE", ""),
+        reason="Signal not configured (SIGNAL_PHONE not set)",
+    )
+    async def test_send_signal(self, real_agent, seed_contact):
+        """Agent should use send_signal to send a Signal message."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Sende Max eine Signal-Nachricht: Treffen verschoben",
+        )
+        record_score("send_signal", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+    async def test_get_whatsapp_messages(self, real_agent, seed_contact):
+        """Agent should use get_whatsapp_messages to read messages.
+
+        Uses seed_contact (Max) but asks about messages — the LLM should
+        select get_whatsapp_messages regardless of whether messages exist.
+        """
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Was hat Max geschrieben?",
+        )
+        record_score("get_whatsapp_messages", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Calendar — create event
+# ---------------------------------------------------------------------------
+
+
+class TestCalendarExtJudge:
+    async def test_create_event(self, real_agent):
+        """Agent should use create_event for scheduling."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Erstelle einen Termin: Zahnarzt morgen 14 Uhr",
+        )
+        record_score("create_event", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task listing
+# ---------------------------------------------------------------------------
+
+
+class TestTasksExtJudge:
+    async def test_list_tasks(self, real_agent):
+        """Agent should use list_tasks for open tasks query."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Welche Aufgaben sind offen?",
+        )
+        record_score("list_tasks", result["scores"])
+        assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result['scores']['tool_selection']}: "
+            f"{result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Memory — remember + recall
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryExtJudge:
+    async def test_remember_and_recall(self, real_agent):
+        """Agent should use remember then recall for stored facts."""
+        chat_id = "judge-memory-recall"
+
+        # Step 1: remember
+        result_remember = await run_and_judge(
+            agent=real_agent,
+            message="Merk dir: Mein WLAN-Passwort ist SuperSecret123",
+            chat_id=chat_id,
+        )
+        record_score("remember_wifi", result_remember["scores"])
+        assert result_remember["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result_remember['scores']['tool_selection']}: "
+            f"{result_remember['reasoning']}"
+        )
+
+        # Step 2: recall (same chat_id for context)
+        result_recall = await run_and_judge(
+            agent=real_agent,
+            message="Was war nochmal mein WLAN-Passwort?",
+            chat_id=chat_id,
+        )
+        record_score("recall_wifi", result_recall["scores"])
+        assert result_recall["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
+            f"tool_selection={result_recall['scores']['tool_selection']}: "
+            f"{result_recall['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# No tool needed — direct answers
+# ---------------------------------------------------------------------------
+
+
+class TestNoToolNeededJudge:
+    async def test_general_knowledge(self, real_agent):
+        """General knowledge question — no tool needed."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Was ist die Hauptstadt von Frankreich?",
+        )
+        record_score("no_tool_knowledge", result["scores"])
+        assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
+            f"personality={result['scores']['personality']}: {result['reasoning']}"
+        )
+        assert result["scores"]["language"] >= SCORE_THRESHOLD
+
+    async def test_explanation(self, real_agent):
+        """Explanation request — no tool needed."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Erklaere mir was Docker ist",
+        )
+        record_score("no_tool_explanation", result["scores"])
+        assert result["scores"]["response_quality"] >= SCORE_THRESHOLD, (
+            f"response_quality={result['scores']['response_quality']}: "
+            f"{result['reasoning']}"
+        )
+        assert result["scores"]["language"] >= SCORE_THRESHOLD
+
+    async def test_thanks(self, real_agent):
+        """Simple thanks — no tool needed."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Danke!",
+        )
+        record_score("no_tool_thanks", result["scores"])
+        assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
+            f"personality={result['scores']['personality']}: {result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Ambiguous requests
+# ---------------------------------------------------------------------------
+
+
+class TestAmbiguousJudge:
+    async def test_whats_new(self, real_agent):
+        """Ambiguous: could check calendar, tasks, or smalltalk."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Was gibt's Neues?",
+        )
+        record_score("ambiguous_whats_new", result["scores"])
+        # Any reasonable response is acceptable
+        assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
+            f"personality={result['scores']['personality']}: {result['reasoning']}"
+        )
+        assert result["scores"]["language"] >= SCORE_THRESHOLD
+
+    async def test_contact_person(self, real_agent, seed_contact):
+        """Ambiguous: could use WhatsApp or Signal."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message="Kontaktiere Max",
+        )
+        record_score("ambiguous_contact", result["scores"])
+        assert result["scores"]["personality"] >= SCORE_THRESHOLD, (
+            f"personality={result['scores']['personality']}: {result['reasoning']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Multi-tool — sequential tool calls
+# ---------------------------------------------------------------------------
+
+
+class TestMultiToolJudge:
+    async def test_remember_and_create_event(self, real_agent):
+        """Agent should use both remember and create_event."""
+        result = await run_and_judge(
+            agent=real_agent,
+            message=(
+                "Merk dir dass ich morgen Zahnarzt habe "
+                "und erstelle einen Termin dafuer"
+            ),
+        )
+        record_score("multi_remember_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
             f"tool_selection={result['scores']['tool_selection']}: "
             f"{result['reasoning']}"
