@@ -181,9 +181,11 @@ async def notion_connect(
         agent.notion_retriever = notion_retriever
         agent._ctx.notion_retriever = notion_retriever
 
-    # Register scheduler job
+    # Register scheduler job (remove stale job first on reconnect)
     scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler and not scheduler.get_job("notion_sync"):
+    if scheduler:
+        if scheduler.get_job("notion_sync"):
+            scheduler.remove_job("notion_sync")
         if new_settings.notion_sync_interval > 0:
 
             async def notion_sync_and_embed():
@@ -257,13 +259,14 @@ async def notion_disconnect(request: Request):
     except Exception:
         logger.exception("Failed to clear Notion data on disconnect")
 
-    # Close embedder/summarizer and clear app state
-    old_embedder = getattr(request.app.state, "ollama_embedder", None)
-    if old_embedder:
-        await old_embedder.close()
-    old_summarizer = getattr(request.app.state, "notion_summarizer", None)
-    if old_summarizer:
-        await old_summarizer.close()
+    # Wait for any in-flight sync, then close embedder/summarizer
+    async with _notion_sync_lock:
+        old_embedder = getattr(request.app.state, "ollama_embedder", None)
+        if old_embedder:
+            await old_embedder.close()
+        old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+        if old_summarizer:
+            await old_summarizer.close()
     request.app.state.ollama_embedder = None
     request.app.state.notion_summarizer = None
     request.app.state.notion_sync = None
