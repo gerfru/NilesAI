@@ -382,7 +382,7 @@
         <label for="llm-model" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">llm_model</label>
         <div class="flex gap-2">
             <select name="value" id="llm-model"
-                    hx-get="/ui/api/settings/ollama_models" hx-trigger="load" hx-swap="innerHTML"
+                    hx-get="/ui/api/settings/ollama_models" hx-trigger="load" hx-target="this" hx-swap="innerHTML"
                     class="flex-1 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 <option value="{{ text_settings.llm_model }}" selected>{{ text_settings.llm_model }}</option>
             </select>
