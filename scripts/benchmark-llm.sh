@@ -50,7 +50,7 @@ fi
 
 # Default models (overridable via CLI args)
 if [ $# -eq 0 ]; then
-    MODELS=("llama3.1:8b" "llama3.3:latest" "qwen3:8b" "mistral:latest")
+    MODELS=("llama3.1:8b" "qwen3:8b" "mistral-nemo:12b")
 else
     MODELS=("$@")
 fi
