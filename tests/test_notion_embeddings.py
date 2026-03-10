@@ -114,12 +114,12 @@ class TestChunkText:
         chunks = pipe._chunk_text(text, "Title")
         assert len(chunks) == 1
 
-    def test_is_useful_chunk_strips_title(self):
+    def test_is_useful_chunk_raw_text(self):
         pipe, _, _ = _pipeline()
-        # Chunk with title prefix but garbage content
-        assert not pipe._is_useful_chunk("[Title] ┌──┐│──│└──┘" * 3)
-        # Chunk with title prefix and real content
-        assert pipe._is_useful_chunk("[Title] This is real text content")
+        # Garbage content (no title prefix — raw text)
+        assert not pipe._is_useful_chunk("┌──┐│──│└──┘" * 3)
+        # Real content
+        assert pipe._is_useful_chunk("This is real text content")
 
 
 # ---------- OllamaEmbedder ---------------------------------------------------
@@ -186,6 +186,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "Hello world"},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         stats = await pipe.embed_pending()
@@ -200,6 +201,7 @@ class TestEmbedPending:
     async def test_no_pending_pages(self):
         pipe, pool, _ = _pipeline()
         pool.fetch.return_value = []
+        pool.fetchval = AsyncMock(return_value=0)
 
         stats = await pipe.embed_pending()
 
@@ -212,6 +214,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "Some content here"},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = None
 
         stats = await pipe.embed_pending()
@@ -226,6 +229,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "", "content_text": "First chunk.\nSecond chunk."},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         # First chunk succeeds, second fails
         embedder.embed.side_effect = [_fake_embedding(), None]
 
@@ -256,6 +260,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "Content here"},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         await pipe.embed_pending()
@@ -270,6 +275,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "Content here"},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         await pipe.embed_pending()
@@ -286,6 +292,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "Content here"},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         await pipe.embed_pending()
@@ -303,6 +310,7 @@ class TestEmbedPending:
             {"id": "p1", "title": "Test", "content_text": "A" * 200},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         stats = await pipe.embed_pending()
@@ -324,6 +332,7 @@ class TestEmbedPendingWithSummarizer:
             {"id": "p1", "title": "Test", "content_text": "A" * 200},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         stats = await pipe.embed_pending()
@@ -347,8 +356,8 @@ class TestEmbedPendingWithSummarizer:
         detail_insert = insert_calls[1]
         assert detail_insert[0][2] == LEVEL_DETAIL
 
-    async def test_summary_failure_blocks_page_completion(self):
-        """If summary generation fails, page is NOT marked as embedded."""
+    async def test_summary_failure_does_not_block_page(self):
+        """If summary generation fails, page is still marked as embedded."""
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = None  # Failure
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
@@ -356,17 +365,18 @@ class TestEmbedPendingWithSummarizer:
             {"id": "p1", "title": "Test", "content_text": "A" * 200},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         stats = await pipe.embed_pending()
 
-        assert stats["errors"] >= 1
-        assert stats["pages_embedded"] == 0
+        assert stats["summaries_failed"] == 1
+        assert stats["pages_embedded"] == 1
         # Detail chunks should still be created
         assert stats["chunks_created"] >= 1
 
-    async def test_summary_embedding_failure_blocks_page(self):
-        """If summary text is generated but embedding fails, page not marked."""
+    async def test_summary_embedding_failure_does_not_block_page(self):
+        """If summary text is generated but embedding fails, page still marked."""
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = "A summary."
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
@@ -374,14 +384,15 @@ class TestEmbedPendingWithSummarizer:
             {"id": "p1", "title": "Test", "content_text": "A" * 200},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         # First call (summary embed) fails, rest succeed
         embedder.embed.side_effect = [None, _fake_embedding()]
 
         stats = await pipe.embed_pending()
 
         assert stats["summaries_created"] == 0
-        assert stats["errors"] >= 1
-        assert stats["pages_embedded"] == 0
+        assert stats["summaries_failed"] == 1
+        assert stats["pages_embedded"] == 1
 
     async def test_short_content_no_summary(self):
         """Content < 100 chars: no summary attempt even with summarizer."""
@@ -391,6 +402,7 @@ class TestEmbedPendingWithSummarizer:
             {"id": "p1", "title": "Short", "content_text": "Brief note."},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         stats = await pipe.embed_pending()
@@ -409,6 +421,7 @@ class TestEmbedPendingWithSummarizer:
             {"id": "p1", "title": "My Page", "content_text": "A" * 200},
         ]
         pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
 
         await pipe.embed_pending()
