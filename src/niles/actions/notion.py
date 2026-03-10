@@ -1,6 +1,17 @@
-"""Notion RAG retrieval — semantic search over embedded Notion content."""
+"""Notion RAG retrieval — semantic search over embedded Notion content.
+
+Supports hierarchical chunking with auto-merge:
+- Level 0: Summary embeddings (one per page)
+- Level 1: Detail embeddings (fine-grained chunks)
+
+When multiple detail chunks from the same page match, the retriever
+boosts their scores and deduplicates to prevent one page from dominating.
+"""
+
+from __future__ import annotations
 
 import logging
+from collections import defaultdict
 
 import asyncpg
 
@@ -8,9 +19,21 @@ from ..sync.ollama_embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
 
+# Auto-merge boost values (small enough to nudge, not overwhelm raw similarity)
+_MULTI_HIT_BOOST = 0.05  # Applied when 2+ detail chunks from same page
+_SUMMARY_BOOST = 0.03  # Applied to summary chunks with detail hits
+
+# Per-page limits to prevent one page from dominating results
+_MAX_SUMMARIES_PER_PAGE = 1
+_MAX_DETAILS_PER_PAGE = 2
+
 
 class NotionRetriever:
-    """Retrieves relevant Notion chunks via pgvector similarity search."""
+    """Retrieves relevant Notion chunks via pgvector similarity search.
+
+    Uses auto-merge scoring: when multiple detail chunks from the same page
+    appear in results, their scores are boosted and deduplicated.
+    """
 
     def __init__(
         self,
@@ -23,7 +46,7 @@ class NotionRetriever:
         self._threshold = similarity_threshold
 
     async def search(self, query: str, max_results: int = 5) -> list[dict]:
-        """Semantic search over Notion embeddings.
+        """Semantic search over Notion embeddings with auto-merge.
 
         Returns list of dicts with keys:
             chunk_text, page_title, page_url, similarity
@@ -33,12 +56,15 @@ class NotionRetriever:
         if embedding is None:
             return []
 
-        # 2. pgvector similarity search
+        # 2. Fetch more candidates than needed for auto-merge scoring
+        internal_limit = max_results * 3
         rows = await self._pool.fetch(
             """
             SELECT
                 e.chunk_text,
                 e.chunk_index,
+                e.chunk_level,
+                e.page_id,
                 p.title AS page_title,
                 p.url AS page_url,
                 1 - (e.embedding <=> $1::vector) AS similarity
@@ -50,24 +76,85 @@ class NotionRetriever:
             """,
             str(embedding),
             self._threshold,
-            max_results,
+            internal_limit,
         )
 
-        results = []
+        if not rows:
+            logger.info(
+                "Notion search for '%s': 0 results (threshold %.2f)",
+                query[:50],
+                self._threshold,
+            )
+            return []
+
+        # 3. Group by page_id for auto-merge scoring
+        page_detail_counts: dict[str, int] = defaultdict(int)
         for row in rows:
-            results.append(
+            if row["chunk_level"] == 1:
+                page_detail_counts[row["page_id"]] += 1
+
+        # 4. Score and build candidates
+        candidates = []
+        for row in rows:
+            pid = row["page_id"]
+            base_sim = float(row["similarity"])
+            boost = 0.0
+
+            # Multi-hit boost: 2+ detail chunks from same page
+            if page_detail_counts[pid] >= 2:
+                boost += _MULTI_HIT_BOOST
+
+            # Summary boost: summary chunk has detail hits from same page
+            if row["chunk_level"] == 0 and page_detail_counts[pid] >= 1:
+                boost += _SUMMARY_BOOST
+
+            candidates.append(
                 {
                     "chunk_text": row["chunk_text"],
                     "page_title": row["page_title"],
                     "page_url": row["page_url"],
-                    "similarity": round(float(row["similarity"]), 4),
+                    "similarity": round(min(base_sim + boost, 1.0), 4),
+                    "_chunk_level": row["chunk_level"],
+                    "_page_id": pid,
                 }
             )
 
+        # 5. Sort by adjusted similarity
+        candidates.sort(key=lambda r: r["similarity"], reverse=True)
+
+        # 6. Deduplicate: max summaries + details per page
+        seen: dict[str, dict[int, int]] = {}
+        results = []
+        for c in candidates:
+            pid = c["_page_id"]
+            level = c["_chunk_level"]
+            if pid not in seen:
+                seen[pid] = {0: 0, 1: 0}
+
+            max_per_level = (
+                _MAX_SUMMARIES_PER_PAGE if level == 0 else _MAX_DETAILS_PER_PAGE
+            )
+            if seen[pid][level] >= max_per_level:
+                continue
+            seen[pid][level] += 1
+
+            # Strip internal fields before returning
+            results.append(
+                {
+                    "chunk_text": c["chunk_text"],
+                    "page_title": c["page_title"],
+                    "page_url": c["page_url"],
+                    "similarity": c["similarity"],
+                }
+            )
+            if len(results) >= max_results:
+                break
+
         logger.info(
-            "Notion search for '%s': %d results (threshold %.2f)",
+            "Notion search for '%s': %d results (threshold %.2f, candidates %d)",
             query[:50],
             len(results),
             self._threshold,
+            len(rows),
         )
         return results

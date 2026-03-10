@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     notion_chunk_size: int = 600  # characters per chunk
     notion_chunk_overlap: int = 100  # overlap between chunks
     notion_similarity_threshold: float = 0.3  # minimum cosine similarity
+    notion_summary_model: str = ""  # empty = use llm_model
+    notion_summary_max_input: int = 4000  # max chars sent to LLM for summarization
+    notion_summary_max_tokens: int = 200  # max LLM output tokens for summary
     feature_notion: bool = False
 
     # Briefing / Digest

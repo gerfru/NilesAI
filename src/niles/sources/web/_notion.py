@@ -44,9 +44,15 @@ async def _notion_status_ctx(request: Request) -> dict:
         logger.warning("Failed to fetch notion page count")
 
     try:
-        row = await pool.fetchrow("SELECT COUNT(*) AS cnt FROM notion_embeddings")
-        if row:
-            ctx["chunk_count"] = row["cnt"]
+        rows = await pool.fetch(
+            "SELECT chunk_level, COUNT(*) AS cnt"
+            " FROM notion_embeddings GROUP BY chunk_level"
+        )
+        for row in rows:
+            if row["chunk_level"] == 1:
+                ctx["chunk_count"] = row["cnt"]
+            elif row["chunk_level"] == 0:
+                ctx["summary_count"] = row["cnt"]
     except Exception:
         logger.warning("Failed to fetch notion chunk count")
 
@@ -126,17 +132,28 @@ async def notion_connect(
 
     # Create sync/embed/retrieval instances (shared embedder for connection pooling)
     from ...sync.notion_embeddings import NotionEmbeddingPipeline
+    from ...sync.notion_summarizer import NotionSummarizer
     from ...sync.ollama_embedder import OllamaEmbedder
     from ...actions.notion import NotionRetriever
 
-    # Close previous embedder if any
-    old_embedder = getattr(request.app.state, "ollama_embedder", None)
-    if old_embedder:
-        await old_embedder.close()
+    # Wait for any in-flight sync, then close previous embedder/summarizer
+    async with _notion_sync_lock:
+        old_embedder = getattr(request.app.state, "ollama_embedder", None)
+        if old_embedder:
+            await old_embedder.close()
+        old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+        if old_summarizer:
+            await old_summarizer.close()
 
     ollama_embedder = OllamaEmbedder(
         ollama_base_url=new_settings.llm_base_url,
         model=new_settings.notion_embedding_model,
+    )
+    notion_summarizer = NotionSummarizer(
+        ollama_base_url=new_settings.llm_base_url,
+        model=new_settings.notion_summary_model or new_settings.llm_model,
+        max_input_chars=new_settings.notion_summary_max_input,
+        max_tokens=new_settings.notion_summary_max_tokens,
     )
     notion_sync = NotionSync(pool, token)
     notion_embedder = NotionEmbeddingPipeline(
@@ -144,6 +161,7 @@ async def notion_connect(
         embedder=ollama_embedder,
         chunk_size=new_settings.notion_chunk_size,
         chunk_overlap=new_settings.notion_chunk_overlap,
+        summarizer=notion_summarizer,
     )
     notion_retriever = NotionRetriever(
         pool=pool,
@@ -152,6 +170,7 @@ async def notion_connect(
     )
 
     request.app.state.ollama_embedder = ollama_embedder
+    request.app.state.notion_summarizer = notion_summarizer
     request.app.state.notion_sync = notion_sync
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
@@ -162,31 +181,39 @@ async def notion_connect(
         agent.notion_retriever = notion_retriever
         agent._ctx.notion_retriever = notion_retriever
 
-    # Register scheduler job
+    # Register scheduler job (remove stale job first on reconnect)
     scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler and not scheduler.get_job("notion_sync"):
+    if scheduler:
+        if scheduler.get_job("notion_sync"):
+            scheduler.remove_job("notion_sync")
+        if new_settings.notion_sync_interval > 0:
 
-        async def notion_sync_and_embed():
-            await notion_sync.sync_all()
-            await notion_embedder.embed_pending()
+            async def notion_sync_and_embed():
+                if _notion_sync_lock.locked():
+                    logger.info("Scheduled sync skipped (already running)")
+                    return
+                async with _notion_sync_lock:
+                    await notion_sync.sync_all()
+                    await notion_embedder.embed_pending()
 
-        scheduler.add_job(
-            notion_sync_and_embed,
-            "interval",
-            minutes=new_settings.notion_sync_interval,
-            id="notion_sync",
-            max_instances=1,
-            misfire_grace_time=600,
-        )
-        logger.info("Notion sync job registered via UI")
+            scheduler.add_job(
+                notion_sync_and_embed,
+                "interval",
+                minutes=new_settings.notion_sync_interval,
+                id="notion_sync",
+                max_instances=1,
+                misfire_grace_time=600,
+            )
+            logger.info("Notion sync job registered via UI")
 
     # Trigger initial sync in background
     async def _initial_sync():
-        try:
-            await notion_sync.sync_all()
-            await notion_embedder.embed_pending()
-        except Exception:
-            logger.exception("Initial Notion sync failed after connect")
+        async with _notion_sync_lock:
+            try:
+                await notion_sync.sync_all()
+                await notion_embedder.embed_pending()
+            except Exception:
+                logger.exception("Initial Notion sync failed after connect")
 
     asyncio.create_task(_initial_sync())
 
@@ -232,11 +259,16 @@ async def notion_disconnect(request: Request):
     except Exception:
         logger.exception("Failed to clear Notion data on disconnect")
 
-    # Close embedder and clear app state
-    old_embedder = getattr(request.app.state, "ollama_embedder", None)
-    if old_embedder:
-        await old_embedder.close()
+    # Wait for any in-flight sync, then close embedder/summarizer
+    async with _notion_sync_lock:
+        old_embedder = getattr(request.app.state, "ollama_embedder", None)
+        if old_embedder:
+            await old_embedder.close()
+        old_summarizer = getattr(request.app.state, "notion_summarizer", None)
+        if old_summarizer:
+            await old_summarizer.close()
     request.app.state.ollama_embedder = None
+    request.app.state.notion_summarizer = None
     request.app.state.notion_sync = None
     request.app.state.notion_embedder = None
     request.app.state.notion_retriever = None
