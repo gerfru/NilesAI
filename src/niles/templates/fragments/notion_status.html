@@ -16,7 +16,7 @@
                 </div>
                 <span class="text-xs text-zinc-400 dark:text-zinc-500 block truncate">Token: {{ notion_token_masked }}</span>
                 {% if page_count is defined and page_count > 0 %}
-                <span class="text-xs text-green-600 dark:text-green-400">{{ page_count }} Seiten, {{ chunk_count|default(0) }} Chunks</span>
+                <span class="text-xs text-green-600 dark:text-green-400">{{ page_count }} Seiten, {{ summary_count|default(0) }} Summaries, {{ chunk_count|default(0) }} Chunks</span>
                 {% else %}
                 <span class="text-xs text-zinc-400 dark:text-zinc-500">Keine Seiten synchronisiert</span>
                 {% endif %}
