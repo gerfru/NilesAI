@@ -106,10 +106,10 @@ class TestNotionStatus:
     async def test_connected_shows_page_count(self):
         settings = _make_settings(feature_notion=True, notion_token="ntn_test_12345678")
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 42, "last_sync": None},  # notion_pages count
-            {"cnt": 128},  # chunk_count (level 1)
-            {"cnt": 10},  # summary_count (level 0)
+        pool.fetchrow.return_value = {"cnt": 42, "last_sync": None}
+        pool.fetch.return_value = [
+            {"chunk_level": 1, "cnt": 128},
+            {"chunk_level": 0, "cnt": 10},
         ]
         request = _make_request(
             cookies=_auth_cookies(),
@@ -125,6 +125,7 @@ class TestNotionStatus:
         assert ctx["connected"] is True
         assert ctx["page_count"] == 42
         assert ctx["chunk_count"] == 128
+        assert ctx["summary_count"] == 10
 
 
 # ---------- notion_connect ---------------------------------------------------
@@ -166,11 +167,8 @@ class TestNotionConnect:
 
     async def test_successful_connect(self):
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 5, "last_sync": None},
-            {"cnt": 0},  # chunk_count (level 1)
-            {"cnt": 0},  # summary_count (level 0)
-        ]
+        pool.fetchrow.return_value = {"cnt": 5, "last_sync": None}
+        pool.fetch.return_value = []  # no embeddings yet
         settings_store = AsyncMock()
         agent = MagicMock()
         agent._ctx = MagicMock()
@@ -287,10 +285,10 @@ class TestNotionSyncTrigger:
         mock_sync = AsyncMock()
         mock_embedder = AsyncMock()
         pool = AsyncMock()
-        pool.fetchrow.side_effect = [
-            {"cnt": 10, "last_sync": None},
-            {"cnt": 50},  # chunk_count (level 1)
-            {"cnt": 5},  # summary_count (level 0)
+        pool.fetchrow.return_value = {"cnt": 10, "last_sync": None}
+        pool.fetch.return_value = [
+            {"chunk_level": 1, "cnt": 50},
+            {"chunk_level": 0, "cnt": 5},
         ]
 
         settings = _make_settings(feature_notion=True, notion_token="ntn_tok")

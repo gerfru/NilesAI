@@ -79,3 +79,9 @@ class NotionSummarizer:
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
+
+    async def __aenter__(self) -> NotionSummarizer:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()

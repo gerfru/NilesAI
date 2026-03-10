@@ -64,6 +64,7 @@ class NotionEmbeddingPipeline:
             "pages_embedded": 0,
             "chunks_created": 0,
             "summaries_created": 0,
+            "summaries_failed": 0,
             "errors": 0,
         }
         logger.info(
@@ -96,7 +97,7 @@ class NotionEmbeddingPipeline:
                     "DELETE FROM notion_embeddings WHERE page_id = $1", page_id
                 )
 
-                chunk_errors = 0
+                detail_errors = 0
 
                 # Level 0: Summary (if summarizer is available and content is long enough)
                 if (
@@ -131,11 +132,9 @@ class NotionEmbeddingPipeline:
                             )
                             stats["summaries_created"] += 1
                         else:
-                            chunk_errors += 1
-                            stats["errors"] += 1
+                            stats["summaries_failed"] += 1
                     else:
-                        chunk_errors += 1
-                        stats["errors"] += 1
+                        stats["summaries_failed"] += 1
 
                 # Level 1: Detail chunks
                 for idx, chunk_text in enumerate(chunks):
@@ -143,7 +142,7 @@ class NotionEmbeddingPipeline:
                         chunk_text, prefix="search_document: "
                     )
                     if embedding is None:
-                        chunk_errors += 1
+                        detail_errors += 1
                         stats["errors"] += 1
                         continue
                     await self._pool.execute(
@@ -166,8 +165,9 @@ class NotionEmbeddingPipeline:
                     )
                     stats["chunks_created"] += 1
 
-                # Only mark page as embedded when all operations succeeded
-                if chunk_errors == 0:
+                # Mark page as embedded when detail chunks succeeded
+                # (summary failures are non-blocking)
+                if detail_errors == 0:
                     await self._pool.execute(
                         "UPDATE notion_pages SET embedded_at = NOW() WHERE id = $1",
                         page_id,
@@ -178,11 +178,22 @@ class NotionEmbeddingPipeline:
                 logger.exception("Embedding failed for page %s", page_id)
                 stats["errors"] += 1
 
+        total_pending = await self._pool.fetchval("""
+            SELECT COUNT(*) FROM notion_pages
+            WHERE content_text != ''
+              AND (embedded_at IS NULL OR embedded_at < synced_at)
+        """)
+        if total_pending:
+            logger.info(
+                "%d more pages pending embedding (batch limit 200)", total_pending
+            )
         logger.info(
-            "Embedding complete: %d pages, %d chunks, %d summaries, %d errors",
+            "Embedding complete: %d pages, %d chunks, %d summaries "
+            "(%d failed), %d errors",
             stats["pages_embedded"],
             stats["chunks_created"],
             stats["summaries_created"],
+            stats["summaries_failed"],
             stats["errors"],
         )
         return stats
@@ -210,7 +221,7 @@ class NotionEmbeddingPipeline:
             # If adding this paragraph exceeds chunk_size, save current and start new
             if len(current_chunk) + len(para) + 1 > self._chunk_size:
                 if current_chunk:
-                    chunks.append(prefix + current_chunk.strip())
+                    chunks.append(current_chunk.strip())
                 # Overlap: keep the last N characters
                 if self._chunk_overlap > 0 and current_chunk:
                     current_chunk = current_chunk[-self._chunk_overlap :] + "\n" + para
@@ -221,9 +232,9 @@ class NotionEmbeddingPipeline:
 
         # Don't forget the last chunk
         if current_chunk.strip():
-            chunks.append(prefix + current_chunk.strip())
+            chunks.append(current_chunk.strip())
 
-        return [c for c in chunks if self._is_useful_chunk(c)]
+        return [prefix + c for c in chunks if self._is_useful_chunk(c)]
 
     @staticmethod
     def _is_useful_chunk(chunk: str, min_ratio: float = 0.4) -> bool:
@@ -231,14 +242,9 @@ class NotionEmbeddingPipeline:
 
         Compares alphanumeric characters against non-whitespace characters
         so that space-padded ASCII art doesn't slip through.
+        Expects raw chunk text WITHOUT title prefix.
         """
-        # Strip title prefix before checking
-        text = chunk
-        if text.startswith("["):
-            end = text.find("] ")
-            if end != -1:
-                text = text[end + 2 :]
-        non_ws = [c for c in text if not c.isspace()]
+        non_ws = [c for c in chunk if not c.isspace()]
         if not non_ws:
             return False
         alnum_count = sum(1 for c in non_ws if c.isalnum())
