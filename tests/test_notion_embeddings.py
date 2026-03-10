@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 
-from niles.sync.notion_embeddings import NotionEmbeddingPipeline
+from niles.sync.notion_embeddings import (
+    LEVEL_DETAIL,
+    LEVEL_SUMMARY,
+    NotionEmbeddingPipeline,
+)
+from niles.sync.notion_summarizer import NotionSummarizer
 from niles.sync.ollama_embedder import OllamaEmbedder
 
 
@@ -18,7 +23,7 @@ def _embedder():
     )
 
 
-def _pipeline(pool=None, chunk_size=600, chunk_overlap=100):
+def _pipeline(pool=None, chunk_size=600, chunk_overlap=100, summarizer=None):
     p = pool or AsyncMock()
     embedder = AsyncMock(spec=OllamaEmbedder)
     return (
@@ -27,6 +32,7 @@ def _pipeline(pool=None, chunk_size=600, chunk_overlap=100):
             embedder=embedder,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            summarizer=summarizer,
         ),
         p,
         embedder,
@@ -169,7 +175,7 @@ class TestOllamaEmbedder:
         emb._client.aclose.assert_called_once()
 
 
-# ---------- embed_pending -----------------------------------------------------
+# ---------- embed_pending (without summarizer) --------------------------------
 
 
 class TestEmbedPending:
@@ -272,6 +278,144 @@ class TestEmbedPending:
         embedder.embed.assert_called_once_with(
             "[Test] Content here", prefix="search_document: "
         )
+
+    async def test_insert_uses_chunk_level_detail(self):
+        """Detail chunks are inserted with chunk_level=1."""
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "Content here"},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        # Find INSERT calls
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        assert len(insert_calls) == 1
+        # $2 = chunk_level (LEVEL_DETAIL = 1)
+        assert insert_calls[0][0][2] == LEVEL_DETAIL
+
+    async def test_no_summarizer_skips_summaries(self):
+        """Without summarizer, only detail chunks are generated."""
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "A" * 200},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        stats = await pipe.embed_pending()
+
+        assert stats["summaries_created"] == 0
+        assert stats["chunks_created"] >= 1
+
+
+# ---------- embed_pending (with summarizer) -----------------------------------
+
+
+class TestEmbedPendingWithSummarizer:
+    async def test_summary_generated_and_inserted(self):
+        """Summarizer produces text -> level-0 INSERT + level-1 detail chunks."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = "This page is about testing."
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "A" * 200},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        stats = await pipe.embed_pending()
+
+        assert stats["summaries_created"] == 1
+        assert stats["chunks_created"] >= 1
+        assert stats["pages_embedded"] == 1
+
+        # Find INSERT calls
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        # Should have at least 2 inserts: 1 summary + 1+ detail
+        assert len(insert_calls) >= 2
+
+        # First insert should be summary (level 0)
+        summary_insert = insert_calls[0]
+        assert summary_insert[0][2] == LEVEL_SUMMARY  # $2 = chunk_level
+        assert summary_insert[0][3] == 0  # $3 = chunk_index
+        assert "This page is about testing." in summary_insert[0][4]  # $4 = text
+
+        # Second insert should be detail (level 1)
+        detail_insert = insert_calls[1]
+        assert detail_insert[0][2] == LEVEL_DETAIL
+
+    async def test_summary_failure_blocks_page_completion(self):
+        """If summary generation fails, page is NOT marked as embedded."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = None  # Failure
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "A" * 200},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        stats = await pipe.embed_pending()
+
+        assert stats["errors"] >= 1
+        assert stats["pages_embedded"] == 0
+        # Detail chunks should still be created
+        assert stats["chunks_created"] >= 1
+
+    async def test_summary_embedding_failure_blocks_page(self):
+        """If summary text is generated but embedding fails, page not marked."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = "A summary."
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Test", "content_text": "A" * 200},
+        ]
+        pool.execute = AsyncMock()
+        # First call (summary embed) fails, rest succeed
+        embedder.embed.side_effect = [None, _fake_embedding()]
+
+        stats = await pipe.embed_pending()
+
+        assert stats["summaries_created"] == 0
+        assert stats["errors"] >= 1
+        assert stats["pages_embedded"] == 0
+
+    async def test_short_content_no_summary(self):
+        """Content < 100 chars: no summary attempt even with summarizer."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Short", "content_text": "Brief note."},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        stats = await pipe.embed_pending()
+
+        summarizer.summarize.assert_not_called()
+        assert stats["summaries_created"] == 0
+        assert stats["chunks_created"] == 1
+        assert stats["pages_embedded"] == 1
+
+    async def test_summary_has_title_prefix(self):
+        """Summary text includes [Title] prefix."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = "A summary of the page."
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "My Page", "content_text": "A" * 200},
+        ]
+        pool.execute = AsyncMock()
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        summary_text = insert_calls[0][0][4]  # $4 = chunk_text
+        assert summary_text.startswith("[My Page] ")
 
 
 # ---------- force_reembed ----------------------------------------------------
