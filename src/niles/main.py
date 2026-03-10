@@ -383,18 +383,22 @@ async def lifespan(app: FastAPI):
                 await notion_sync.sync_all()
                 await notion_embedder.embed_pending()
 
-        scheduler.add_job(
-            notion_sync_and_embed,
-            "interval",
-            minutes=settings.notion_sync_interval,
-            id="notion_sync",
-            max_instances=1,
-            misfire_grace_time=600,
-        )
+        if settings.notion_sync_interval > 0:
+            scheduler.add_job(
+                notion_sync_and_embed,
+                "interval",
+                minutes=settings.notion_sync_interval,
+                id="notion_sync",
+                max_instances=1,
+                misfire_grace_time=600,
+            )
+            logger.info(
+                "Notion sync scheduled (every %d min)",
+                settings.notion_sync_interval,
+            )
+        else:
+            logger.info("Notion auto-sync disabled (interval=0)")
         asyncio.create_task(notion_sync_and_embed())
-        logger.info(
-            "Notion sync scheduled (every %d min)", settings.notion_sync_interval
-        )
 
     # Wire Notion retriever into agent + context builder (for tool filtering)
     if notion_retriever:
