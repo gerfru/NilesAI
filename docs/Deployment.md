@@ -631,9 +631,37 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
 
 ### How It Works
 
-1. **Sync**: Niles discovers all accessible pages via the Notion Search API, fetches block content recursively, and stores plaintext in `notion_pages`. MD5 change detection avoids redundant work.
-2. **Embed**: Changed pages are chunked (600 chars, 100 overlap) and embedded via Ollama (`nomic-embed-text-v2-moe`, 768 dimensions). Vectors are stored in `notion_embeddings` using pgvector.
-3. **Search**: The `search_notion` agent tool (or the Notion toggle in the chat UI) embeds the query and runs a cosine similarity search against stored embeddings.
+1. **Sync**: Niles discovers all accessible pages via the Notion Search API, fetches block content recursively with markdown formatting (headings, lists, code blocks, quotes), and stores it in `notion_pages`. MD5 change detection avoids redundant work.
+2. **Embed**: Changed pages go through a hierarchical chunking pipeline:
+   - **Level 0 (Summary)**: LLM-generated 2-4 sentence summary per page (via Ollama). Skipped for pages < 100 chars.
+   - **Level 1 (Detail)**: Heading-aware splitting — text is split at `#`/`##`/`###` boundaries first, then by character limit (600 chars) within each section. No cross-section overlap.
+   - Each chunk is prefixed with navigation context: `[Parent > Page > # Section > ## Sub-Section]` using breadcrumbs from the `parent_id` chain (max 2 ancestors).
+   - Chunks are embedded via Ollama (`nomic-embed-text-v2-moe`, 768 dimensions) and stored in `notion_embeddings` using pgvector.
+3. **Search**: The `search_notion` agent tool (or the Notion toggle in the chat UI) embeds the query and runs a cosine similarity search against stored embeddings. Auto-merge scoring combines summary and detail hits.
+
+### Monitoring
+
+Check sync and embedding progress:
+
+```sql
+docker exec niles_evolution_postgres psql -U evolution -d evolution_db -c "
+SELECT
+  COUNT(*) FILTER (WHERE content_md5 != '') AS synced,
+  COUNT(*) FILTER (WHERE content_md5 = '') AS sync_pending,
+  COUNT(*) FILTER (WHERE embedded_at IS NOT NULL) AS embedded
+FROM notion_pages"
+```
+
+### Force Re-sync
+
+After a code change to `_block_to_text()` (e.g. new markdown markers), existing `content_text` must be re-fetched from Notion. Reset both `content_md5` and `last_edited` so the sync bypasses its skip checks:
+
+```sql
+docker exec niles_evolution_postgres psql -U evolution -d evolution_db -c "
+UPDATE notion_pages SET content_md5 = '', embedded_at = NULL, last_edited = NULL"
+```
+
+Then trigger a sync via the Settings UI. For embedding-only changes (e.g. chunk size), use the "Re-embed" button in the UI or `POST /api/notion/reembed`.
 
 ### Troubleshooting
 
@@ -643,6 +671,8 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
 | Connection test fails | Verify token is correct and integration has access to at least one page |
 | No search results | Check that sync has completed (`docker logs niles_core \| grep notion`), and that `nomic-embed-text` model is pulled |
 | Slow embedding | Normal for first sync with many pages. Subsequent syncs only re-embed changed pages |
+| Sync shows "unchanged" after code change | Reset `content_md5` and `last_edited` (see Force Re-sync above) |
+| 0 summaries generated | Check Ollama is reachable and summary model supports `"think": false` |
 
 ---
 
@@ -885,8 +915,9 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | -------- | ------- | ----------- |
 | `FEATURE_NOTION` | `false` | Enable Notion knowledge base (RAG) |
 | `NOTION_TOKEN` | -- | Notion Internal Integration Token (`ntn_...`) |
-| `NOTION_SYNC_INTERVAL` | `60` | Minutes between Notion syncs |
+| `NOTION_SYNC_INTERVAL` | `0` | Minutes between auto-syncs (0 = disabled, manual only) |
 | `NOTION_EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` | Ollama embedding model |
+| `NOTION_SUMMARY_MODEL` | *(llm_model)* | Ollama model for page summaries (Level-0 chunks) |
 
 **Feature Flags:**
 
