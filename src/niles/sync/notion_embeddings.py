@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import asyncpg
 
@@ -17,6 +18,9 @@ LEVEL_DETAIL = 1  # Fine-grained chunks (existing behavior)
 
 # Pages shorter than this skip summary generation (the detail chunk IS the summary)
 _MIN_CONTENT_FOR_SUMMARY = 100
+
+# Maximum ancestor depth for breadcrumb context
+_MAX_BREADCRUMB_DEPTH = 2
 
 
 class NotionEmbeddingPipeline:
@@ -54,6 +58,37 @@ class NotionEmbeddingPipeline:
         logger.info("Marked %d pages for re-embedding", count)
         return count
 
+    async def _build_breadcrumbs(self) -> dict[str, str]:
+        """Build page_id → breadcrumb string map from parent_id chain.
+
+        Walks up to _MAX_BREADCRUMB_DEPTH ancestors.
+        Example: page "Installation" under "Migration Guide" under "ThemisEcho"
+        → "ThemisEcho > Migration Guide > Installation"
+        """
+        rows = await self._pool.fetch(
+            "SELECT id, title, parent_id FROM notion_pages WHERE title != ''"
+        )
+        titles: dict[str, str] = {}
+        parents: dict[str, str | None] = {}
+        for row in rows:
+            titles[row["id"]] = row["title"]
+            parents[row["id"]] = row["parent_id"]
+
+        breadcrumbs: dict[str, str] = {}
+        for page_id, title in titles.items():
+            parts = [title]
+            current = page_id
+            for _ in range(_MAX_BREADCRUMB_DEPTH):
+                pid = parents.get(current)
+                if not pid or pid not in titles:
+                    break
+                parts.append(titles[pid])
+                current = pid
+            parts.reverse()
+            breadcrumbs[page_id] = " > ".join(parts)
+
+        return breadcrumbs
+
     async def embed_pending(self) -> dict:
         """Process all pages that need (re-)embedding.
 
@@ -73,6 +108,8 @@ class NotionEmbeddingPipeline:
             self._embedder.model,
         )
 
+        breadcrumbs = await self._build_breadcrumbs()
+
         rows = await self._pool.fetch("""
             SELECT id, title, content_text
             FROM notion_pages
@@ -87,8 +124,9 @@ class NotionEmbeddingPipeline:
             try:
                 content_text = row["content_text"]
                 title = row["title"]
+                breadcrumb = breadcrumbs.get(page_id, title)
 
-                chunks = self._chunk_text(content_text, title)
+                chunks = self._chunk_text(content_text, breadcrumb)
                 if not chunks:
                     continue
 
@@ -106,7 +144,7 @@ class NotionEmbeddingPipeline:
                 ):
                     summary = await self._summarizer.summarize(content_text, title)
                     if summary:
-                        prefix = f"[{title}] " if title else ""
+                        prefix = f"[{breadcrumb}] " if breadcrumb else ""
                         summary_text = prefix + summary
                         embedding = await self._embedder.embed(
                             summary_text, prefix="search_document: "
@@ -199,16 +237,89 @@ class NotionEmbeddingPipeline:
         return stats
 
     def _chunk_text(self, text: str, title: str = "") -> list[str]:
-        """Split text into overlapping chunks.
+        """Split text into chunks, respecting heading boundaries.
 
-        Each chunk is prefixed with the page title for context.
-        Uses character-based splitting with paragraph awareness.
+        1. Split on heading lines (# / ## / ###) into sections.
+        2. Track heading hierarchy for context prefix.
+        3. Split each section by character limit (no cross-section overlap).
+        4. Prefix each chunk with [Title > # Heading > ## Sub].
+
+        Falls back to plain character splitting for pages without headings.
         Chunks that are mostly non-text (ASCII art, box-drawing) are dropped.
         """
         if not text.strip():
             return []
 
-        prefix = f"[{title}] " if title else ""
+        sections = self._split_by_headings(text)
+
+        chunks: list[str] = []
+        for heading_ctx, body in sections:
+            # Build prefix: [Title > # Section > ## Sub]
+            parts = [title] if title else []
+            if heading_ctx:
+                parts.append(heading_ctx)
+            prefix = f"[{' > '.join(parts)}] " if parts else ""
+
+            section_chunks = self._split_section(body)
+            for raw in section_chunks:
+                if self._is_useful_chunk(raw):
+                    chunks.append(prefix + raw)
+
+        return chunks
+
+    @staticmethod
+    def _split_by_headings(text: str) -> list[tuple[str, str]]:
+        """Split markdown text into sections at heading boundaries.
+
+        Returns list of (heading_context, body) tuples.
+        heading_context tracks hierarchy: "# Main > ## Sub".
+        For text without headings, returns [("", full_text)].
+        """
+        heading_re = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
+
+        matches = list(heading_re.finditer(text))
+        if not matches:
+            return [("", text.strip())]
+
+        sections: list[tuple[str, str]] = []
+        # Track current heading at each level (1-indexed)
+        current_headings: dict[int, str] = {}
+
+        # Text before the first heading (preamble)
+        preamble = text[: matches[0].start()].strip()
+        if preamble:
+            sections.append(("", preamble))
+
+        for i, match in enumerate(matches):
+            level = len(match.group(1))  # 1, 2, or 3
+            heading_text = match.group(0).strip()  # e.g. "## Sub Title"
+
+            # Update hierarchy: set current level, clear deeper levels
+            current_headings[level] = heading_text
+            for deeper in range(level + 1, 4):
+                current_headings.pop(deeper, None)
+
+            # Build context string from hierarchy
+            ctx_parts = []
+            for lvl in sorted(current_headings):
+                ctx_parts.append(current_headings[lvl])
+            heading_ctx = " > ".join(ctx_parts)
+
+            # Extract body text between this heading and the next
+            body_start = match.end()
+            body_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            body = text[body_start:body_end].strip()
+
+            if body:
+                sections.append((heading_ctx, body))
+
+        return sections if sections else [("", text.strip())]
+
+    def _split_section(self, text: str) -> list[str]:
+        """Split a section body into character-limited chunks.
+
+        Uses paragraph-aware splitting with overlap within a section.
+        """
         paragraphs = text.split("\n")
         chunks: list[str] = []
         current_chunk = ""
@@ -218,11 +329,9 @@ class NotionEmbeddingPipeline:
             if not para:
                 continue
 
-            # If adding this paragraph exceeds chunk_size, save current and start new
             if len(current_chunk) + len(para) + 1 > self._chunk_size:
                 if current_chunk:
                     chunks.append(current_chunk.strip())
-                # Overlap: keep the last N characters
                 if self._chunk_overlap > 0 and current_chunk:
                     current_chunk = current_chunk[-self._chunk_overlap :] + "\n" + para
                 else:
@@ -230,11 +339,10 @@ class NotionEmbeddingPipeline:
             else:
                 current_chunk = current_chunk + "\n" + para if current_chunk else para
 
-        # Don't forget the last chunk
         if current_chunk.strip():
             chunks.append(current_chunk.strip())
 
-        return [prefix + c for c in chunks if self._is_useful_chunk(c)]
+        return chunks
 
     @staticmethod
     def _is_useful_chunk(chunk: str, min_ratio: float = 0.4) -> bool:
