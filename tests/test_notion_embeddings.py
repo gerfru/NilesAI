@@ -43,6 +43,22 @@ def _fake_embedding(dim=768):
     return [0.1] * dim
 
 
+def _setup_embed_pending(pool, pending_rows, breadcrumb_rows=None):
+    """Set up pool.fetch side_effect for embed_pending.
+
+    embed_pending calls pool.fetch twice:
+    1. _build_breadcrumbs(): SELECT id, title, parent_id
+    2. Main query: SELECT id, title, content_text
+    """
+    if breadcrumb_rows is None:
+        # Auto-generate breadcrumb rows from pending rows
+        breadcrumb_rows = [
+            {"id": r["id"], "title": r["title"], "parent_id": None}
+            for r in pending_rows
+        ]
+    pool.fetch.side_effect = [breadcrumb_rows, pending_rows]
+
+
 # ---------- _chunk_text (pure function) --------------------------------------
 
 
@@ -51,7 +67,9 @@ class TestChunkText:
         pipe, _, _ = _pipeline()
         chunks = pipe._chunk_text("Hello world", "Title")
         assert len(chunks) == 1
-        assert chunks[0] == "[Title] Hello world"
+        assert chunks[0].text == "[Title] Hello world"
+        assert chunks[0].page_title == "Title"
+        assert chunks[0].heading_context == ""
 
     def test_empty_text(self):
         pipe, _, _ = _pipeline()
@@ -64,7 +82,7 @@ class TestChunkText:
     def test_no_title(self):
         pipe, _, _ = _pipeline()
         chunks = pipe._chunk_text("Hello", "")
-        assert chunks[0] == "Hello"
+        assert chunks[0].text == "Hello"
 
     def test_long_text_splits(self):
         pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=0)
@@ -80,22 +98,22 @@ class TestChunkText:
         # With overlap, later chunks should contain tail of previous chunk
         if len(chunks) > 1:
             # The second chunk should have some overlap from the first
-            assert len(chunks[1]) > 0
+            assert len(chunks[1].text) > 0
 
     def test_title_prefix_on_each_chunk(self):
         pipe, _, _ = _pipeline(chunk_size=30, chunk_overlap=0)
         text = "First paragraph.\nSecond paragraph."
         chunks = pipe._chunk_text(text, "Page")
         for chunk in chunks:
-            assert chunk.startswith("[Page] ")
+            assert chunk.text.startswith("[Page")
 
     def test_blank_paragraphs_skipped(self):
         pipe, _, _ = _pipeline()
         text = "Para 1\n\n\n\nPara 2"
         chunks = pipe._chunk_text(text, "")
         assert len(chunks) == 1
-        assert "Para 1" in chunks[0]
-        assert "Para 2" in chunks[0]
+        assert "Para 1" in chunks[0].text
+        assert "Para 2" in chunks[0].text
 
     def test_ascii_art_chunks_filtered(self):
         pipe, _, _ = _pipeline(chunk_size=200, chunk_overlap=0)
@@ -105,8 +123,8 @@ class TestChunkText:
         chunks = pipe._chunk_text(text, "")
         # Real text chunks should survive, diagram-only chunks should be dropped
         for chunk in chunks:
-            readable = sum(1 for c in chunk if c.isalnum() or c.isspace())
-            assert (readable / len(chunk)) >= 0.4
+            readable = sum(1 for c in chunk.text if c.isalnum() or c.isspace())
+            assert (readable / len(chunk.text)) >= 0.4
 
     def test_normal_text_passes_filter(self):
         pipe, _, _ = _pipeline()
@@ -120,6 +138,181 @@ class TestChunkText:
         assert not pipe._is_useful_chunk("┌──┐│──│└──┘" * 3)
         # Real content
         assert pipe._is_useful_chunk("This is real text content")
+
+
+# ---------- _split_by_headings -----------------------------------------------
+
+
+class TestSplitByHeadings:
+    def test_no_headings_returns_full_text(self):
+        sections = NotionEmbeddingPipeline._split_by_headings(
+            "Just some text\nAnother line"
+        )
+        assert len(sections) == 1
+        assert sections[0][0] == ""  # No heading context
+        assert "Just some text" in sections[0][1]
+
+    def test_single_heading(self):
+        text = "# Introduction\nSome intro text here."
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        assert len(sections) == 1
+        assert sections[0][0] == "# Introduction"
+        assert "Some intro text here." in sections[0][1]
+
+    def test_preamble_before_first_heading(self):
+        text = "Preamble text\n# Section One\nBody of section."
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        assert len(sections) == 2
+        assert sections[0][0] == ""  # Preamble has no heading context
+        assert "Preamble text" in sections[0][1]
+        assert sections[1][0] == "# Section One"
+        assert "Body of section." in sections[1][1]
+
+    def test_heading_hierarchy(self):
+        text = "# Main\nMain body\n## Sub\nSub body\n### Detail\nDetail body"
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        # Should have 3 sections: Main, Sub, Detail
+        assert len(sections) == 3
+        assert sections[0][0] == "# Main"
+        assert sections[1][0] == "# Main > ## Sub"
+        assert sections[2][0] == "# Main > ## Sub > ### Detail"
+
+    def test_sibling_headings_reset_deeper(self):
+        text = "# A\nBody A\n## A1\nBody A1\n# B\nBody B\n## B1\nBody B1"
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        assert len(sections) == 4
+        assert sections[0][0] == "# A"
+        assert sections[1][0] == "# A > ## A1"
+        assert sections[2][0] == "# B"  # ## A1 is cleared
+        assert sections[3][0] == "# B > ## B1"
+
+    def test_empty_body_sections_skipped(self):
+        text = "# Empty\n# Has Content\nSome text"
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        # First heading has no body (next heading immediately follows)
+        assert len(sections) == 1
+        assert sections[0][0] == "# Has Content"
+
+    def test_headings_inside_code_blocks_ignored(self):
+        text = (
+            "# Setup\nRun the following:\n"
+            "```bash\n# install dependencies\napt install foo\n```\n"
+            "# Usage\nStart the app."
+        )
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        # Only real headings (Setup, Usage), not the bash comment
+        headings = [ctx for ctx, _ in sections]
+        assert "# Setup" in headings
+        assert "# Usage" in headings
+        assert all("install" not in ctx for ctx in headings)
+        # Body text must not be truncated by the code block
+        setup_body = [body for ctx, body in sections if ctx == "# Setup"][0]
+        assert "Run the following:" in setup_body
+        assert "apt install foo" in setup_body
+        usage_body = [body for ctx, body in sections if ctx == "# Usage"][0]
+        assert "Start the app." in usage_body
+
+    def test_code_block_content_preserved_in_body(self):
+        text = "# Setup\nIntro\n```python\n# comment\nprint('hi')\n```\nMore text."
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        assert len(sections) == 1
+        assert "print('hi')" in sections[0][1]
+        assert "# comment" in sections[0][1]
+
+
+# ---------- Heading-aware _chunk_text ----------------------------------------
+
+
+class TestHeadingAwareChunking:
+    def test_heading_provides_context_in_prefix(self):
+        pipe, _, _ = _pipeline()
+        text = "# Installation\nRun pip install niles."
+        chunks = pipe._chunk_text(text, "Docs")
+        assert len(chunks) == 1
+        assert chunks[0].text.startswith("[Docs > # Installation]")
+        assert "Run pip install niles." in chunks[0].text
+        assert chunks[0].page_title == "Docs"
+        assert chunks[0].heading_context == "# Installation"
+
+    def test_multiple_sections_get_separate_chunks(self):
+        pipe, _, _ = _pipeline(chunk_size=100, chunk_overlap=0)
+        text = (
+            "# Setup\nInstall the dependencies first.\n"
+            "# Usage\nRun the main command to start."
+        )
+        chunks = pipe._chunk_text(text, "Guide")
+        assert len(chunks) == 2
+        assert "[Guide > # Setup]" in chunks[0].text
+        assert "[Guide > # Usage]" in chunks[1].text
+
+    def test_no_cross_section_overlap(self):
+        pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=20)
+        text = "# A\nShort section A.\n# B\nShort section B."
+        chunks = pipe._chunk_text(text, "")
+        # Section A content should not leak into Section B chunk
+        for chunk in chunks:
+            if "# B]" in chunk.text:
+                assert "section A" not in chunk.text
+
+    def test_fallback_without_headings(self):
+        pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=0)
+        text = "\n".join(f"Paragraph {i} with content." for i in range(5))
+        chunks = pipe._chunk_text(text, "Page")
+        # Without headings, all chunks get plain [Page] prefix
+        for chunk in chunks:
+            assert chunk.text.startswith("[Page] ")
+
+    def test_nested_heading_hierarchy_in_prefix(self):
+        pipe, _, _ = _pipeline()
+        text = "# Main\n## Sub\nContent under sub."
+        chunks = pipe._chunk_text(text, "Page")
+        assert len(chunks) == 1
+        assert chunks[0].text.startswith("[Page > # Main > ## Sub]")
+        assert chunks[0].heading_context == "# Main > ## Sub"
+
+
+# ---------- _build_breadcrumbs -----------------------------------------------
+
+
+class TestBuildBreadcrumbs:
+    async def test_single_page_no_parent(self):
+        pipe, pool, _ = _pipeline()
+        pool.fetch.return_value = [
+            {"id": "p1", "title": "Root Page", "parent_id": None},
+        ]
+        bc = await pipe._build_breadcrumbs()
+        assert bc["p1"] == "Root Page"
+
+    async def test_child_with_parent(self):
+        pipe, pool, _ = _pipeline()
+        pool.fetch.return_value = [
+            {"id": "parent1", "title": "Wiki", "parent_id": None},
+            {"id": "child1", "title": "Setup Guide", "parent_id": "parent1"},
+        ]
+        bc = await pipe._build_breadcrumbs()
+        assert bc["child1"] == "Wiki > Setup Guide"
+        assert bc["parent1"] == "Wiki"
+
+    async def test_max_depth_limits_ancestors(self):
+        pipe, pool, _ = _pipeline()
+        pool.fetch.return_value = [
+            {"id": "g", "title": "Grandparent", "parent_id": None},
+            {"id": "p", "title": "Parent", "parent_id": "g"},
+            {"id": "c", "title": "Child", "parent_id": "p"},
+        ]
+        bc = await pipe._build_breadcrumbs()
+        # Max depth is 2 ancestors, so Child gets Grandparent > Parent > Child
+        assert bc["c"] == "Grandparent > Parent > Child"
+        assert bc["p"] == "Grandparent > Parent"
+
+    async def test_parent_not_in_db(self):
+        pipe, pool, _ = _pipeline()
+        pool.fetch.return_value = [
+            {"id": "orphan", "title": "Orphan Page", "parent_id": "unknown_id"},
+        ]
+        bc = await pipe._build_breadcrumbs()
+        # Parent not found → just the page title
+        assert bc["orphan"] == "Orphan Page"
 
 
 # ---------- OllamaEmbedder ---------------------------------------------------
@@ -181,10 +374,8 @@ class TestOllamaEmbedder:
 class TestEmbedPending:
     async def test_embeds_pending_pages(self):
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "Hello world"},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "Hello world"}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -200,7 +391,7 @@ class TestEmbedPending:
 
     async def test_no_pending_pages(self):
         pipe, pool, _ = _pipeline()
-        pool.fetch.return_value = []
+        _setup_embed_pending(pool, [])
         pool.fetchval = AsyncMock(return_value=0)
 
         stats = await pipe.embed_pending()
@@ -210,9 +401,8 @@ class TestEmbedPending:
 
     async def test_embedding_failure_counted(self):
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "Some content here"},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "Some content here"}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = None
@@ -225,9 +415,10 @@ class TestEmbedPending:
     async def test_partial_failure_skips_embedded_at(self):
         """Fix #1: page not marked as embedded when some chunks fail."""
         pipe, pool, embedder = _pipeline(chunk_size=20, chunk_overlap=0)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "", "content_text": "First chunk.\nSecond chunk."},
+        pending = [
+            {"id": "p1", "title": "", "content_text": "First chunk.\nSecond chunk."}
         ]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         # First chunk succeeds, second fails
@@ -245,9 +436,9 @@ class TestEmbedPending:
 
     async def test_empty_content_skipped(self):
         pipe, pool, _ = _pipeline()
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Empty", "content_text": "   "},
-        ]
+        pending = [{"id": "p1", "title": "Empty", "content_text": "   "}]
+        _setup_embed_pending(pool, pending)
+        pool.fetchval = AsyncMock(return_value=0)
 
         stats = await pipe.embed_pending()
 
@@ -256,9 +447,8 @@ class TestEmbedPending:
 
     async def test_marks_page_embedded(self):
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "Content here"},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "Content here"}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -271,9 +461,8 @@ class TestEmbedPending:
 
     async def test_embed_uses_document_prefix(self):
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "Content here"},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "Content here"}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -288,9 +477,8 @@ class TestEmbedPending:
     async def test_insert_uses_chunk_level_detail(self):
         """Detail chunks are inserted with chunk_level=1."""
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "Content here"},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "Content here"}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -303,12 +491,34 @@ class TestEmbedPending:
         # $2 = chunk_level (LEVEL_DETAIL = 1)
         assert insert_calls[0][0][2] == LEVEL_DETAIL
 
+    async def test_insert_includes_metadata_columns(self):
+        """Detail INSERT passes page_title and heading_context as $6, $7."""
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pending = [
+            {
+                "id": "p1",
+                "title": "My Page",
+                "content_text": "# Setup\nInstall steps.",
+            }
+        ]
+        _setup_embed_pending(pool, pending)
+        pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        assert len(insert_calls) == 1
+        # $6 = page_title (breadcrumb), $7 = heading_context
+        assert insert_calls[0][0][6] == "My Page"
+        assert insert_calls[0][0][7] == "# Setup"
+
     async def test_no_summarizer_skips_summaries(self):
         """Without summarizer, only detail chunks are generated."""
         pipe, pool, embedder = _pipeline(chunk_size=2000)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "A" * 200},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -317,6 +527,26 @@ class TestEmbedPending:
 
         assert stats["summaries_created"] == 0
         assert stats["chunks_created"] >= 1
+
+    async def test_breadcrumb_used_in_chunk_prefix(self):
+        """Chunks use breadcrumb (parent > page) instead of just title."""
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pending = [{"id": "c1", "title": "Setup", "content_text": "Install steps."}]
+        breadcrumb_rows = [
+            {"id": "p1", "title": "Wiki", "parent_id": None},
+            {"id": "c1", "title": "Setup", "parent_id": "p1"},
+        ]
+        _setup_embed_pending(pool, pending, breadcrumb_rows=breadcrumb_rows)
+        pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        # Chunk text should contain breadcrumb prefix
+        embedder.embed.assert_called_once()
+        chunk_text = embedder.embed.call_args[0][0]
+        assert chunk_text.startswith("[Wiki > Setup]")
 
 
 # ---------- embed_pending (with summarizer) -----------------------------------
@@ -328,9 +558,8 @@ class TestEmbedPendingWithSummarizer:
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = "This page is about testing."
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "A" * 200},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -361,9 +590,8 @@ class TestEmbedPendingWithSummarizer:
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = None  # Failure
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "A" * 200},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -380,9 +608,8 @@ class TestEmbedPendingWithSummarizer:
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = "A summary."
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Test", "content_text": "A" * 200},
-        ]
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         # First call (summary embed) fails, rest succeed
@@ -398,9 +625,8 @@ class TestEmbedPendingWithSummarizer:
         """Content < 100 chars: no summary attempt even with summarizer."""
         summarizer = AsyncMock(spec=NotionSummarizer)
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "Short", "content_text": "Brief note."},
-        ]
+        pending = [{"id": "p1", "title": "Short", "content_text": "Brief note."}]
+        _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -412,14 +638,36 @@ class TestEmbedPendingWithSummarizer:
         assert stats["chunks_created"] == 1
         assert stats["pages_embedded"] == 1
 
-    async def test_summary_has_title_prefix(self):
-        """Summary text includes [Title] prefix."""
+    async def test_summary_insert_includes_metadata(self):
+        """Summary INSERT passes breadcrumb as page_title, empty heading_context."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = "A summary."
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
+        pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        summary_insert = insert_calls[0]
+        # $6 = page_title (breadcrumb), $7 = heading_context (empty for summaries)
+        assert summary_insert[0][6] == "Test"
+        assert summary_insert[0][7] == ""
+
+    async def test_summary_has_breadcrumb_prefix(self):
+        """Summary text includes [Breadcrumb] prefix."""
         summarizer = AsyncMock(spec=NotionSummarizer)
         summarizer.summarize.return_value = "A summary of the page."
         pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
-        pool.fetch.return_value = [
-            {"id": "p1", "title": "My Page", "content_text": "A" * 200},
+        pending = [{"id": "c1", "title": "My Page", "content_text": "A" * 200}]
+        breadcrumb_rows = [
+            {"id": "p1", "title": "Wiki", "parent_id": None},
+            {"id": "c1", "title": "My Page", "parent_id": "p1"},
         ]
+        _setup_embed_pending(pool, pending, breadcrumb_rows=breadcrumb_rows)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
         embedder.embed.return_value = _fake_embedding()
@@ -428,7 +676,7 @@ class TestEmbedPendingWithSummarizer:
 
         insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
         summary_text = insert_calls[0][0][4]  # $4 = chunk_text
-        assert summary_text.startswith("[My Page] ")
+        assert summary_text.startswith("[Wiki > My Page] ")
 
 
 # ---------- force_reembed ----------------------------------------------------

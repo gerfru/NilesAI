@@ -74,17 +74,52 @@ class TestBlockToText:
         block = _block("paragraph", "Hello world")
         assert NotionSync._block_to_text(block) == "Hello world"
 
-    def test_heading(self):
+    def test_heading_1(self):
         block = _block("heading_1", "Section Title")
-        assert NotionSync._block_to_text(block) == "Section Title"
+        assert NotionSync._block_to_text(block) == "# Section Title"
+
+    def test_heading_2(self):
+        block = _block("heading_2", "Sub Title")
+        assert NotionSync._block_to_text(block) == "## Sub Title"
+
+    def test_heading_3(self):
+        block = _block("heading_3", "Detail")
+        assert NotionSync._block_to_text(block) == "### Detail"
 
     def test_bulleted_list(self):
         block = _block("bulleted_list_item", "Item one")
-        assert NotionSync._block_to_text(block) == "Item one"
+        assert NotionSync._block_to_text(block) == "- Item one"
+
+    def test_numbered_list(self):
+        block = _block("numbered_list_item", "Step one")
+        assert NotionSync._block_to_text(block) == "1. Step one"
+
+    def test_to_do_unchecked(self):
+        block = _block("to_do", "Buy milk")
+        block["to_do"]["checked"] = False
+        assert NotionSync._block_to_text(block) == "- [ ] Buy milk"
+
+    def test_to_do_checked(self):
+        block = _block("to_do", "Done task")
+        block["to_do"]["checked"] = True
+        assert NotionSync._block_to_text(block) == "- [x] Done task"
+
+    def test_quote(self):
+        block = _block("quote", "Important note")
+        assert NotionSync._block_to_text(block) == "> Important note"
+
+    def test_callout(self):
+        block = _block("callout", "Warning here")
+        assert NotionSync._block_to_text(block) == "> Warning here"
 
     def test_code_block(self):
         block = _block("code", "print('hi')")
-        assert NotionSync._block_to_text(block) == "print('hi')"
+        assert NotionSync._block_to_text(block) == "```\nprint('hi')\n```"
+
+    def test_code_block_with_language(self):
+        block = _block("code", "print('hi')")
+        block["code"]["language"] = "python"
+        assert NotionSync._block_to_text(block) == "```python\nprint('hi')\n```"
 
     def test_unsupported_block_returns_empty(self):
         block = _block("image", "ignored")
@@ -106,10 +141,11 @@ class TestBlockToText:
         }
         assert NotionSync._block_to_text(block) == "Hello world"
 
-    def test_all_text_types_are_supported(self):
+    def test_all_text_types_produce_output(self):
         for bt in _TEXT_BLOCK_TYPES:
             block = _block(bt, "test")
-            assert NotionSync._block_to_text(block) == "test"
+            result = NotionSync._block_to_text(block)
+            assert "test" in result, f"{bt} should contain 'test' but got: {result}"
 
 
 # ---------- _extract_title ---------------------------------------------------
@@ -285,7 +321,7 @@ class TestFetchPageContent:
         )
         result = await sync._fetch_page_content("page1")
         assert "Line 1" in result
-        assert "Title" in result
+        assert "# Title" in result
 
     async def test_recursive_children(self):
         sync, _pool = _sync()
