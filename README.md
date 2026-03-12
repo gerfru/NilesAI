@@ -11,7 +11,7 @@ A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsA
 - **Tasks** -- Vikunja integration (list, create, complete), auto-provisioned per-user accounts.
 - **Contacts** -- CardDAV sync with multi-phone support.
 - **Memory** -- Persistent key-value store, injected into every conversation.
-- **Knowledge Base** -- Notion RAG integration with semantic search (pgvector embeddings, local Ollama).
+- **Knowledge Base** -- Notion RAG integration with semantic search (pgvector embeddings, local Ollama). See [RAG Architecture](docs/RAG.md).
 - **Web Search** -- SearXNG meta search (Google, Bing, DuckDuckGo), privacy-first, self-hosted.
 - **Web Fetch** -- Extract and summarize web page content (trafilatura, SSRF-protected).
 - **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
