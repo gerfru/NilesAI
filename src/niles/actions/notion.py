@@ -11,6 +11,7 @@ boosts their scores and deduplicates to prevent one page from dominating.
 from __future__ import annotations
 
 import logging
+import re as _re
 from collections import defaultdict
 
 import asyncpg
@@ -23,9 +24,159 @@ logger = logging.getLogger(__name__)
 _MULTI_HIT_BOOST = 0.05  # Applied when 2+ detail chunks from same page
 _SUMMARY_BOOST = 0.03  # Applied to summary chunks with detail hits
 
+# Keyword boost: applied when query keywords match structured metadata
+_TITLE_KEYWORD_BOOST = 0.15  # Strong boost for page title match
+_HEADING_KEYWORD_BOOST = 0.08  # Moderate boost for heading context match
+
 # Per-page limits to prevent one page from dominating results
 _MAX_SUMMARIES_PER_PAGE = 1
 _MAX_DETAILS_PER_PAGE = 2
+
+# German + English stop words for keyword extraction
+_STOP_WORDS = frozenset(
+    {
+        # German articles / pronouns / prepositions
+        "der",
+        "die",
+        "das",
+        "den",
+        "dem",
+        "des",
+        "ein",
+        "eine",
+        "einen",
+        "einem",
+        "eines",
+        "einer",
+        "ich",
+        "du",
+        "er",
+        "sie",
+        "es",
+        "wir",
+        "ihr",
+        "mich",
+        "mir",
+        "dich",
+        "dir",
+        "sich",
+        "uns",
+        "euch",
+        "mein",
+        "meine",
+        "meiner",
+        "meinem",
+        "meinen",
+        "dein",
+        "deine",
+        "deiner",
+        "deinem",
+        "deinen",
+        # German conjunctions / particles
+        "und",
+        "oder",
+        "aber",
+        "doch",
+        "sondern",
+        "auch",
+        "noch",
+        "schon",
+        "nur",
+        "wenn",
+        "als",
+        "dass",
+        "ob",
+        "weil",
+        "da",
+        "so",
+        "dann",
+        "dort",
+        "hier",
+        # German prepositions
+        "in",
+        "im",
+        "an",
+        "am",
+        "auf",
+        "aus",
+        "bei",
+        "mit",
+        "nach",
+        "von",
+        "vom",
+        "vor",
+        "zu",
+        "zum",
+        "zur",
+        "ueber",
+        "unter",
+        # German verbs (common)
+        "ist",
+        "sind",
+        "war",
+        "hat",
+        "haben",
+        "wird",
+        "werden",
+        "kann",
+        "muss",
+        "soll",
+        "darf",
+        "steht",
+        # German question words
+        "was",
+        "wer",
+        "wie",
+        "wo",
+        "wann",
+        "warum",
+        "welche",
+        "welcher",
+        "welches",
+        # German negation
+        "nicht",
+        "kein",
+        "keine",
+        "keinen",
+        "keinem",
+        "keiner",
+        # English basics
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "what",
+        "how",
+        "where",
+        "when",
+        "which",
+        "who",
+        # Domain-specific
+        "wissensdatenbank",
+        "notion",
+    }
+)
+
+
+def _extract_keywords(query: str) -> list[str]:
+    """Extract meaningful keywords from a search query.
+
+    Strips stop words, punctuation, and short tokens.
+    Returns lowercased keywords for case-insensitive matching.
+    """
+    tokens = _re.findall(
+        r"[\w\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]+", query.lower()
+    )
+    return [t for t in tokens if t not in _STOP_WORDS and len(t) >= 2]
 
 
 class NotionRetriever:
@@ -65,6 +216,8 @@ class NotionRetriever:
                 e.chunk_index,
                 e.chunk_level,
                 e.page_id,
+                e.page_title AS meta_title,
+                e.heading_context,
                 p.title AS page_title,
                 p.url AS page_url,
                 1 - (e.embedding <=> $1::vector) AS similarity
@@ -93,7 +246,8 @@ class NotionRetriever:
             if row["chunk_level"] == 1:
                 page_detail_counts[row["page_id"]] += 1
 
-        # 4. Score and build candidates
+        # 4. Score and build candidates (with keyword boost)
+        keywords = _extract_keywords(query)
         candidates = []
         for row in rows:
             pid = row["page_id"]
@@ -107,6 +261,15 @@ class NotionRetriever:
             # Summary boost: summary chunk has detail hits from same page
             if row["chunk_level"] == 0 and page_detail_counts[pid] >= 1:
                 boost += _SUMMARY_BOOST
+
+            # Keyword boost: query keywords in page title or heading
+            if keywords:
+                meta_lower = (row["meta_title"] or "").lower()
+                heading_lower = (row["heading_context"] or "").lower()
+                if any(kw in meta_lower for kw in keywords):
+                    boost += _TITLE_KEYWORD_BOOST
+                if any(kw in heading_lower for kw in keywords):
+                    boost += _HEADING_KEYWORD_BOOST
 
             candidates.append(
                 {
