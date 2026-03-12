@@ -296,14 +296,20 @@ class NotionEmbeddingPipeline:
 
     @staticmethod
     def _mask_code_blocks(text: str) -> str:
-        """Replace fenced code block contents with blank lines.
+        """Replace fenced code block contents with spaces, preserving length.
 
         Prevents lines like ``# comment`` inside ```...``` from being
         mistaken for markdown headings by _split_by_headings.
+        Non-newline characters are replaced with spaces so that character
+        positions in the masked string map 1:1 to the original text.
         """
+
+        def _blank(m: re.Match) -> str:
+            return re.sub(r"[^\n]", " ", m.group())
+
         return re.sub(
             r"^```[^\n]*\n.*?^```",
-            lambda m: "\n" * m.group().count("\n"),
+            _blank,
             text,
             flags=re.MULTILINE | re.DOTALL,
         )
