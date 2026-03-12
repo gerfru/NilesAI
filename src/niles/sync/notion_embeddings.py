@@ -295,16 +295,34 @@ class NotionEmbeddingPipeline:
         return chunks
 
     @staticmethod
+    def _mask_code_blocks(text: str) -> str:
+        """Replace fenced code block contents with blank lines.
+
+        Prevents lines like ``# comment`` inside ```...``` from being
+        mistaken for markdown headings by _split_by_headings.
+        """
+        return re.sub(
+            r"^```[^\n]*\n.*?^```",
+            lambda m: "\n" * m.group().count("\n"),
+            text,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+
+    @staticmethod
     def _split_by_headings(text: str) -> list[tuple[str, str]]:
         """Split markdown text into sections at heading boundaries.
 
         Returns list of (heading_context, body) tuples.
         heading_context tracks hierarchy: "# Main > ## Sub".
         For text without headings, returns [("", full_text)].
+        Headings inside fenced code blocks are ignored.
         """
         heading_re = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
 
-        matches = list(heading_re.finditer(text))
+        # Find headings on a masked copy (code blocks blanked out),
+        # but extract body text from the original to preserve content.
+        masked = NotionEmbeddingPipeline._mask_code_blocks(text)
+        matches = list(heading_re.finditer(masked))
         if not matches:
             return [("", text.strip())]
 

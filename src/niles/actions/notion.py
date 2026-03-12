@@ -140,14 +140,12 @@ _STOP_WORDS = frozenset(
         "keinen",
         "keinem",
         "keiner",
-        # English basics
+        # English basics (duplicates with German section omitted)
         "the",
         "is",
         "are",
-        "was",
         "were",
         "of",
-        "in",
         "to",
         "for",
         "with",
@@ -173,9 +171,7 @@ def _extract_keywords(query: str) -> list[str]:
     Strips stop words, punctuation, and short tokens.
     Returns lowercased keywords for case-insensitive matching.
     """
-    tokens = _re.findall(
-        r"[\w\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]+", query.lower()
-    )
+    tokens = _re.findall(r"\w+", query.lower())
     return [t for t in tokens if t not in _STOP_WORDS and len(t) >= 2]
 
 
