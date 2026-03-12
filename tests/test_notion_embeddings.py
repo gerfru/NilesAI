@@ -205,6 +205,12 @@ class TestSplitByHeadings:
         assert "# Setup" in headings
         assert "# Usage" in headings
         assert all("install" not in ctx for ctx in headings)
+        # Body text must not be truncated by the code block
+        setup_body = [body for ctx, body in sections if ctx == "# Setup"][0]
+        assert "Run the following:" in setup_body
+        assert "apt install foo" in setup_body
+        usage_body = [body for ctx, body in sections if ctx == "# Usage"][0]
+        assert "Start the app." in usage_body
 
     def test_code_block_content_preserved_in_body(self):
         text = "# Setup\nIntro\n```python\n# comment\nprint('hi')\n```\nMore text."
