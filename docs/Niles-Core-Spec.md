@@ -232,7 +232,7 @@ Niles/
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
-│   └── versions/                    # Migration files (001_baseline, ..., 004_...)
+│   └── versions/                    # Migration files (001_baseline, ..., 006_...)
 ├── config/
 │   ├── soul.md                       # Agent personality
 │   ├── mcp_servers.yaml              # MCP server configuration
@@ -419,11 +419,12 @@ class Settings(BaseSettings):
     feature_briefing_weekly: bool = False
     briefing_daily_time: str = "07:30"        # HH:MM, Mon-Fri
     briefing_weekly_time: str = "07:15"       # HH:MM, Monday
-    # Notion RAG
+    # Notion RAG (see docs/RAG.md for architecture details)
     feature_notion: bool = False
     notion_token: str = ""
-    notion_sync_interval: int = 30            # minutes between syncs
+    notion_sync_interval: int = 0             # minutes between syncs (0=disabled)
     notion_embedding_model: str = "nomic-embed-text-v2-moe"
+    notion_summary_model: str = ""            # LLM for summaries (falls back to llm_model)
 ```
 
 Loads from `.env` and environment variables. `extra = "ignore"`.
@@ -1047,7 +1048,7 @@ CREATE TABLE IF NOT EXISTS notion_pages (
     title TEXT NOT NULL DEFAULT '',
     parent_id TEXT,                                -- Parent page/database ID
     object_type TEXT NOT NULL DEFAULT 'page',      -- 'page' or 'database'
-    content_text TEXT NOT NULL DEFAULT '',          -- Extracted plain text
+    content_text TEXT NOT NULL DEFAULT '',          -- Markdown-formatted text (headings, lists, code)
     content_md5 TEXT,                               -- MD5 of content_text (change detection)
     url TEXT,                                       -- Notion page URL
     last_edited TIMESTAMP WITH TIME ZONE,
@@ -1067,14 +1068,17 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS notion_embeddings (
     id SERIAL PRIMARY KEY,
     page_id TEXT NOT NULL REFERENCES notion_pages(id) ON DELETE CASCADE,
+    chunk_level INTEGER NOT NULL DEFAULT 1,        -- 0=summary, 1=detail
     chunk_index INTEGER NOT NULL DEFAULT 0,
-    chunk_text TEXT NOT NULL,
+    chunk_text TEXT NOT NULL,                       -- Prefixed with [Breadcrumb > # Heading] context
     embedding vector(768),                         -- nomic-embed-text dimension
+    page_title TEXT NOT NULL DEFAULT '',            -- Breadcrumb for keyword boost
+    heading_context TEXT NOT NULL DEFAULT '',       -- Heading hierarchy for keyword boost
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (page_id, chunk_index)
+    UNIQUE (page_id, chunk_level, chunk_index)
 );
-CREATE INDEX IF NOT EXISTS idx_notion_embeddings_cosine
-    ON notion_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_notion_embeddings_vector
+    ON notion_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 ```
 
 ### user_google_tokens
