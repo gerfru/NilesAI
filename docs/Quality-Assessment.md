@@ -1,6 +1,6 @@
 # Technical Quality Assessment
 
-> Last updated: 2026-03-09 | After Phase 1 + Phase 2 + Notion RAG + Per-User Google MCP
+> Last updated: 2026-03-12 | After Phase 1 + Phase 2 + Notion RAG + RAG Docs (PR #57)
 
 ## Score Overview
 
@@ -30,6 +30,7 @@
 | 2026-03-02 | +4 new dimensions, web split                   | 7.9   |
 | 2026-03-03 | Phase 1 (PR #45) + Phase 2 (PR #46)            | 8.5   |
 | 2026-03-09 | Notion RAG + Per-User Google MCP (PRs #50-#52) | 8.5   |
+| 2026-03-12 | Markdown-aware chunking + RAG docs (PR #57)    | 8.5   |
 
 The drop from 8.2 to 7.9 (2026-03-02) was due to adding four new dimensions
 (Observability, Resilience, Performance, API Design) that scored lower. Phase 1
@@ -37,34 +38,43 @@ raised 4 weak dimensions (Resilience +1.5, Performance +1.0, UI +1.0,
 Maintainability +0.5). Phase 2 raised 4 structural dimensions (KISS +1.0,
 Security +0.5, DevOps +0.5, API Design +0.5).
 
+Score stable at 8.5 since Phase 2. Incremental improvements (860 tests, RAG
+architecture docs, 6 migrations) keep metrics healthy but don't move needle
+on remaining gaps (Observability 7.0 is the biggest drag).
+
 ---
 
 ## 1. KISS / Complexity — 8.5/10
 
-| Metric              | Value                                                       |
-|---------------------|-------------------------------------------------------------|
-| Largest file        | `agent/core.py` — 866 LOC (was 1,126)                      |
-| Agent modules       | `core.py` 866, `context.py` 346, `text_tool_parser.py` 121 |
-| Web module max      | 365 LOC (`_notion.py`) — was 2,444                         |
-| Direct dependencies | 26 (pyproject.toml)                                         |
-| Avg file size       | ~153 LOC across 82 Python files                             |
+| Metric              | Value                                                          |
+|---------------------|----------------------------------------------------------------|
+| Largest file        | `agent/core.py` — 866 LOC (was 1,126)                         |
+| Second largest      | `main.py` — 772 LOC                                           |
+| Agent modules       | `core.py` 866, `context.py` 346, `text_tool_parser.py` 121    |
+| Web module max      | 397 LOC (`_notion.py`) — was 2,444                             |
+| Direct dependencies | 26 (pyproject.toml)                                            |
+| Avg file size       | ~157 LOC across 84 Python files                                |
+| File size dist.     | 51% < 100 LOC, 73% < 200 LOC, 90% < 400 LOC, 2 files > 800   |
 
 ### Evidence
 
 **Why 8.5 and not higher:**
 
-`main.py` at 756 LOC still mixes app factory, middleware setup, lifespan
+`main.py` at 772 LOC still mixes app factory, middleware setup, lifespan
 management, health endpoints, and metrics endpoint in one file. The lifespan
-handler alone initializes 20+ `app.state` attributes (grew with Notion RAG
-and per-user Google MCP pool).
+handler initializes 28 `app.state` attributes (grew with Notion RAG,
+per-user Google MCP pool, and embedding pipeline components). Six files are in
+the 400-799 LOC range (`caldav.py` 489, `briefing.py` 461,
+`notion_embeddings.py` 410, `_notion.py` 397, `user_pool.py` 366,
+`manager.py` 360).
 
 **Why 8.5 and not lower:**
 
 - NilesAgent split into 3 focused modules: `core.py` (orchestration, ~486 LOC
   class + 340 LOC TOOLS constant), `context.py` (context assembly, user/resource
   resolution), `text_tool_parser.py` (pure functions for JSON tool-call detection)
-- 80% of files under 400 LOC
-- Web split (14 modules, max 365 LOC) demonstrates the target structure
+- 90% of files under 400 LOC, 73% under 200 LOC
+- Web split (13 feature modules, max 397 LOC) demonstrates the target structure
 
 **Score change (Phase 2):** +1.0 from 7.5 — NilesAgent split eliminated the
 last >1,000 LOC file. Each module now has a single responsibility.
@@ -89,53 +99,68 @@ No string formatting (`f"..."`, `%`, `.format()`) found in any SQL statement.
 **XSS — mitigated via CSP + auto-escaping:**
 
 Jinja2 auto-escaping is enabled (default for `Jinja2Templates`). The custom
-`_NilesTemplates` class (`web/_core.py:23-32`) injects a CSP nonce into every
+`_NilesTemplates` class (`web/_core.py:31-37`) injects a CSP nonce into every
 template context, which the base template uses for inline scripts.
 
-CSP policy (`main.py`):
+CSP policy (`main.py:547-556`):
 
 ```text
 default-src 'self';
 script-src 'nonce-{nonce}' 'strict-dynamic' 'self';
 style-src 'self';
 img-src 'self' data: https://*.googleusercontent.com;
+font-src 'self';
+connect-src 'self';
+base-uri 'self';
+form-action 'self';
 report-uri /csp-report
 ```
 
 No `'unsafe-inline'` for scripts. `'strict-dynamic'` allows nonce-approved
-scripts to load dependencies.
+scripts to load dependencies. `base-uri 'self'` and `form-action 'self'`
+restrict base tag hijacking and form target manipulation.
 
 **CSRF — double-submit with timing-safe comparison:**
 
-`_verify_csrf()` at `web/_core.py:111` compares header `x-csrf-token` against
-cookie value using `hmac.compare_digest()`, preventing timing attacks. Applied
-to all POST/DELETE handlers via `_require_auth_and_csrf()`.
+`_verify_csrf()` at `web/_core.py:116-122` compares header `x-csrf-token`
+against cookie value using `hmac.compare_digest()`, preventing timing attacks.
+CSRF token generated via `secrets.token_urlsafe(32)`. Cookie uses
+`samesite="strict"`. Applied to all POST/DELETE/PATCH handlers via
+`_require_auth_and_csrf()`.
 
 **Authentication:**
 
-- Argon2 password hashing (`_auth.py:34`, `_admin.py:18`)
+- Argon2 password hashing (`_auth.py:102,112,144`)
 - Timing defense: dummy hash on failed lookup (`_auth.py:112`) prevents
   user enumeration via response time
-- Session cookies: `httponly=True` (`_core.py:102`), `secure` based on
-  `_is_secure_context()` (`_core.py:57-62`), `samesite=lax` (`_core.py:104`)
-- Cookie size guard: rejects tokens > 4096 bytes (`_core.py:76`)
+- Password policy: minimum 8 characters enforced (`_auth.py:72-80`)
+- Session cookies: `httponly=True` (`_core.py:106-113`), `secure` based on
+  `_is_secure_context()` (`_core.py:65-70`), `samesite=lax` (`_core.py:112`)
+- Cookie size guard: rejects tokens > 4096 bytes (`_core.py`)
+- OAuth state cookie: 600s max_age, httponly=True, signed (`_auth.py:165-172`)
 
 **Rate limiting:**
 
-- Global: `RateLimitMiddleware` at `main.py`, 60 req/min per IP
-- Login: 5 attempts per 5 minutes per IP (`_auth.py:42-52`), with cleanup
+- Global: `RateLimitMiddleware` at `main.py`, 60 req/min per IP,
+  10,000 IP limit with eviction, pruning of expired entries
+- Login: 5 attempts per 5 minutes per IP (`_auth.py:36-56`), with cleanup
   of expired entries to prevent memory leak
+- Exempt: `/health`, `/ready`, `/static` skip rate limiting
 
-**Security headers** (`main.py`):
+**Security headers** (`main.py:533-558`):
 
 ```text
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: strict-origin-when-cross-origin
 Permissions-Policy: camera=(), microphone=(), geolocation=()
+X-Request-ID: <per-request UUID>
 ```
 
-**CSP violation reporting** (`main.py`):
+Middleware execution order: RequestIdMiddleware → RateLimitMiddleware →
+SecurityHeadersMiddleware → MetricsMiddleware.
+
+**CSP violation reporting** (`main.py:735-754`):
 
 `report-uri /csp-report` directive in CSP header. The `POST /csp-report`
 endpoint logs violations at WARNING level and returns 204. Gracefully handles
@@ -147,6 +172,13 @@ malformed JSON. Rate limiting applies via existing middleware.
 Fails the pipeline on any known vulnerability (one documented exception:
 CVE-2025-69872, diskcache pickle deserialization — transitive via trafilatura,
 no upstream fix available). Runs independently of lint/test.
+
+**Input validation at system boundaries:**
+
+- Settings store validates: key format (regex `^[a-z][a-z0-9_]{1,63}$`),
+  value length (max 4096), timezone (IANA), time format (HH:MM regex),
+  coordinates (lat -90..90, lon -180..180), URLs (scheme validation)
+- API key: HMAC timing-safe comparison, length guard (max 256 chars)
 
 **Why 9.5 and not 10:**
 
@@ -164,7 +196,7 @@ close the two gaps identified in the initial assessment.
 **Layer separation verified by import graph:**
 
 ```text
-Routes (web/_*.py)
+Routes (web/_*.py) — 13 feature modules
   imports from: _core (auth guards), actions/*, sync/*
   does NOT import from: agent/core, stores directly (except settings_store
   in _settings.py for runtime config — acceptable)
@@ -173,16 +205,18 @@ Agent (agent/core.py, agent/context.py)
   imports from: agent/tools/*, actions/*, config, memory/*
   does NOT import from: web/*, main
 
-Actions (actions/*.py)
+Actions (actions/*.py) — 7 modules
   imports from: config, external SDKs (httpx, openai)
   does NOT import from: web/*, agent/*, stores
 
-Stores (*_store.py, memory/store.py)
+Stores (*_store.py, memory/store.py) — 7 stores
   imports from: asyncpg only
   does NOT import from: anything in niles.*
 ```
 
 No circular imports detected. Dependency arrows point strictly downward.
+`TYPE_CHECKING` blocks in `types.py` prevent runtime cycles. Agent accesses
+web via `app.state`, not imports.
 
 **Tool handler registry** (`agent/tools/__init__.py`):
 
@@ -197,20 +231,23 @@ def register_tool(name: str):
     return decorator
 ```
 
-Each tool handler is an async function with signature
-`async def handle_X(args, chat_id, ctx) -> dict`. The agent calls
-`TOOL_REGISTRY[name](args, chat_id, ctx)` — no switch/case, no agent
-knowledge of tool internals. 10 handler modules auto-registered via
-side-effect imports in `__init__.py`.
+13 tool handlers auto-registered across 7 modules via side-effect imports:
+`find_contact`, `send_whatsapp`, `get_whatsapp_messages`, `find_event`,
+`create_event`, `remember`, `recall`, `search_notion`, `send_signal`,
+`get_signal_messages`, `list_tasks`, `create_task`, `complete_task`.
 
 **Web feature modules** (`web/__init__.py`):
-Side-effect imports register routes on shared `router`. Each module imports
-`router` from `_core` and decorates its handlers. The `__init__.py` only
-re-exports public names — no logic.
+13 modules register routes on shared `router` via side-effect imports:
+`_admin`, `_auth`, `_briefing`, `_calendar`, `_chat`, `_contacts`, `_legal`,
+`_notion`, `_settings`, `_signal`, `_vikunja`, `_weather`, `_whatsapp`.
+
+**Type safety:** `AppState` Protocol (`types.py:36-62`) provides typed access
+to all 28 `app.state` attributes, replacing untyped `request.app.state.X`
+patterns in web routes.
 
 **Why 8.5 and not higher:**
 
-- `main.py` lifespan handler initializes 18+ app.state attributes —
+- `main.py` lifespan handler initializes 28 app.state attributes —
   a factory or builder pattern would be cleaner
 - No explicit service layer for CRUD operations — routes call stores directly
   for simple read/write, which is pragmatic but skips validation
@@ -225,29 +262,31 @@ re-exports public names — no logic.
   gws-downloader (fetches gws binary with SHA256 verification), runtime
 - Base image pinned with SHA256 digest: `python:3.12-slim@sha256:...`
 - Non-root user: `useradd --uid 1000 niles`, `USER niles`
-- HEALTHCHECK: `curl -f http://localhost:8000/health`
+- HEALTHCHECK: `curl -f http://localhost:8000/health` (30s interval, 5s
+  timeout, 15s start period, 3 retries)
 - Tailwind binary SHA256-verified
 
 **CI** (`.github/workflows/ci.yml`):
 
-Pipeline stages: Ruff lint → Ruff format → mypy → pytest + coverage →
-TruffleHog secret scan → Trivy container scan → pip-audit dependency audit.
-All required to pass.
+4 jobs, all action versions pinned with SHA256 digest:
+1. `lint-and-test`: Ruff lint → Ruff format → mypy → pytest + coverage
+2. `dependency-audit`: pip-audit (CVE-2025-69872 explicitly ignored)
+3. `secret-scan`: TruffleHog (verified + unknown results)
+4. `trivy-scan`: Container scan (CRITICAL/HIGH exit-code 1, depends on
+   lint-and-test)
 
 **Pre-commit** (`.pre-commit-config.yaml`):
 
-5 hooks: TruffleHog, PII check, Ruff lint, Ruff format, mypy. Run on
-every commit.
+4 hooks: TruffleHog v3.88.0 (secret scan), PII check (custom script for
+IP/hostname scanning), Ruff v0.9.6 (lint + format), mypy (type check). Run
+on every commit.
 
-**Migrations** (`main.py`):
+**Migrations** (`migrate.py` + `entrypoint.sh`):
 
-Alembic version check at startup. If the DB schema doesn't match the latest
-migration, the app crashes immediately — no silent schema drift.
-
-**Dependency vulnerability scanning** (`.github/workflows/ci.yml`):
-
-`dependency-audit` CI job runs `pip-audit --desc --skip-editable` independently
-of lint/test. Fails on any known vulnerability in the dependency tree.
+Alembic migrations run via `entrypoint.sh` before uvicorn starts. 6 migration
+versions: `001_baseline` through `006_notion_metadata_columns`. Detects 3
+states (fresh DB, existing without alembic_version, managed). App crashes on
+schema mismatch at startup.
 
 **Renovate** (`renovate.json`):
 
@@ -267,33 +306,42 @@ the dependency management gaps.
 
 ## 5. UI/UX — 8.0/10
 
-**Responsive design present** — Tailwind breakpoint classes across templates:
+**Responsive design present** — 32 Tailwind breakpoint instances across 7
+template files. Mobile-first layout:
 
 ```text
 base.html        flex items-center gap-2 sm:gap-4
-chat.html        max-w-3xl mx-auto px-4 sm:px-6
-settings.html    grid grid-cols-1 md:grid-cols-2
+settings.html    15 breakpoint classes (most responsive page)
+carddav_status   5 breakpoint classes
 ```
 
-Viewport meta tag present (`base.html`). Mobile-first layout.
+Viewport meta tag present (`base.html:6`). Mobile-first layout.
 
-**HTMX integration well-structured** — 17 templates split into full pages
-and fragments. Fragment templates (`fragments/*.html`) return partial HTML
-for HTMX swaps. No full-page reloads for interactive actions.
+**HTMX integration well-structured** — 19 templates (6 full pages, 12
+fragments, 1 macro) with 121 HTMX attributes across 13 files. Fragment
+templates (`fragments/*.html`) return partial HTML for HTMX swaps. No
+full-page reloads for interactive actions. Confirmation dialogs
+(`hx-confirm`) used for destructive operations.
 
-**Accessibility improvements (Phase 1, PR #45):**
+**Accessibility (Phase 1, PR #45):**
 
-- 32 `<label>` elements across forms (login, settings, admin, weather,
-  CalDAV, Vikunja, Notion). Many use `sr-only` class for visually hidden
-  labels on inputs that already have placeholders.
-- 10 `aria-label` attributes: theme toggle, settings toggles, chat nav,
-  channel selector, search toggle, send button.
-- 7 `role` attributes: `role="alert"` on error messages, `role="status"` on
-  success messages, `role="combobox"` on autocomplete, `role="log"` on chat
-  container.
-- Skip-to-content link in `base.html`: visually hidden, visible on focus,
-  links to `#main-content`.
+- 32 `<label>` elements across 9 template files (login, settings, admin,
+  weather, CalDAV, Vikunja, Notion). Many use `sr-only` class for visually
+  hidden labels on inputs that already have placeholders.
+- 18 ARIA attributes total:
+  - 6 `aria-label` (theme toggle, web search, Notion search, send button)
+  - 2 `aria-live` (chat container, polite mode)
+  - 1 `aria-expanded` (weather location combobox)
+  - 1 `aria-pressed` (chat toggle button)
+  - 1 `aria-autocomplete` (weather search)
+- `role` attributes: `role="alert"` on error messages, `role="status"` on
+  success messages, `role="combobox"` on autocomplete.
+- Skip-to-content link in `base.html:21`: visually hidden, visible on focus,
+  links to `#main-content`. German text: "Zum Hauptinhalt springen".
 - 7 `scope="col"` on admin table headers.
+- 16 `sr-only` instances across 7 files for screen-reader content.
+- Focus-visible ring styles (`focus-visible:ring-2`) on form inputs.
+- Dark mode support throughout (Tailwind `dark:` prefixes).
 
 **Why 8.0 and not higher:**
 
@@ -301,12 +349,14 @@ for HTMX swaps. No full-page reloads for interactive actions.
 - No focus management after HTMX content swaps (`hx-on::after-settle` not used)
 - `aria-live` only on chat container — HTMX toast notifications may not be
   announced to screen readers
+- No `aria-describedby` for complex forms with helper text
 
 **Why 8.0 and not lower:**
 
-Semantic HTML, form labels, ARIA attributes, skip-link, and table scopes
-cover the fundamental accessibility requirements. The remaining gaps are
-in dynamic content announcement and automated testing.
+Semantic HTML, form labels, ARIA attributes, skip-link, table scopes, and
+proper focus-visible styles cover the fundamental accessibility requirements.
+Weather location implements full combobox pattern. The remaining gaps are in
+dynamic content announcement and automated testing.
 
 **Score change (Phase 1):** +1.0 from 7.0 — comprehensive accessibility
 pass addresses BFSG/EU Accessibility Act basics.
@@ -317,12 +367,13 @@ pass addresses BFSG/EU Accessibility Act basics.
 
 **Test suite:**
 
-- 782 test functions across 48 files (36 unit + 9 integration + 3 E2E)
-- Code-to-test ratio: ~12,528 LOC source / ~13,405 LOC tests = 1:1.07
+- 860 test functions across 49 files (37 unit + 9 integration + 3 E2E)
+- Code-to-test ratio: 13,212 LOC source / 14,660 LOC tests = 1:1.11
 - Coverage threshold: 65% minimum enforced in CI (`pyproject.toml`)
 - Test categories: unit tests for stores, agent core, security, calendar sync,
-  web routes, signal integration, migrations, Notion RAG, Google MCP pool,
-  integration tests (multi-component), E2E tests (Docker-based)
+  web routes, signal integration, migrations, Notion RAG (5 test files),
+  Google MCP pool, integration tests (multi-component), E2E tests
+  (Docker-based, LLM judge)
 
 **Modules with tests vs without:**
 
@@ -339,13 +390,20 @@ pass addresses BFSG/EU Accessibility Act basics.
 | Contacts               | test_contacts.py             | ~25   |
 | MCP / Google pool      | test_mcp, test_user_mcp_pool | ~40   |
 | Notion RAG             | 5 test files                 | ~80   |
-| Docker deployment      | tests/e2e/ (3 files)         | ~30   |
+| Docker deployment      | tests/e2e/ (3 files)         | ~48   |
+
+**Documentation:**
+
+Architecture documentation exists for the RAG pipeline (`docs/RAG.md`, ~580
+lines) covering fundamentals, Niles implementation details, design decisions,
+and troubleshooting. Additional docs: `API.md`, `Deployment.md`,
+`Development.md`, `Niles-Core-Spec.md`, `LEGAL.md`.
 
 **Structured logging** (`logging_config.py`):
 structlog configured with JSON renderer, context variable merging, and
-request ID injection. Third-party loggers (httpx, httpcore) silenced at
-WARNING level. All app code uses `logging.getLogger(__name__)` which
-routes through structlog processors.
+request ID injection. UTC ISO timestamps. Third-party loggers (httpx,
+httpcore) silenced at WARNING level. All app code uses
+`logging.getLogger(__name__)` which routes through structlog processors.
 
 **Type checking:**
 
@@ -361,17 +419,19 @@ Remaining overrides: `sync.manager`, `main`, `sync.ical_parser`,
 **Why 8.5 and not higher:**
 
 - 10 mypy override modules still suppress real type errors
-- No architecture documentation or ADRs
 - 65% coverage threshold is modest (CLAUDE.md spec: 70-80%)
+- No formal ADRs (Architecture Decision Records)
 
 **Why 8.5 and not lower:**
 
-- 782 tests with good behavior-oriented style (+31% since Phase 2)
+- 860 tests with good behavior-oriented style (+10% since PR #52)
+- Test LOC exceeds source LOC (1:1.11 ratio)
 - Integration tests (9 files) and E2E tests (3 files) add multi-layer coverage
 - structlog JSON logging is production-ready
 - AppState Protocol and removal of `web.*` overrides show type safety
   trend is improving
-- MCP and Notion components have dedicated test coverage
+- RAG architecture documentation addresses the biggest documentation gap
+- MCP, Notion, and embedding components all have dedicated test coverage
 
 **Score change (Phase 1):** +0.5 from 8.0 — AppState Protocol and
 removal of 2 mypy override groups improve type safety.
@@ -391,20 +451,23 @@ TOOL_CALLS    = Counter("niles_tool_calls_total", ..., ["tool_name", "success"])
 ACTIVE_SSE    = Gauge("niles_active_sse_connections")
 ```
 
-Metrics endpoint at `/metrics`. HTTP middleware records request count and
-latency for every request. LLM metrics recorded in agent core after each
-inference call.
+Metrics endpoint at `/metrics` (API-key protected). HTTP middleware records
+request count and latency for every request. Path normalization replaces
+numeric/UUID segments with `:id` to prevent label cardinality explosion.
+LLM metrics recorded in agent core after each inference call.
 
 **Health endpoints:**
 
-- `/health`: Returns DB pool stats (size, free, used). No external service
+- `/health`: Returns DB pool stats (size, free, min, max). No external service
   dependency — appropriate for liveness probe.
-- `/ready`: Checks DB connectivity + Alembic migration version. Returns error
-  list if not ready.
+- `/ready`: Checks DB connectivity (SELECT 1) + Alembic migration version.
+  Returns 503 with error list if not ready.
+- Both exempt from rate limiting and metrics recording.
 
 **Logging:**
 
-Structured JSON to stdout via structlog. Request ID generated per request.
+Structured JSON to stdout via structlog. Request ID generated per request
+(`RequestIdMiddleware`), added as `X-Request-ID` response header.
 
 **Why 7.0 and not higher:**
 
@@ -427,17 +490,24 @@ conventions. Structured logging is the right foundation.
 
 **Timeouts — comprehensive:**
 
-| Service          | Timeout             | Location                        |
-|------------------|---------------------|---------------------------------|
-| Ollama LLM       | SDK default (~120s) | agent/core.py (OpenAI SDK)      |
-| Evolution API    | 30s                 | http_clients.py (shared client) |
-| Signal API       | 10-30s              | actions/signal.py               |
-| CalDAV servers   | 60s                 | sync/caldav.py                  |
-| Google OAuth     | 30s                 | http_clients.py (shared client) |
-| MCP subprocesses | 30s                 | mcp/client.py                   |
-| Weather API      | 10s                 | http_clients.py (shared client) |
-| Geocoding API    | 5s                  | http_clients.py (shared client) |
-| Vikunja API      | 10s                 | actions/tasks.py                |
+| Service           | Timeout   | Location                          |
+|-------------------|-----------|-----------------------------------|
+| Ollama LLM        | ~120s     | agent/core.py (OpenAI SDK)        |
+| Ollama Embedding   | 30s       | sync/ollama_embedder.py           |
+| Ollama Summarizer  | 60s       | sync/notion_summarizer.py         |
+| Evolution API     | 30s       | http_clients.py (shared client)   |
+| Signal API        | 10-30s    | actions/signal.py                 |
+| CalDAV servers    | 30-60s    | sync/caldav.py                    |
+| CardDAV servers   | 30s       | sync/carddav.py                   |
+| Google OAuth      | 30s       | http_clients.py (shared client)   |
+| MCP subprocesses  | 30s       | mcp/client.py                     |
+| MCP user pool     | 15s       | mcp/user_pool.py                  |
+| Weather API       | 10s       | http_clients.py (shared client)   |
+| Geocoding API     | 5s        | http_clients.py (shared client)   |
+| Vikunja API       | 10s       | actions/tasks.py                  |
+| ICS downloads     | 60s       | sync/manager.py                   |
+| Web fetch (MCP)   | 15s       | mcp/fetch/server.py               |
+| DB startup wait   | 60s       | migrate.py (env configurable)     |
 
 Every external HTTP call has an explicit timeout. No unbounded waits.
 
@@ -447,6 +517,7 @@ Every external HTTP call has an explicit timeout. No unbounded waits.
 - Retries on: `ConnectError`, `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`,
   `PoolTimeout`, and `HTTPStatusError` with status >= 500
 - Strategy: exponential jitter (initial=1s, max=10s, jitter=2s), max 3 attempts
+- Does NOT retry 4xx errors
 
 Applied to 8 callables across 5 modules:
 
@@ -458,15 +529,20 @@ Applied to 8 callables across 5 modules:
 | actions/briefing.py   | 2 methods (weather + Vikunja tasks fetch) |
 | mcp/weather/server.py | 1 function (Open-Meteo data fetch)        |
 
-**Graceful shutdown** (`main.py`):
+**Graceful shutdown** (`main.py:452-484`):
 
-`shutdown_event` is an `asyncio.Event` set during lifespan teardown. All
-long-running tasks (Signal listener, SSE streams) check this event between
-iterations and exit cleanly. DB pool and HTTP clients closed on shutdown.
+`shutdown_event` is an `asyncio.Event` set during lifespan teardown. Shutdown
+sequence: set event → 0.5s SSE drain → cancel Signal WebSocket → close Signal
+HTTP client → close Ollama embedder + summarizer → stop UserMCPPool → stop
+MCP servers → shutdown scheduler → close HTTP clients → close DB pool.
+
+All long-running tasks (Signal listener, SSE streams) check `shutdown_event`
+between iterations and exit cleanly.
 
 **Signal WebSocket reconnection** (`sources/signal.py`):
 
-Exponential backoff (5s initial, 60s max) on WebSocket disconnects.
+Exponential backoff (5s initial, 60s max) with `asyncio.wait_for(
+shutdown_event.wait(), timeout=backoff)` — interruptible during shutdown.
 
 **Why 8.0 and not higher:**
 
@@ -478,10 +554,11 @@ Exponential backoff (5s initial, 60s max) on WebSocket disconnects.
 
 **Why 8.0 and not lower:**
 
-Timeouts are comprehensive, retry logic covers 5 of the 6 external service
-integration modules, graceful shutdown works correctly, and Signal
-reconnection demonstrates the right pattern. For a self-hosted single-user
-app, the remaining gaps are low-probability scenarios.
+Timeouts are comprehensive (16 distinct timeout configurations), retry logic
+covers 5 of the 6 external service integration modules, graceful shutdown is
+thorough with ordered resource cleanup, and Signal reconnection demonstrates
+the right pattern. For a self-hosted single-user app, the remaining gaps are
+low-probability scenarios.
 
 **Score change (Phase 1):** +1.5 from 6.5 — retry decorator applied to
 all sync and briefing modules. The biggest resilience gap (zero retries
@@ -529,27 +606,35 @@ closed via `close_all()` on shutdown. TCP connection reuse across requests.
 All 3 are outside the main FastAPI request path. The MCP servers run as
 separate stdio subprocesses and can't share the main app's clients.
 
+**Caching (6 patterns identified):**
+
+| Cache                    | TTL    | Location            | Purpose                       |
+|--------------------------|--------|---------------------|-------------------------------|
+| Calendar source names    | 300s   | agent/context.py    | Reduce DB queries per chat    |
+| CalDAV collection list   | 60s    | sync/caldav.py      | Avoid PROPFIND on page load   |
+| MCP tool definitions     | —      | mcp/client.py       | Discover once per server      |
+| Vikunja default project  | —      | actions/tasks.py    | Avoid repeated API call       |
+| Echo guard               | 10s    | sources/echo_guard  | Prevent echo-loop             |
+| MCP user pool idle       | 1800s  | mcp/user_pool.py    | Cleanup unused instances      |
+
 **SSE streaming** (`web/_chat.py`):
 
 Proper async generator with gauge tracking. Shutdown event checked between
 chunks. StreamingResponse with `X-Accel-Buffering: no` for reverse proxy
 compatibility.
 
-**Calendar source cache:**
-`ContextBuilder` caches calendar source names with a 5-minute TTL, avoiding
-a DB query on every chat message.
-
 **Why 8.5 and not higher:**
 
 - No caching for settings, user lookups, or contact lists
 - Ollama model list fetched on every request
-- 65% coverage threshold doesn't include performance regression tests
+- No performance regression tests
 
 **Why 8.5 and not lower:**
 
 Async is correct and consistent. DB pooling is properly configured. 5 shared
 HTTP clients eliminate per-request TCP overhead for all main request paths.
-SSE streaming is well-implemented with backpressure awareness.
+SSE streaming is well-implemented with backpressure awareness. 6 caching
+patterns cover the most frequent hot paths.
 
 **Score change (Phase 1):** +1.0 from 7.5 — shared httpx clients eliminate
 the 15+ per-request client instances that were creating and destroying TCP
@@ -561,27 +646,36 @@ connections on every external API call.
 
 **REST conventions followed for internal API:**
 
+54 routes total (33 POST, 18 GET, 2 DELETE, 1 core redirect). URL structure
+consistently uses `/ui/api/{resource}` for HTMX API endpoints and
+`/{resource}` for external-facing endpoints.
+
 ```text
 GET  /ui/chat              → chat page
-GET  /api/chat/history     → paginated history (offset, limit)
-POST /api/chat             → send message (non-streaming)
-POST /api/chat/stream      → send message (SSE)
-POST /api/chat/clear       → clear history
+GET  /ui/api/chat/history   → paginated history (offset, channel)
+POST /ui/api/chat           → send message (non-streaming)
+POST /ui/api/chat/stream    → send message (SSE)
+POST /ui/api/chat/clear     → clear history
 
-GET  /api/calendar/sources → list sources
-POST /api/calendar/sources → add source
-DELETE /api/calendar/sources/{id} → remove source
+GET  /ui/api/calendar/sources → list sources
+POST /ui/api/calendar/sources → add source
+DELETE /ui/api/calendar/sources/{id} → remove source
 
-GET  /api/admin/users      → user list page
-POST /api/admin/users      → create user
-DELETE /api/admin/users/{id} → delete user
+GET  /ui/api/admin/users    → user list page
+POST /ui/api/admin/users    → create user
+DELETE /ui/api/admin/users/{id} → delete user
+
+POST /chat                  → direct chat API (API key auth)
+GET  /health                → liveness probe
+GET  /ready                 → readiness probe
+GET  /metrics               → Prometheus metrics (API key auth)
 ```
 
 Consistent URL structure. Resources are nouns, actions are HTTP verbs.
 
 **Pagination** implemented on:
 
-- Chat history: `offset` + `limit=20` (`web/_chat.py`)
+- Chat history: `offset` + `limit=20` (`web/_chat.py`), `has_more` flag
 - User list: `limit=100, offset=0` (`user_store.py`)
 - Memory store: `limit=200, offset=0` (`memory/store.py`)
 
@@ -595,7 +689,7 @@ JSON API error paths use the CLAUDE.md-specified envelope (`errors.py`):
 
 Applied to: `_api_exception_handler` (all HTTPExceptions), `RateLimitMiddleware`
 (429), webhook auth (401). Helper function `error_response()` prevents format
-drift.
+drift. No sensitive data in error responses.
 
 HTMX endpoints correctly return template fragments (toast, redirect headers) —
 these are the right format for HTMX interactions, not API responses.
@@ -606,6 +700,8 @@ these are the right format for HTMX interactions, not API responses.
   or versioned)
 - HTMX endpoints use different error patterns by design, but this creates
   two "styles" of error handling in the same codebase
+- Limited Pydantic BaseModel usage for request validation (only 1 model:
+  `ChatRequest`); most routes use manual Form validation
 
 **Why 8.0 and not lower:**
 
@@ -613,6 +709,7 @@ these are the right format for HTMX interactions, not API responses.
 - Pagination implemented on all list endpoints
 - Unified JSON error envelope per CLAUDE.md spec on all API error paths
 - URL structure is consistent and predictable
+- Input validation comprehensive at data layer (SettingsStore)
 
 **Score change (Phase 2):** +0.5 from 7.5 — unified error format addresses
 the primary gap. The remaining HTMX/API duality is by design.
@@ -661,8 +758,8 @@ the primary gap. The remaining HTMX/API duality is by design.
   for Security, Architecture, Maintainability (highest impact on project
   longevity); 0.8x for UI/UX (lower weight for backend-focused project);
   1.0x for all others.
-- **Trend:** Delta compared to post-web-split baseline (2026-03-02). Dimensions
-  unchanged since that baseline show "=".
+- **Trend:** Delta compared to previous assessment (2026-03-09). Dimensions
+  unchanged since that assessment show "=".
 - **Bias disclosure:** This assessment was performed by the same tool that
-  implemented PRs #43-#46. Findings should be validated independently.
+  implemented PRs #43-#57. Findings should be validated independently.
   Scores may be biased toward overvaluing recent improvements.
