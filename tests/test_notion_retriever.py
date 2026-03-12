@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-from niles.actions.notion import NotionRetriever
+from niles.actions.notion import NotionRetriever, _extract_keywords
 from niles.sync.ollama_embedder import OllamaEmbedder
 
 
@@ -35,6 +35,8 @@ def _make_row(
     chunk_level=1,
     chunk_index=0,
     page_id="page1",
+    meta_title="",
+    heading_context="",
 ):
     """Create a mock DB row with all required fields."""
     return {
@@ -42,6 +44,8 @@ def _make_row(
         "chunk_index": chunk_index,
         "chunk_level": chunk_level,
         "page_id": page_id,
+        "meta_title": meta_title,
+        "heading_context": heading_context,
         "page_title": page_title,
         "page_url": page_url,
         "similarity": similarity,
@@ -278,3 +282,141 @@ class TestAutoMerge:
         results = await ret.search("test", max_results=3)
 
         assert len(results) == 3
+
+
+# ---------- keyword boost ---------------------------------------------------
+
+
+class TestKeywordBoost:
+    async def test_title_keyword_boosts_similarity(self):
+        """Query keyword matching meta_title adds _TITLE_KEYWORD_BOOST."""
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = [
+            _make_row(
+                chunk_text="Some content about mindset",
+                similarity=0.5,
+                page_id="p1",
+                meta_title="Mindset",
+            ),
+            _make_row(
+                chunk_text="Unrelated page content",
+                similarity=0.55,
+                page_id="p2",
+                meta_title="Other Topic",
+            ),
+        ]
+
+        results = await ret.search("was steht unter Mindset?")
+
+        # p1 gets title boost (0.5 + 0.15 = 0.65), p2 stays at 0.55
+        assert results[0]["chunk_text"] == "Some content about mindset"
+        assert results[0]["similarity"] == 0.65
+
+    async def test_heading_keyword_boosts_similarity(self):
+        """Query keyword matching heading_context adds _HEADING_KEYWORD_BOOST."""
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = [
+            _make_row(
+                chunk_text="Details about legacy code",
+                similarity=0.5,
+                page_id="p1",
+                heading_context="# Legacy",
+            ),
+            _make_row(
+                chunk_text="Other content",
+                similarity=0.52,
+                page_id="p2",
+            ),
+        ]
+
+        results = await ret.search("Legacy Thema")
+
+        # p1 gets heading boost (0.5 + 0.08 = 0.58), p2 stays at 0.52
+        assert results[0]["chunk_text"] == "Details about legacy code"
+        assert results[0]["similarity"] == 0.58
+
+    async def test_both_title_and_heading_boost_stack(self):
+        """Title + heading match stack additively."""
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = [
+            _make_row(
+                chunk_text="Mindset details",
+                similarity=0.5,
+                page_id="p1",
+                meta_title="Mindset",
+                heading_context="# Mindset Grundlagen",
+            ),
+        ]
+
+        results = await ret.search("Mindset")
+
+        # 0.5 + 0.15 (title) + 0.08 (heading) = 0.73
+        assert results[0]["similarity"] == 0.73
+
+    async def test_no_keyword_match_no_boost(self):
+        """No keyword overlap → similarity unchanged."""
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = [
+            _make_row(
+                chunk_text="Content here",
+                similarity=0.6,
+                page_id="p1",
+                meta_title="Setup Guide",
+                heading_context="# Installation",
+            ),
+        ]
+
+        results = await ret.search("Mindset")
+
+        assert results[0]["similarity"] == 0.6
+
+    async def test_stop_words_not_used_for_keyword_match(self):
+        """Queries with only stop words should not trigger keyword boost."""
+        ret, pool, embedder = _retriever()
+        embedder.embed.return_value = _fake_embedding()
+        pool.fetch.return_value = [
+            _make_row(
+                chunk_text="Was ist das?",
+                similarity=0.6,
+                page_id="p1",
+                meta_title="Was ist das",
+            ),
+        ]
+
+        # "was ist das" → all stop words → no keywords → no boost
+        results = await ret.search("was ist das?")
+
+        assert results[0]["similarity"] == 0.6
+
+
+# ---------- _extract_keywords -----------------------------------------------
+
+
+class TestExtractKeywords:
+    def test_german_stop_words_removed(self):
+        assert _extract_keywords("was steht unter Mindset") == ["mindset"]
+
+    def test_english_stop_words_removed(self):
+        assert _extract_keywords("what is the Setup") == ["setup"]
+
+    def test_umlauts_preserved(self):
+        keywords = _extract_keywords("Prüfung der Qualität")
+        assert "prüfung" in keywords
+        assert "qualität" in keywords
+        assert "der" not in keywords
+
+    def test_empty_query(self):
+        assert _extract_keywords("") == []
+
+    def test_short_tokens_filtered(self):
+        # Single-char tokens should be dropped (len < 2)
+        assert _extract_keywords("A B CD EFG") == ["cd", "efg"]
+
+    def test_punctuation_stripped(self):
+        keywords = _extract_keywords("Mindset? Legacy!")
+        assert "mindset" in keywords
+        assert "legacy" in keywords
