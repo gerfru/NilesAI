@@ -193,6 +193,26 @@ class TestSplitByHeadings:
         assert len(sections) == 1
         assert sections[0][0] == "# Has Content"
 
+    def test_headings_inside_code_blocks_ignored(self):
+        text = (
+            "# Setup\nRun the following:\n"
+            "```bash\n# install dependencies\napt install foo\n```\n"
+            "# Usage\nStart the app."
+        )
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        # Only real headings (Setup, Usage), not the bash comment
+        headings = [ctx for ctx, _ in sections]
+        assert "# Setup" in headings
+        assert "# Usage" in headings
+        assert all("install" not in ctx for ctx in headings)
+
+    def test_code_block_content_preserved_in_body(self):
+        text = "# Setup\nIntro\n```python\n# comment\nprint('hi')\n```\nMore text."
+        sections = NotionEmbeddingPipeline._split_by_headings(text)
+        assert len(sections) == 1
+        assert "print('hi')" in sections[0][1]
+        assert "# comment" in sections[0][1]
+
 
 # ---------- Heading-aware _chunk_text ----------------------------------------
 
@@ -275,7 +295,7 @@ class TestBuildBreadcrumbs:
             {"id": "c", "title": "Child", "parent_id": "p"},
         ]
         bc = await pipe._build_breadcrumbs()
-        # Max depth is 2, so Child gets Parent > Child (stops at grandparent)
+        # Max depth is 2 ancestors, so Child gets Grandparent > Parent > Child
         assert bc["c"] == "Grandparent > Parent > Child"
         assert bc["p"] == "Grandparent > Parent"
 
