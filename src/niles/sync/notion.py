@@ -176,13 +176,34 @@ class NotionSync:
 
     @staticmethod
     def _block_to_text(block: dict) -> str:
-        """Extract plaintext from a single Notion block."""
+        """Extract markdown-formatted text from a single Notion block."""
         block_type = block.get("type", "")
         if block_type not in _TEXT_BLOCK_TYPES:
             return ""
         data = block.get(block_type, {})
         rich_text = data.get("rich_text", [])
-        return "".join(rt.get("plain_text", "") for rt in rich_text)
+        text = "".join(rt.get("plain_text", "") for rt in rich_text)
+        if not text:
+            return ""
+        if block_type == "heading_1":
+            return f"# {text}"
+        if block_type == "heading_2":
+            return f"## {text}"
+        if block_type == "heading_3":
+            return f"### {text}"
+        if block_type == "bulleted_list_item":
+            return f"- {text}"
+        if block_type == "numbered_list_item":
+            return f"1. {text}"
+        if block_type == "to_do":
+            checked = data.get("checked", False)
+            return f"- [{'x' if checked else ' '}] {text}"
+        if block_type == "quote" or block_type == "callout":
+            return f"> {text}"
+        if block_type == "code":
+            lang = data.get("language", "")
+            return f"```{lang}\n{text}\n```"
+        return text
 
     @staticmethod
     def _extract_title(page: dict) -> str:
