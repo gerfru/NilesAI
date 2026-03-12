@@ -214,7 +214,7 @@ async def chat_stream(
                     chunk = r["chunk_text"]
                     # Strip the [breadcrumb > heading] prefix for cleaner
                     # presentation — the heading info is shown separately.
-                    # Use rfind to handle titles containing "] ".
+                    # Find first "] " to locate end of bracket prefix.
                     heading = ""
                     if chunk.startswith("["):
                         bracket_end = chunk.find("] ")
