@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import NamedTuple
 
 import asyncpg
 
@@ -21,6 +22,14 @@ _MIN_CONTENT_FOR_SUMMARY = 100
 
 # Maximum ancestor depth for breadcrumb context
 _MAX_BREADCRUMB_DEPTH = 2
+
+
+class ChunkInfo(NamedTuple):
+    """Metadata-enriched chunk returned by ``_chunk_text``."""
+
+    text: str  # Full chunk with [prefix]
+    page_title: str  # Breadcrumb title, e.g. "Wiki > Setup"
+    heading_context: str  # Heading hierarchy, e.g. "# Main > ## Sub"
 
 
 class NotionEmbeddingPipeline:
@@ -154,12 +163,15 @@ class NotionEmbeddingPipeline:
                                 """
                                 INSERT INTO notion_embeddings
                                     (page_id, chunk_level, chunk_index,
-                                     chunk_text, embedding)
-                                VALUES ($1, $2, $3, $4, $5::vector)
+                                     chunk_text, embedding,
+                                     page_title, heading_context)
+                                VALUES ($1, $2, $3, $4, $5::vector, $6, $7)
                                 ON CONFLICT (page_id, chunk_level, chunk_index)
                                 DO UPDATE SET
                                     chunk_text = EXCLUDED.chunk_text,
                                     embedding = EXCLUDED.embedding,
+                                    page_title = EXCLUDED.page_title,
+                                    heading_context = EXCLUDED.heading_context,
                                     created_at = NOW()
                                 """,
                                 page_id,
@@ -167,6 +179,8 @@ class NotionEmbeddingPipeline:
                                 0,
                                 summary_text,
                                 str(embedding),
+                                breadcrumb,
+                                "",
                             )
                             stats["summaries_created"] += 1
                         else:
@@ -175,9 +189,9 @@ class NotionEmbeddingPipeline:
                         stats["summaries_failed"] += 1
 
                 # Level 1: Detail chunks
-                for idx, chunk_text in enumerate(chunks):
+                for idx, chunk_info in enumerate(chunks):
                     embedding = await self._embedder.embed(
-                        chunk_text, prefix="search_document: "
+                        chunk_info.text, prefix="search_document: "
                     )
                     if embedding is None:
                         detail_errors += 1
@@ -187,19 +201,24 @@ class NotionEmbeddingPipeline:
                         """
                         INSERT INTO notion_embeddings
                             (page_id, chunk_level, chunk_index,
-                             chunk_text, embedding)
-                        VALUES ($1, $2, $3, $4, $5::vector)
+                             chunk_text, embedding,
+                             page_title, heading_context)
+                        VALUES ($1, $2, $3, $4, $5::vector, $6, $7)
                         ON CONFLICT (page_id, chunk_level, chunk_index)
                         DO UPDATE SET
                             chunk_text = EXCLUDED.chunk_text,
                             embedding = EXCLUDED.embedding,
+                            page_title = EXCLUDED.page_title,
+                            heading_context = EXCLUDED.heading_context,
                             created_at = NOW()
                         """,
                         page_id,
                         LEVEL_DETAIL,
                         idx,
-                        chunk_text,
+                        chunk_info.text,
                         str(embedding),
+                        chunk_info.page_title,
+                        chunk_info.heading_context,
                     )
                     stats["chunks_created"] += 1
 
@@ -236,7 +255,7 @@ class NotionEmbeddingPipeline:
         )
         return stats
 
-    def _chunk_text(self, text: str, title: str = "") -> list[str]:
+    def _chunk_text(self, text: str, title: str = "") -> list[ChunkInfo]:
         """Split text into chunks, respecting heading boundaries.
 
         1. Split on heading lines (# / ## / ###) into sections.
@@ -246,13 +265,15 @@ class NotionEmbeddingPipeline:
 
         Falls back to plain character splitting for pages without headings.
         Chunks that are mostly non-text (ASCII art, box-drawing) are dropped.
+
+        Returns list of ChunkInfo with text, page_title, and heading_context.
         """
         if not text.strip():
             return []
 
         sections = self._split_by_headings(text)
 
-        chunks: list[str] = []
+        chunks: list[ChunkInfo] = []
         for heading_ctx, body in sections:
             # Build prefix: [Title > # Section > ## Sub]
             parts = [title] if title else []
@@ -263,7 +284,13 @@ class NotionEmbeddingPipeline:
             section_chunks = self._split_section(body)
             for raw in section_chunks:
                 if self._is_useful_chunk(raw):
-                    chunks.append(prefix + raw)
+                    chunks.append(
+                        ChunkInfo(
+                            text=prefix + raw,
+                            page_title=title,
+                            heading_context=heading_ctx,
+                        )
+                    )
 
         return chunks
 
