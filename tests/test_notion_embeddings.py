@@ -67,7 +67,9 @@ class TestChunkText:
         pipe, _, _ = _pipeline()
         chunks = pipe._chunk_text("Hello world", "Title")
         assert len(chunks) == 1
-        assert chunks[0] == "[Title] Hello world"
+        assert chunks[0].text == "[Title] Hello world"
+        assert chunks[0].page_title == "Title"
+        assert chunks[0].heading_context == ""
 
     def test_empty_text(self):
         pipe, _, _ = _pipeline()
@@ -80,7 +82,7 @@ class TestChunkText:
     def test_no_title(self):
         pipe, _, _ = _pipeline()
         chunks = pipe._chunk_text("Hello", "")
-        assert chunks[0] == "Hello"
+        assert chunks[0].text == "Hello"
 
     def test_long_text_splits(self):
         pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=0)
@@ -96,22 +98,22 @@ class TestChunkText:
         # With overlap, later chunks should contain tail of previous chunk
         if len(chunks) > 1:
             # The second chunk should have some overlap from the first
-            assert len(chunks[1]) > 0
+            assert len(chunks[1].text) > 0
 
     def test_title_prefix_on_each_chunk(self):
         pipe, _, _ = _pipeline(chunk_size=30, chunk_overlap=0)
         text = "First paragraph.\nSecond paragraph."
         chunks = pipe._chunk_text(text, "Page")
         for chunk in chunks:
-            assert chunk.startswith("[Page")
+            assert chunk.text.startswith("[Page")
 
     def test_blank_paragraphs_skipped(self):
         pipe, _, _ = _pipeline()
         text = "Para 1\n\n\n\nPara 2"
         chunks = pipe._chunk_text(text, "")
         assert len(chunks) == 1
-        assert "Para 1" in chunks[0]
-        assert "Para 2" in chunks[0]
+        assert "Para 1" in chunks[0].text
+        assert "Para 2" in chunks[0].text
 
     def test_ascii_art_chunks_filtered(self):
         pipe, _, _ = _pipeline(chunk_size=200, chunk_overlap=0)
@@ -121,8 +123,8 @@ class TestChunkText:
         chunks = pipe._chunk_text(text, "")
         # Real text chunks should survive, diagram-only chunks should be dropped
         for chunk in chunks:
-            readable = sum(1 for c in chunk if c.isalnum() or c.isspace())
-            assert (readable / len(chunk)) >= 0.4
+            readable = sum(1 for c in chunk.text if c.isalnum() or c.isspace())
+            assert (readable / len(chunk.text)) >= 0.4
 
     def test_normal_text_passes_filter(self):
         pipe, _, _ = _pipeline()
@@ -201,8 +203,10 @@ class TestHeadingAwareChunking:
         text = "# Installation\nRun pip install niles."
         chunks = pipe._chunk_text(text, "Docs")
         assert len(chunks) == 1
-        assert chunks[0].startswith("[Docs > # Installation]")
-        assert "Run pip install niles." in chunks[0]
+        assert chunks[0].text.startswith("[Docs > # Installation]")
+        assert "Run pip install niles." in chunks[0].text
+        assert chunks[0].page_title == "Docs"
+        assert chunks[0].heading_context == "# Installation"
 
     def test_multiple_sections_get_separate_chunks(self):
         pipe, _, _ = _pipeline(chunk_size=100, chunk_overlap=0)
@@ -212,8 +216,8 @@ class TestHeadingAwareChunking:
         )
         chunks = pipe._chunk_text(text, "Guide")
         assert len(chunks) == 2
-        assert "[Guide > # Setup]" in chunks[0]
-        assert "[Guide > # Usage]" in chunks[1]
+        assert "[Guide > # Setup]" in chunks[0].text
+        assert "[Guide > # Usage]" in chunks[1].text
 
     def test_no_cross_section_overlap(self):
         pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=20)
@@ -221,8 +225,8 @@ class TestHeadingAwareChunking:
         chunks = pipe._chunk_text(text, "")
         # Section A content should not leak into Section B chunk
         for chunk in chunks:
-            if "# B]" in chunk:
-                assert "section A" not in chunk
+            if "# B]" in chunk.text:
+                assert "section A" not in chunk.text
 
     def test_fallback_without_headings(self):
         pipe, _, _ = _pipeline(chunk_size=50, chunk_overlap=0)
@@ -230,14 +234,15 @@ class TestHeadingAwareChunking:
         chunks = pipe._chunk_text(text, "Page")
         # Without headings, all chunks get plain [Page] prefix
         for chunk in chunks:
-            assert chunk.startswith("[Page] ")
+            assert chunk.text.startswith("[Page] ")
 
     def test_nested_heading_hierarchy_in_prefix(self):
         pipe, _, _ = _pipeline()
         text = "# Main\n## Sub\nContent under sub."
         chunks = pipe._chunk_text(text, "Page")
         assert len(chunks) == 1
-        assert chunks[0].startswith("[Page > # Main > ## Sub]")
+        assert chunks[0].text.startswith("[Page > # Main > ## Sub]")
+        assert chunks[0].heading_context == "# Main > ## Sub"
 
 
 # ---------- _build_breadcrumbs -----------------------------------------------
@@ -460,6 +465,29 @@ class TestEmbedPending:
         # $2 = chunk_level (LEVEL_DETAIL = 1)
         assert insert_calls[0][0][2] == LEVEL_DETAIL
 
+    async def test_insert_includes_metadata_columns(self):
+        """Detail INSERT passes page_title and heading_context as $6, $7."""
+        pipe, pool, embedder = _pipeline(chunk_size=2000)
+        pending = [
+            {
+                "id": "p1",
+                "title": "My Page",
+                "content_text": "# Setup\nInstall steps.",
+            }
+        ]
+        _setup_embed_pending(pool, pending)
+        pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        assert len(insert_calls) == 1
+        # $6 = page_title (breadcrumb), $7 = heading_context
+        assert insert_calls[0][0][6] == "My Page"
+        assert insert_calls[0][0][7] == "# Setup"
+
     async def test_no_summarizer_skips_summaries(self):
         """Without summarizer, only detail chunks are generated."""
         pipe, pool, embedder = _pipeline(chunk_size=2000)
@@ -583,6 +611,25 @@ class TestEmbedPendingWithSummarizer:
         assert stats["summaries_created"] == 0
         assert stats["chunks_created"] == 1
         assert stats["pages_embedded"] == 1
+
+    async def test_summary_insert_includes_metadata(self):
+        """Summary INSERT passes breadcrumb as page_title, empty heading_context."""
+        summarizer = AsyncMock(spec=NotionSummarizer)
+        summarizer.summarize.return_value = "A summary."
+        pipe, pool, embedder = _pipeline(chunk_size=2000, summarizer=summarizer)
+        pending = [{"id": "p1", "title": "Test", "content_text": "A" * 200}]
+        _setup_embed_pending(pool, pending)
+        pool.execute = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        embedder.embed.return_value = _fake_embedding()
+
+        await pipe.embed_pending()
+
+        insert_calls = [c for c in pool.execute.call_args_list if "INSERT" in c[0][0]]
+        summary_insert = insert_calls[0]
+        # $6 = page_title (breadcrumb), $7 = heading_context (empty for summaries)
+        assert summary_insert[0][6] == "Test"
+        assert summary_insert[0][7] == ""
 
     async def test_summary_has_breadcrumb_prefix(self):
         """Summary text includes [Breadcrumb] prefix."""
