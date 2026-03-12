@@ -214,11 +214,13 @@ async def chat_stream(
                     chunk = r["chunk_text"]
                     # Strip the [breadcrumb > heading] prefix for cleaner
                     # presentation — the heading info is shown separately.
+                    # Use rfind to handle titles containing "] ".
                     heading = ""
-                    if chunk.startswith("[") and "] " in chunk:
-                        bracket_end = chunk.index("] ")
-                        heading = chunk[1:bracket_end]
-                        chunk = chunk[bracket_end + 2 :]
+                    if chunk.startswith("["):
+                        bracket_end = chunk.find("] ")
+                        if bracket_end > 0:
+                            heading = chunk[1:bracket_end]
+                            chunk = chunk[bracket_end + 2 :]
                     source_line = f"Quelle: [{title}]({url})"
                     if heading and heading != title:
                         source_line += f"\nAbschnitt: {heading}"
