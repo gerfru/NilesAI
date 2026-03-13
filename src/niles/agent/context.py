@@ -40,6 +40,7 @@ class ContextBuilder:
     """
 
     _SOURCE_CACHE_TTL = 300  # 5 minutes
+    _SOURCE_CACHE_MAX_USERS = 100  # evict oldest entries beyond this
 
     def __init__(
         self,
@@ -172,6 +173,11 @@ class ContextBuilder:
             names = [s["name"] for s in sources if s.get("enabled", True)]
             self._source_names_cache[user_id] = names
             self._source_names_ts[user_id] = now
+            # Evict oldest entries if cache grows too large
+            if len(self._source_names_ts) > self._SOURCE_CACHE_MAX_USERS:
+                oldest = min(self._source_names_ts, key=self._source_names_ts.get)  # type: ignore[arg-type]
+                self._source_names_cache.pop(oldest, None)
+                self._source_names_ts.pop(oldest, None)
         except Exception:
             logger.warning("Failed to load calendar sources for prompt")
         return self._source_names_cache.get(user_id, [])
