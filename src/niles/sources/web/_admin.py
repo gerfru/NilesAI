@@ -150,9 +150,9 @@ async def admin_reset_password(
     )
 
 
-@router.delete("/api/admin/users/{user_id}")
-async def admin_delete_user(request: Request, user_id: int):
-    """Delete a user (admin only, cannot delete own account)."""
+@router.post("/api/admin/users/{user_id}/deactivate")
+async def admin_deactivate_user(request: Request, user_id: int):
+    """Deactivate a user (admin only, cannot deactivate own account)."""
     admin, error = await _require_admin(request)
     if error:
         return error
@@ -160,7 +160,7 @@ async def admin_delete_user(request: Request, user_id: int):
 
     if admin["uid"] == user_id:
         return Response(
-            content="Eigenen Account kann man nicht löschen.",
+            content="Eigenen Account kann man nicht deaktivieren.",
             status_code=400,
         )
 
@@ -169,11 +169,14 @@ async def admin_delete_user(request: Request, user_id: int):
     if not target:
         return Response(content="User nicht gefunden.", status_code=404)
 
-    await user_store.delete_user(user_id)
+    await user_store.deactivate_user(user_id)
     logger.info(
-        "Admin %s deleted user_id=%s (%s)", admin["email"], user_id, target["email"]
+        "Admin %s deactivated user_id=%s (%s)",
+        admin["email"],
+        user_id,
+        target["email"],
     )
     return Response(
-        content="User gelöscht.",
+        content="User deaktiviert.",
         headers={"HX-Trigger": "userUpdated"},
     )
