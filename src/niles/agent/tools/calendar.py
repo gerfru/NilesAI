@@ -48,6 +48,7 @@ async def handle_find_event(args: dict, chat_id: str, ctx: ToolContext) -> dict:
         date_from=date_from,
         date_to=date_to,
         calendar=cal_filter,
+        user_id=ctx.user_id,
     )
     if events:
         result: dict = {"events": events, "count": len(events)}
@@ -63,7 +64,7 @@ async def handle_create_event(args: dict, chat_id: str, ctx: ToolContext) -> dic
     if not ctx.calendar_manager:
         return {"error": "Kalender ist nicht konfiguriert"}
     try:
-        writable = await ctx.calendar_manager.get_writable_source()
+        writable = await ctx.calendar_manager.get_writable_source(user_id=ctx.user_id)
         if not writable:
             return {"error": "Kein beschreibbarer Kalender konfiguriert"}
         return await ctx.calendar_manager.create_event(
