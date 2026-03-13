@@ -119,6 +119,7 @@ class TestAddSource:
             "last_synced": None,
             "last_error": None,
             "created_at": "2026-01-01",
+            "user_id": 1,
         }
         pool.fetchrow.return_value = mock_row
 
@@ -126,20 +127,22 @@ class TestAddSource:
             name="Feiertage",
             url="https://example.com/cal.ics",
             source_type="ics",
+            user_id=1,
         )
         pool.fetchrow.assert_called_once()
         assert result["name"] == "Feiertage"
+        assert result["user_id"] == 1
 
 
 class TestRemoveSource:
     async def test_returns_true_on_delete(self, manager, pool):
         pool.execute.return_value = "DELETE 1"
-        removed = await manager.remove_source(42)
+        removed = await manager.remove_source(42, user_id=1)
         assert removed is True
 
     async def test_returns_false_when_not_found(self, manager, pool):
         pool.execute.return_value = "DELETE 0"
-        removed = await manager.remove_source(999)
+        removed = await manager.remove_source(999, user_id=1)
         assert removed is False
 
 
@@ -156,11 +159,13 @@ class TestGetSources:
                 "last_synced": None,
                 "last_error": None,
                 "created_at": "2026-01-01",
+                "user_id": 1,
             },
         ]
-        sources = await manager.get_sources()
+        sources = await manager.get_sources(user_id=1)
         assert len(sources) == 1
         assert sources[0]["name"] == "A"
+        assert sources[0]["user_id"] == 1
 
 
 class TestSyncICS:
@@ -415,6 +420,7 @@ class TestMigrateEnvSource:
             "last_synced": None,
             "last_error": None,
             "created_at": "2026-01-01",
+            "user_id": None,
         }
 
         await manager._migrate_env_source()
@@ -469,3 +475,15 @@ class TestBuildAuth:
     def test_ics_returns_none(self, manager):
         source = {"source_type": "ics"}
         assert manager._build_auth(source) is None
+
+
+class TestClaimOrphanSources:
+    async def test_claims_orphan_sources(self, manager, pool):
+        pool.execute.return_value = "UPDATE 2"
+        count = await manager.claim_orphan_sources(user_id=1)
+        assert count == 2
+
+    async def test_no_orphans(self, manager, pool):
+        pool.execute.return_value = "UPDATE 0"
+        count = await manager.claim_orphan_sources(user_id=1)
+        assert count == 0

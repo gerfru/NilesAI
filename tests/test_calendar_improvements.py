@@ -312,7 +312,7 @@ class TestResolveSourceId:
         pool.fetchrow.return_value = {"id": 42}
         action = CalendarAction(pool)
 
-        result = await action._resolve_source_id("Geburtstage")
+        result = await action._resolve_source_id("Geburtstage", user_id=1)
         assert result == 42
         pool.fetchrow.assert_called_once()
 
@@ -321,7 +321,7 @@ class TestResolveSourceId:
         pool.fetchrow.return_value = None
         action = CalendarAction(pool)
 
-        result = await action._resolve_source_id("Nonexistent")
+        result = await action._resolve_source_id("Nonexistent", user_id=1)
         assert result is None
 
 
@@ -337,21 +337,23 @@ class TestFindByQueryCalendarFilter:
         pool.fetch.return_value = []
         action = CalendarAction(pool)
 
-        await action.find_by_query(query="Geburtstag", calendar="Birthdays")
+        await action.find_by_query(query="Geburtstag", calendar="Birthdays", user_id=1)
 
         # Verify source_id=7 was passed as the 4th parameter
         fetch_call = pool.fetch.call_args
         assert fetch_call[0][4] == 7  # $4 = source_id
+        assert fetch_call[0][5] == 1  # $5 = user_id
 
     async def test_no_calendar_passes_none(self):
         pool = AsyncMock()
         pool.fetch.return_value = []
         action = CalendarAction(pool)
 
-        await action.find_by_query(query="Test")
+        await action.find_by_query(query="Test", user_id=1)
 
         fetch_call = pool.fetch.call_args
         assert fetch_call[0][4] is None  # $4 = source_id should be None
+        assert fetch_call[0][5] == 1  # $5 = user_id
 
 
 # ---------------------------------------------------------------------------

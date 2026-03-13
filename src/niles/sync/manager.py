@@ -70,6 +70,7 @@ class CalendarSourceManager:
         writable: bool = False,
         auth_user: str | None = None,
         auth_password: str | None = None,
+        user_id: int | None = None,
     ) -> dict:
         """Add a new calendar source. Returns the created row."""
         if not url.startswith("https://"):
@@ -91,10 +92,10 @@ class CalendarSourceManager:
         row = await self.pool.fetchrow(
             """
             INSERT INTO calendar_sources
-                (name, url, source_type, writable, auth_user, auth_password)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (name, url, source_type, writable, auth_user, auth_password, user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, name, url, source_type, writable, enabled,
-                      last_synced, last_error, created_at
+                      last_synced, last_error, created_at, user_id
             """,
             name,
             url,
@@ -102,52 +103,100 @@ class CalendarSourceManager:
             writable,
             auth_user,
             auth_password,
+            user_id,
         )
         logger.info("Added calendar source: %s (%s)", name, source_type)
         return dict(row)
 
-    async def remove_source(self, source_id: int) -> bool:
-        """Remove a calendar source. Events are CASCADE-deleted."""
+    async def remove_source(self, source_id: int, user_id: int | None = None) -> bool:
+        """Remove a calendar source. Events are CASCADE-deleted.
+
+        When ``user_id`` is provided, only sources owned by that user can be
+        deleted (authorization check).  ``user_id=None`` bypasses the check
+        and is reserved for admin/system operations.
+        """
         result = await self.pool.execute(
-            "DELETE FROM calendar_sources WHERE id = $1",
+            "DELETE FROM calendar_sources WHERE id = $1"
+            " AND ($2::integer IS NULL OR user_id = $2)",
             source_id,
+            user_id,
         )
         removed = result == "DELETE 1"
         if removed:
             logger.info("Removed calendar source %d", source_id)
         return removed
 
-    async def get_sources(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
-        """List all calendar sources, with pagination."""
+    async def get_sources(
+        self,
+        *,
+        user_id: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List calendar sources, optionally filtered by user_id."""
         rows = await self.pool.fetch(
             """
             SELECT id, name, url, source_type, writable, enabled,
-                   last_synced, last_error, created_at
-            FROM calendar_sources ORDER BY created_at
+                   last_synced, last_error, created_at, user_id
+            FROM calendar_sources
+            WHERE ($3::integer IS NULL OR user_id = $3)
+            ORDER BY created_at
             LIMIT $1 OFFSET $2
             """,
             limit,
             offset,
+            user_id,
         )
         return [dict(r) for r in rows]
 
-    async def get_writable_source(self) -> dict | None:
-        """Return the first enabled, writable calendar source."""
+    async def get_writable_source(self, user_id: int | None = None) -> dict | None:
+        """Return the first enabled, writable calendar source for the user.
+
+        ``user_id=None`` skips the ownership filter (admin/system use).
+        """
         row = await self.pool.fetchrow(
             """
             SELECT id, name, url, source_type, auth_user, auth_password
             FROM calendar_sources
             WHERE writable = TRUE AND enabled = TRUE
+              AND ($1::integer IS NULL OR user_id = $1)
             ORDER BY created_at
             LIMIT 1
-            """
+            """,
+            user_id,
         )
         return dict(row) if row else None
+
+    async def claim_orphan_sources(self, user_id: int) -> int:
+        """Assign orphan sources (user_id IS NULL) to the given user.
+
+        Called when a user first visits calendar settings, so .env-migrated
+        sources become visible. Returns the number of claimed sources.
+
+        Note: If two users visit settings concurrently, both issue this UPDATE.
+        The first to commit wins all orphans (atomic, no data corruption).
+        This is acceptable for the single-admin scenario; multi-admin setups
+        should assign sources explicitly via the admin UI.
+        """
+        result = await self.pool.execute(
+            "UPDATE calendar_sources SET user_id = $1 WHERE user_id IS NULL",
+            user_id,
+        )
+        count = int(result.split()[-1])  # "UPDATE N"
+        if count > 0:
+            logger.info(
+                "Claimed %d orphan calendar source(s) for user %d", count, user_id
+            )
+        return count
 
     # --- Sync ---
 
     async def sync_all(self) -> int:
-        """Sync all enabled sources. Returns total events synced."""
+        """Sync all enabled sources across all users. Returns total events synced.
+
+        This is a system-level background job (cron) — intentionally not
+        filtered by user_id so that all users' calendars stay up to date.
+        """
         sources = await self.pool.fetch(
             """
             SELECT id, name, url, source_type, auth_user, auth_password
@@ -176,14 +225,22 @@ class CalendarSourceManager:
         )
         return total
 
-    async def sync_source(self, source_id: int) -> int | None:
-        """Sync a single source by ID. Returns event count, or None if not found."""
+    async def sync_source(
+        self, source_id: int, user_id: int | None = None
+    ) -> int | None:
+        """Sync a single source by ID. Returns event count, or None if not found.
+
+        ``user_id=None`` skips the ownership filter (admin/system use).
+        """
         row = await self.pool.fetchrow(
             """
             SELECT id, name, url, source_type, auth_user, auth_password
-            FROM calendar_sources WHERE id = $1 AND enabled = TRUE
+            FROM calendar_sources
+            WHERE id = $1 AND enabled = TRUE
+              AND ($2::integer IS NULL OR user_id = $2)
             """,
             source_id,
+            user_id,
         )
         if not row:
             return None

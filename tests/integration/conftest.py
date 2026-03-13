@@ -253,14 +253,15 @@ async def seed_contact(db_conn):
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def seed_calendar_source(db_conn):
-    """Insert a test calendar source."""
+async def seed_calendar_source(db_conn, seed_user):
+    """Insert a test calendar source owned by the test user."""
     source_id = await db_conn.fetchval(
         """
-        INSERT INTO calendar_sources (name, url, source_type, writable, enabled)
-        VALUES ('Test Calendar', 'https://example.com/cal.ics', 'ics', false, true)
+        INSERT INTO calendar_sources (name, url, source_type, writable, enabled, user_id)
+        VALUES ('Test Calendar', 'https://example.com/cal.ics', 'ics', false, true, $1)
         RETURNING id
         """,
+        seed_user,
     )
     return source_id
 
