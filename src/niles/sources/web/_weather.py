@@ -7,7 +7,6 @@ import httpx
 from fastapi import Form, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
-from ...config import apply_overrides
 from ._core import (
     _get_session_user,
     _require_auth_and_csrf,
@@ -16,8 +15,6 @@ from ._core import (
 )
 
 logger = logging.getLogger(__name__)
-
-_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 
 @router.get("/api/weather/location-search", response_class=HTMLResponse)
@@ -33,20 +30,15 @@ async def weather_location_search(
     if len(q.strip()) < 2:
         return HTMLResponse("")
 
+    weather_action = request.app.state.weather_action
+
     try:
-        geocoding = request.app.state.http_clients.geocoding
-        resp = await geocoding.get(
-            _GEOCODING_URL,
-            params={"name": q.strip(), "count": 5, "language": "de"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        results = await weather_action.search_locations(q)
     except httpx.HTTPError:
         return HTMLResponse(
             '<p class="text-sm text-red-500 py-1">Suche fehlgeschlagen.</p>'
         )
 
-    results = data.get("results", [])
     if not results:
         return HTMLResponse(
             '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-1">'
@@ -88,20 +80,12 @@ async def weather_location_set(
     if error:
         return error
 
-    settings_store = request.app.state.settings_store
     settings = request.app.state.settings
+    weather_action = request.app.state.weather_action
 
     try:
-        await settings_store.set("weather_latitude", latitude.strip())
-        await settings_store.set("weather_longitude", longitude.strip())
-        await settings_store.set("weather_location_name", location_name.strip())
-        new_settings = apply_overrides(
-            settings,
-            {
-                "weather_latitude": latitude.strip(),
-                "weather_longitude": longitude.strip(),
-                "weather_location_name": location_name.strip(),
-            },
+        new_settings = await weather_action.set_location(
+            latitude, longitude, location_name, settings
         )
         request.app.state.settings = new_settings
     except ValueError as e:
@@ -130,20 +114,10 @@ async def weather_location_remove(request: Request):
     if error:
         return error
 
-    settings_store = request.app.state.settings_store
     settings = request.app.state.settings
+    weather_action = request.app.state.weather_action
 
-    for key in ("weather_latitude", "weather_longitude", "weather_location_name"):
-        await settings_store.delete(key)
-
-    new_settings = apply_overrides(
-        settings,
-        {
-            "weather_latitude": "",
-            "weather_longitude": "",
-            "weather_location_name": "",
-        },
-    )
+    new_settings = await weather_action.remove_location(settings)
     request.app.state.settings = new_settings
 
     return templates.TemplateResponse(

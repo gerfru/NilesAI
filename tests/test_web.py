@@ -78,6 +78,8 @@ def _make_request(
     agent=None,
     history=None,
     settings_store=None,
+    settings_action=None,
+    admin_action=None,
     user_store=None,
     wa_store=None,
     headers=None,
@@ -92,6 +94,8 @@ def _make_request(
     request.app.state.agent = agent or AsyncMock()
     request.app.state.history = history or AsyncMock()
     request.app.state.settings_store = settings_store or AsyncMock()
+    request.app.state.settings_action = settings_action or AsyncMock()
+    request.app.state.admin_action = admin_action or AsyncMock()
     request.app.state.user_store = user_store or AsyncMock()
     request.app.state.wa_store = wa_store
     request.app.state.vikunja_provisioner = None
@@ -430,46 +434,52 @@ class TestChatEndpoints:
 class TestSettingsEndpoints:
     async def test_update_feature_flag(self):
         settings = _make_settings()
-        settings_store = AsyncMock()
+        updated = _make_settings(feature_whatsapp_send_others=False)
+        settings_action = AsyncMock()
+        settings_action.update.return_value = updated
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
             settings=settings,
-            settings_store=settings_store,
+            settings_action=settings_action,
         )
 
         await update_setting(request, key="feature_whatsapp_send_others", value="false")
 
-        settings_store.set.assert_called_once_with(
-            "feature_whatsapp_send_others", False
+        settings_action.update.assert_called_once_with(
+            "feature_whatsapp_send_others", "false", settings
         )
-        # apply_overrides updates app.state.settings
-        new_settings = request.app.state.settings
-        assert new_settings.feature_whatsapp_send_others is False
+        assert request.app.state.settings is updated
 
     async def test_update_text_setting(self):
         settings = _make_settings()
-        settings_store = AsyncMock()
+        updated = _make_settings(llm_model="new-model")
+        settings_action = AsyncMock()
+        settings_action.update.return_value = updated
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
             settings=settings,
-            settings_store=settings_store,
+            settings_action=settings_action,
         )
 
         await update_setting(request, key="llm_model", value="new-model")
 
-        settings_store.set.assert_called_once_with("llm_model", "new-model")
-        new_settings = request.app.state.settings
-        assert new_settings.llm_model == "new-model"
+        settings_action.update.assert_called_once_with(
+            "llm_model", "new-model", settings
+        )
+        assert request.app.state.settings is updated
 
     async def test_update_llm_model_propagates_to_agent(self):
         agent = AsyncMock()
         agent.model = "old-model"
+        updated = _make_settings(llm_model="llama3.1:8b")
+        settings_action = AsyncMock()
+        settings_action.update.return_value = updated
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
-            settings_store=AsyncMock(),
+            settings_action=settings_action,
             agent=agent,
         )
 
@@ -480,10 +490,13 @@ class TestSettingsEndpoints:
     async def test_update_llm_base_url_propagates_to_agent(self):
         agent = AsyncMock()
         agent.llm = AsyncMock()
+        updated = _make_settings(llm_base_url="http://localhost:9999/v1")
+        settings_action = AsyncMock()
+        settings_action.update.return_value = updated
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
-            settings_store=AsyncMock(),
+            settings_action=settings_action,
             agent=agent,
         )
 
@@ -500,15 +513,15 @@ class TestSettingsEndpoints:
         )
         assert agent.llm is mock_client
 
-    async def test_update_non_editable_rejected(self):
-        settings_store = AsyncMock()
-        settings_store.set.side_effect = ValueError(
-            "Setting 'postgres_password' is not editable at runtime"
+    async def test_update_action_error_returns_toast(self):
+        settings_action = AsyncMock()
+        settings_action.update.side_effect = ValueError(
+            "Unbekannte Einstellung: 'postgres_password'"
         )
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
-            settings_store=settings_store,
+            settings_action=settings_action,
         )
 
         response = await update_setting(
@@ -566,26 +579,18 @@ class TestOllamaModelsEndpoint:
 
     async def test_returns_options_from_ollama(self):
         settings = _make_settings(llm_model="llama3.1:8b")
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "models": [
-                {"name": "llama3.1:8b"},
-                {"name": "mistral:7b"},
-                {"name": "qwen2.5:7b"},
-            ]
-        }
-        mock_resp.raise_for_status = MagicMock()
-
-        mock_http_clients = MagicMock()
-        mock_http_clients.general = AsyncMock()
-        mock_http_clients.general.get = AsyncMock(return_value=mock_resp)
+        settings_action = AsyncMock()
+        settings_action.list_ollama_models.return_value = [
+            {"name": "llama3.1:8b", "selected": True},
+            {"name": "mistral:7b", "selected": False},
+            {"name": "qwen2.5:7b", "selected": False},
+        ]
 
         request = _make_request(
             cookies=_auth_cookies(),
             settings=settings,
             user_store=self._admin_user_store(),
-            http_clients=mock_http_clients,
+            settings_action=settings_action,
         )
 
         response = await ollama_models(request)
@@ -598,18 +603,14 @@ class TestOllamaModelsEndpoint:
 
     async def test_returns_current_model_when_ollama_unreachable(self):
         settings = _make_settings(llm_model="llama3.1:8b")
-
-        mock_http_clients = MagicMock()
-        mock_http_clients.general = AsyncMock()
-        mock_http_clients.general.get = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
+        settings_action = AsyncMock()
+        settings_action.list_ollama_models.side_effect = Exception("Connection refused")
 
         request = _make_request(
             cookies=_auth_cookies(),
             settings=settings,
             user_store=self._admin_user_store(),
-            http_clients=mock_http_clients,
+            settings_action=settings_action,
         )
 
         response = await ollama_models(request)
@@ -949,27 +950,29 @@ class TestAdminEndpoints:
             "email": "admin@test.com",
             "is_admin": True,
         }
-        user_store.get_by_email.return_value = None
-        user_store.create_password_user.return_value = {
+        admin_action = AsyncMock()
+        admin_action.create_user.return_value = {
             "id": 3,
             "email": "new@test.com",
+            "display_name": "New User",
         }
-        user_store.list_all.return_value = []
+        admin_action.list_users.return_value = []
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
-        with patch("niles.sources.web._admin._ph") as mock_ph:
-            mock_ph.hash.return_value = "hashed-pw"
-            response = await admin_create_user(
-                request,
-                email="new@test.com",
-                display_name="New User",
-                password="secure1234",
-            )
+        response = await admin_create_user(
+            request,
+            email="new@test.com",
+            display_name="New User",
+            password="secure1234",
+        )
         assert response.status_code == 200
-        user_store.create_password_user.assert_awaited_once()
+        admin_action.create_user.assert_awaited_once_with(
+            "new@test.com", "New User", "secure1234"
+        )
 
     async def test_admin_create_user_short_password(self):
         user_store = AsyncMock()
@@ -978,11 +981,16 @@ class TestAdminEndpoints:
             "email": "admin@test.com",
             "is_admin": True,
         }
-        user_store.list_all.return_value = []
+        admin_action = AsyncMock()
+        admin_action.create_user.side_effect = ValueError(
+            "Passwort muss mindestens 8 Zeichen lang sein."
+        )
+        admin_action.list_users.return_value = []
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
         response = await admin_create_user(
             request, email="x@test.com", display_name="X", password="short"
@@ -996,12 +1004,18 @@ class TestAdminEndpoints:
             "email": "admin@test.com",
             "is_admin": True,
         }
-        user_store.get_by_email.return_value = {"id": 2, "email": "dup@test.com"}
-        user_store.list_all.return_value = []
+        admin_action = AsyncMock()
+        from niles.actions.admin import DuplicateEmailError
+
+        admin_action.create_user.side_effect = DuplicateEmailError(
+            "E-Mail 'dup@test.com' ist bereits vergeben."
+        )
+        admin_action.list_users.return_value = []
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
         response = await admin_create_user(
             request, email="dup@test.com", display_name="Dup", password="secure1234"
@@ -1027,20 +1041,21 @@ class TestAdminEndpoints:
 
     async def test_admin_deactivate_user_success(self):
         user_store = AsyncMock()
-        user_store.get_by_id.side_effect = lambda uid: (
-            {"id": 1, "email": "admin@test.com", "is_admin": True}
-            if uid == 1
-            else {"id": 5, "email": "target@test.com", "is_admin": False}
-        )
-        user_store.deactivate_user.return_value = True
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        admin_action = AsyncMock()
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
         response = await admin_deactivate_user(request, user_id=5)
         assert response.status_code == 200
-        user_store.deactivate_user.assert_awaited_once_with(5)
+        admin_action.deactivate_user.assert_awaited_once_with(5, 1)
 
     async def test_admin_deactivate_self_rejected(self):
         user_store = AsyncMock()
@@ -1049,34 +1064,38 @@ class TestAdminEndpoints:
             "email": "admin@test.com",
             "is_admin": True,
         }
+        admin_action = AsyncMock()
+        admin_action.deactivate_user.side_effect = ValueError(
+            "Eigenen Account kann man nicht deaktivieren."
+        )
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
         response = await admin_deactivate_user(request, user_id=1)
         assert response.status_code == 400
 
     async def test_admin_reset_password_success(self):
         user_store = AsyncMock()
-        user_store.get_by_id.side_effect = lambda uid: (
-            {"id": 1, "email": "admin@test.com", "is_admin": True}
-            if uid == 1
-            else {"id": 5, "email": "target@test.com"}
-        )
-        user_store.update_password.return_value = True
+        user_store.get_by_id.return_value = {
+            "id": 1,
+            "email": "admin@test.com",
+            "is_admin": True,
+        }
+        admin_action = AsyncMock()
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
-        with patch("niles.sources.web._admin._ph") as mock_ph:
-            mock_ph.hash.return_value = "new-hash"
-            response = await admin_reset_password(
-                request, user_id=5, password="newpassword123"
-            )
+        response = await admin_reset_password(
+            request, user_id=5, password="newpassword123"
+        )
         assert response.status_code == 200
-        user_store.update_password.assert_awaited_once_with(5, "new-hash")
+        admin_action.reset_password.assert_awaited_once_with(5, "newpassword123")
 
     async def test_admin_reset_password_short(self):
         user_store = AsyncMock()
@@ -1085,10 +1104,15 @@ class TestAdminEndpoints:
             "email": "admin@test.com",
             "is_admin": True,
         }
+        admin_action = AsyncMock()
+        admin_action.reset_password.side_effect = ValueError(
+            "Passwort muss mindestens 8 Zeichen lang sein."
+        )
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
+            admin_action=admin_action,
         )
         response = await admin_reset_password(request, user_id=5, password="short")
         assert response.status_code == 400
