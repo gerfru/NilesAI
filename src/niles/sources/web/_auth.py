@@ -314,13 +314,21 @@ async def callback_google(
                 },
             )
 
-    # Create or update user in DB
+    # Create or update user in DB (returns None if deactivated)
     user_store = request.app.state.user_store
     user = await user_store.create_or_update(
         email=email,
         display_name=userinfo.get("name", email),
         avatar_url=userinfo.get("picture"),
     )
+    if user is None:
+        logger.warning("Google login blocked for deactivated user: %s", email)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": "Dieses Konto wurde deaktiviert.", "google_configured": gc},
+            status_code=403,
+        )
     logger.info("Google login: %s (user_id=%d)", email, user["id"])
 
     await _maybe_provision_vikunja(request, user["id"], email)
