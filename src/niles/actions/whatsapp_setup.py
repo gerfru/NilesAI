@@ -80,6 +80,8 @@ class WhatsAppSetupAction:
         (route handles this with cookie deletion + redirect).
         """
         instance_name = f"niles-wa-{user_id}"
+        # Evolution API requires the token as a query parameter for webhook
+        # authentication — header-based auth is not supported.
         webhook_url = (
             f"{self.webhook_base_url.rstrip('/')}/webhook/whatsapp"
             f"?token={self.evolution_api_key}"

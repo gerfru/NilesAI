@@ -334,12 +334,14 @@ async def lifespan(app: FastAPI):
         default_api_url=settings.vikunja_api_url,
     )
     whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
-    wa_setup_action = WhatsAppSetupAction(
-        wa_store,
-        whatsapp_action,
-        webhook_base_url=settings.webhook_base_url,
-        evolution_api_key=settings.evolution_api_key,
-    )
+    wa_setup_action = None
+    if settings.evolution_api_url:
+        wa_setup_action = WhatsAppSetupAction(
+            wa_store,
+            whatsapp_action,
+            webhook_base_url=settings.webhook_base_url,
+            evolution_api_key=settings.evolution_api_key,
+        )
 
     # Signal (signal-cli-rest-api)
     signal_action = None
