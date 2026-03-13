@@ -62,50 +62,30 @@ async def signal_status(request: Request):
         return error
 
     settings = request.app.state.settings
-    if not settings.signal_api_url:
-        return HTMLResponse(
-            '<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>'
-        )
-
-    signal_action = getattr(request.app.state, "signal_action", None)
-    if not signal_action:
+    signal_setup = getattr(request.app.state, "signal_setup_action", None)
+    if not settings.signal_api_url or not signal_setup:
         return HTMLResponse(
             '<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>'
         )
 
     linking = request.query_params.get("linking") == "1"
-    ctx = {"signal_status": "disconnected", "signal_phone": ""}
-
-    # Check if user intentionally disconnected (suppress auto-discovery).
-    # Cached in app.state to avoid DB query on every 3s HTMX poll.
     signal_disabled = getattr(request.app.state, "signal_disabled", False)
 
-    # Check if already known
-    if settings.signal_phone_number:
-        ctx["signal_status"] = "connected"
-        ctx["signal_phone"] = settings.signal_phone_number
-    elif not signal_disabled:
-        # Auto-discover: check linked accounts via signal-cli-rest-api.
-        # Note: concurrent HTMX polls may both reach this point, but
-        # the duplicate DB write is harmless (same value).
-        accounts = await signal_action.get_accounts()
-        if accounts:
-            phone = accounts[0]
-            logger.info("Signal phone auto-discovered: %s", phone)
-            # Update via apply_overrides for consistency with other settings
-            new_settings = apply_overrides(settings, {"signal_phone_number": phone})
-            request.app.state.settings = new_settings
-            signal_action.phone = phone
-            settings_store = getattr(request.app.state, "settings_store", None)
-            if settings_store:
-                await settings_store.set("signal_phone_number", phone)
-            # Start WebSocket listener if not running
-            await _ensure_signal_listener(request.app)
-            ctx["signal_status"] = "connected"
-            ctx["signal_phone"] = phone
-        elif linking:
-            # QR code displayed, waiting for user to scan
-            ctx["signal_status"] = "connecting"
+    ctx = await signal_setup.get_status(settings, signal_disabled=signal_disabled)
+
+    # Route handles app.state mutations when phone was auto-discovered
+    phone_discovered = ctx.pop("phone_discovered", None)
+    if phone_discovered:
+        new_settings = apply_overrides(
+            settings, {"signal_phone_number": phone_discovered}
+        )
+        request.app.state.settings = new_settings
+        signal_action = getattr(request.app.state, "signal_action", None)
+        if signal_action:
+            signal_action.phone = phone_discovered
+        await _ensure_signal_listener(request.app)
+    elif linking and ctx["signal_status"] == "disconnected":
+        ctx["signal_status"] = "connecting"
 
     return templates.TemplateResponse(request, "fragments/signal_status.html", ctx)
 
@@ -135,11 +115,13 @@ async def signal_link(request: Request):
     if error:
         return error
 
-    # Clear the disabled flag so auto-discovery works again
+    # Action handles DB persistence
+    signal_setup = getattr(request.app.state, "signal_setup_action", None)
+    if signal_setup:
+        await signal_setup.enable_linking()
+
+    # Route manages app.state cache
     request.app.state.signal_disabled = False
-    settings_store = getattr(request.app.state, "settings_store", None)
-    if settings_store:
-        await settings_store.delete("signal_disabled")
 
     return templates.TemplateResponse(
         request,
@@ -156,9 +138,8 @@ async def signal_disconnect(request: Request):
         return error
 
     settings = request.app.state.settings
-    signal_action = getattr(request.app.state, "signal_action", None)
 
-    # Stop WebSocket listener
+    # Route manages listener lifecycle (web concern)
     sig_task = getattr(request.app.state, "signal_task", None)
     if sig_task and not sig_task.done():
         sig_task.cancel()
@@ -168,20 +149,18 @@ async def signal_disconnect(request: Request):
             pass
     request.app.state.signal_task = None
 
-    # Unlink device via signal-cli-rest-api
-    if signal_action and settings.signal_phone_number:
-        await signal_action.unlink(settings.signal_phone_number)
+    # Action handles API + DB
+    signal_setup = getattr(request.app.state, "signal_setup_action", None)
+    if signal_setup:
+        await signal_setup.disconnect(settings.signal_phone_number)
 
-    # Clear phone number and mark as intentionally disabled (runtime + DB)
+    # Route manages app.state mutations
     new_settings = apply_overrides(settings, {"signal_phone_number": ""})
     request.app.state.settings = new_settings
+    signal_action = getattr(request.app.state, "signal_action", None)
     if signal_action:
         signal_action.phone = ""
     request.app.state.signal_disabled = True
-    settings_store = getattr(request.app.state, "settings_store", None)
-    if settings_store:
-        await settings_store.delete("signal_phone_number")
-        await settings_store.set("signal_disabled", "true")
 
     logger.info("Signal disconnected")
 
