@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-03-09
+> **Updated:** 2026-03-13
 
 ---
 
@@ -156,43 +156,49 @@ python -m pytest tests/ -v
 
 ```text
 tests/
-├── conftest.py                   # Shared Fixtures (environment variables)
-├── test_config.py                # Settings validation
-├── test_contacts.py              # ContactsAction, normalize_phone, multi-phone
-├── test_core.py                  # NilesAgent, tool-call pipeline, text-tool-call fallback
-├── test_health.py                # GET /health endpoint
-├── test_memory.py                # MemoryStore, ConversationHistory
-├── test_features.py              # Feature flags (send_others, self-check) + webhook auth
-├── test_self_chat.py             # WhatsApp self-chat (trigger, strip, webhook integration)
-├── test_signal.py                # Signal action, listener, echo guard, triggers
-├── test_carddav.py               # CardDAV sync
-├── test_caldav.py                # CalDAV sync
-├── test_ical_parser.py           # iCalendar parser
-├── test_rrule_expansion.py       # RRULE expansion (recurring events)
-├── test_calendar_manager.py      # CalendarSourceManager (CRUD, sync, migration)
-├── test_calendar_improvements.py # Calendar query improvements
-├── test_google_token_store.py     # Per-user Google OAuth token store
-├── test_user_mcp_pool.py         # Per-user gws MCP server pool
-├── test_http_retry.py            # HTTP client retry logic
-├── test_mcp.py                   # MCP integration
-├── test_migrations.py            # Alembic migration chain validation
-├── test_security.py              # API auth, rate limiting
-├── test_settings_store.py        # Runtime settings store
-├── test_web.py                   # Web UI, Google OAuth, sessions, CSRF
-├── test_weather_mcp.py           # Weather MCP server integration
-├── test_whatsapp_sessions.py     # Per-user WhatsApp sessions
-├── test_tasks.py                 # Vikunja task management
-├── test_vikunja_store.py         # Per-user Vikunja credentials + agent resolution
-├── test_vikunja_provisioning.py  # Vikunja auto-provisioning (register, login, token)
-├── test_briefing.py              # BriefingGenerator + time parsing + channel routing
-├── test_logging.py               # Structured logging + Prometheus metrics
-├── test_fetch_mcp.py             # Web Fetch MCP server (SSRF, extraction, truncation)
-├── test_notion_sync.py           # Notion API sync (block-to-text, pagination, MD5)
-├── test_notion_embeddings.py     # Notion embedding pipeline (chunking, Ollama calls)
-├── test_notion_retriever.py      # NotionRetriever (pgvector search, threshold)
-├── test_notion_tool.py           # search_notion tool handler
-├── test_notion_web.py            # Notion web routes (status/connect/disconnect/sync/search)
-└── test_notion_rag_prompt.py     # Notion RAG context injection into prompts
+├── conftest.py                     # Shared Fixtures (environment variables)
+├── test_admin_action.py            # AdminAction (user CRUD, password, soft-delete)
+├── test_briefing.py                # BriefingGenerator + time parsing + channel routing
+├── test_caldav.py                  # CalDAV sync
+├── test_calendar_improvements.py   # Calendar query improvements
+├── test_calendar_manager.py        # CalendarSourceManager (CRUD, sync, migration)
+├── test_carddav.py                 # CardDAV sync
+├── test_config.py                  # Settings validation
+├── test_contacts.py                # ContactsAction, normalize_phone, multi-phone
+├── test_contacts_action_setup.py   # ContactsAction connect/disconnect (CardDAV setup)
+├── test_core.py                    # NilesAgent, tool-call pipeline, text-tool-call fallback
+├── test_features.py                # Feature flags (send_others, self-check) + webhook auth
+├── test_fetch_mcp.py               # Web Fetch MCP server (SSRF, extraction, truncation)
+├── test_google_token_store.py      # Per-user Google OAuth token store
+├── test_health.py                  # GET /health endpoint
+├── test_http_retry.py              # HTTP client retry logic
+├── test_ical_parser.py             # iCalendar parser
+├── test_logging.py                 # Structured logging + Prometheus metrics
+├── test_mcp.py                     # MCP integration
+├── test_memory.py                  # MemoryStore, ConversationHistory
+├── test_migrations.py              # Alembic migration chain validation
+├── test_notion_embeddings.py       # Notion embedding pipeline (chunking, Ollama calls)
+├── test_notion_rag_prompt.py       # Notion RAG context injection into prompts
+├── test_notion_retriever.py        # NotionRetriever (pgvector search, threshold)
+├── test_notion_summarizer.py       # NotionSummarizer (LLM page summaries)
+├── test_notion_sync.py             # Notion API sync (block-to-text, pagination, MD5)
+├── test_notion_tool.py             # search_notion tool handler
+├── test_notion_web.py              # Notion web routes (status/connect/disconnect/sync/search)
+├── test_rrule_expansion.py         # RRULE expansion (recurring events)
+├── test_security.py                # API auth, rate limiting
+├── test_self_chat.py               # WhatsApp self-chat (trigger, strip, webhook integration)
+├── test_settings_action.py         # SettingsAction (runtime settings management)
+├── test_settings_store.py          # Runtime settings store
+├── test_signal.py                  # Signal action, listener, echo guard, triggers
+├── test_tasks.py                   # Vikunja task management
+├── test_user_mcp_pool.py           # Per-user gws MCP server pool
+├── test_vikunja_provisioning.py    # Vikunja auto-provisioning (register, login, token)
+├── test_vikunja_setup_action.py    # VikunjaSetupAction (credentials, SSRF validation)
+├── test_vikunja_store.py           # Per-user Vikunja credentials + agent resolution
+├── test_weather_action.py          # WeatherAction (coordinates, Open-Meteo API)
+├── test_weather_mcp.py             # Weather MCP server integration
+├── test_web.py                     # Web UI, Google OAuth, sessions, CSRF
+└── test_whatsapp_sessions.py       # Per-user WhatsApp sessions
 ```
 
 ### Conventions
@@ -304,12 +310,15 @@ DATABASE_URL="..." alembic history
 
 ### Existing Migrations
 
-| File                             | Description                                                       |
-|----------------------------------|-------------------------------------------------------------------|
-| `001_baseline.py`                | Initial schema (all 11 tables + indexes)                          |
-| `002_migrate_contact_phones.py`  | Data migration: legacy phone columns → contact_phones             |
-| `003_add_notion_rag.py`          | pgvector extension, `notion_pages` + `notion_embeddings` tables   |
-| `004_user_google_tokens.py`      | Per-user Google OAuth tokens for gws MCP server                   |
+| File                                | Description                                                       |
+|-------------------------------------|-------------------------------------------------------------------|
+| `001_baseline.py`                   | Initial schema (all 11 tables + indexes)                          |
+| `002_migrate_contact_phones.py`     | Data migration: legacy phone columns → contact_phones             |
+| `003_add_notion_rag.py`            | pgvector extension, `notion_pages` + `notion_embeddings` tables   |
+| `004_user_google_tokens.py`        | Per-user Google OAuth tokens for gws MCP server                   |
+| `005_notion_hierarchical_chunks.py` | Add `chunk_level` column for 2-level (summary + detail) chunking  |
+| `006_notion_metadata_columns.py`   | Add `page_title` + `heading_context` for keyword boost scoring    |
+| `007_user_soft_delete.py`          | Soft-delete columns (`is_active`, `deactivated_at`) on users      |
 
 ---
 
