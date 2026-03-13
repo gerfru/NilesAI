@@ -1,13 +1,9 @@
 """Runtime settings validation, coercion, and persistence."""
 
-import logging
-
 import httpx
 
 from ..config import Settings, apply_overrides
 from ..settings_store import SettingsStore
-
-logger = logging.getLogger(__name__)
 
 
 class SettingsAction:

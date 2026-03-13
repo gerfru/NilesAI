@@ -6,19 +6,8 @@ import httpx
 import pytest
 
 from niles.actions.settings import SettingsAction
-from niles.config import Settings
 
-
-def _make_settings(**overrides):
-    defaults = dict(
-        _env_file=None,
-        postgres_password="test",
-        evolution_api_key="test",
-        niles_api_key="test-key",
-        session_secret="test-secret",
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
+from tests.helpers import make_test_settings
 
 
 class TestSettingsActionUpdate:
@@ -26,7 +15,7 @@ class TestSettingsActionUpdate:
     async def test_update_text_setting(self):
         store = AsyncMock()
         action = SettingsAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         new_settings = await action.update("llm_model", "llama3.2:3b", settings)
 
@@ -37,7 +26,7 @@ class TestSettingsActionUpdate:
     async def test_update_feature_bool_true(self):
         store = AsyncMock()
         action = SettingsAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         new_settings = await action.update(
             "feature_whatsapp_send_others", "true", settings
@@ -50,7 +39,7 @@ class TestSettingsActionUpdate:
     async def test_update_feature_bool_false(self):
         store = AsyncMock()
         action = SettingsAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         new_settings = await action.update(
             "feature_whatsapp_send_others", "false", settings
@@ -63,7 +52,7 @@ class TestSettingsActionUpdate:
     async def test_update_unknown_key_raises(self):
         store = AsyncMock()
         action = SettingsAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         with pytest.raises(ValueError, match="Unbekannte Einstellung"):
             await action.update("nonexistent_key", "value", settings)
@@ -75,7 +64,7 @@ class TestSettingsActionUpdate:
         store = AsyncMock()
         store.set.side_effect = ValueError("Not editable")
         action = SettingsAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         with pytest.raises(ValueError, match="Not editable"):
             await action.update("llm_model", "test", settings)
