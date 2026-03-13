@@ -95,7 +95,7 @@ class CalendarAction:
             SELECT e.summary, e.dtstart, e.dtend, e.all_day,
                    e.description, e.location, e.transp
             FROM events e
-            JOIN calendar_sources cs ON e.source_id = cs.id
+            LEFT JOIN calendar_sources cs ON e.source_id = cs.id
             WHERE ($1 = '' OR e.summary ILIKE '%' || $1 || '%'
                    OR e.description ILIKE '%' || $1 || '%'
                    OR e.location ILIKE '%' || $1 || '%')

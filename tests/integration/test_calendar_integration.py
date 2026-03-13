@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import pytest_asyncio
 
 from niles.actions.calendar import CalendarAction
 
@@ -56,3 +57,46 @@ class TestFindEvent:
         )
         assert len(results) >= 1
         assert any("Dentist" in e["summary"] for e in results)
+
+
+class TestCrossUserIsolation:
+    """Verify that user B cannot see user A's calendar events."""
+
+    @pytest_asyncio.fixture(loop_scope="session")
+    async def second_user(self, db_conn):
+        """Insert a second test user."""
+        return await db_conn.fetchval(
+            """
+            INSERT INTO users (email, display_name, auth_method, is_admin)
+            VALUES ('other@example.com', 'Other User', 'password', false)
+            RETURNING id
+            """,
+        )
+
+    async def test_other_user_sees_no_events(
+        self, pool_in_tx, seed_events, seed_user, second_user
+    ):
+        """User B should not see user A's events."""
+        action = CalendarAction(pool_in_tx, timezone="Europe/Vienna")
+
+        # User A sees their events
+        results_a = await action.find_by_query(query="Meeting", user_id=seed_user)
+        assert len(results_a) >= 1
+
+        # User B sees nothing
+        results_b = await action.find_by_query(query="Meeting", user_id=second_user)
+        assert results_b == []
+
+    async def test_other_user_date_range_isolated(
+        self, pool_in_tx, seed_events, seed_user, second_user
+    ):
+        """User B should not see user A's events even with a wide date range."""
+        now = datetime.now(timezone.utc)
+        action = CalendarAction(pool_in_tx, timezone="Europe/Vienna")
+
+        results_b = await action.find_by_query(
+            date_from=(now - timedelta(days=1)).isoformat(),
+            date_to=(now + timedelta(days=7)).isoformat(),
+            user_id=second_user,
+        )
+        assert results_b == []

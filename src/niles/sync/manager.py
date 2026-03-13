@@ -109,7 +109,12 @@ class CalendarSourceManager:
         return dict(row)
 
     async def remove_source(self, source_id: int, user_id: int | None = None) -> bool:
-        """Remove a calendar source. Events are CASCADE-deleted."""
+        """Remove a calendar source. Events are CASCADE-deleted.
+
+        When ``user_id`` is provided, only sources owned by that user can be
+        deleted (authorization check).  ``user_id=None`` bypasses the check
+        and is reserved for admin/system operations.
+        """
         result = await self.pool.execute(
             "DELETE FROM calendar_sources WHERE id = $1"
             " AND ($2::integer IS NULL OR user_id = $2)",
@@ -145,7 +150,10 @@ class CalendarSourceManager:
         return [dict(r) for r in rows]
 
     async def get_writable_source(self, user_id: int | None = None) -> dict | None:
-        """Return the first enabled, writable calendar source for the user."""
+        """Return the first enabled, writable calendar source for the user.
+
+        ``user_id=None`` skips the ownership filter (admin/system use).
+        """
         row = await self.pool.fetchrow(
             """
             SELECT id, name, url, source_type, auth_user, auth_password
@@ -164,6 +172,11 @@ class CalendarSourceManager:
 
         Called when a user first visits calendar settings, so .env-migrated
         sources become visible. Returns the number of claimed sources.
+
+        Note: If two users visit settings concurrently, both issue this UPDATE.
+        The first to commit wins all orphans (atomic, no data corruption).
+        This is acceptable for the single-admin scenario; multi-admin setups
+        should assign sources explicitly via the admin UI.
         """
         result = await self.pool.execute(
             "UPDATE calendar_sources SET user_id = $1 WHERE user_id IS NULL",
@@ -179,7 +192,11 @@ class CalendarSourceManager:
     # --- Sync ---
 
     async def sync_all(self) -> int:
-        """Sync all enabled sources. Returns total events synced."""
+        """Sync all enabled sources across all users. Returns total events synced.
+
+        This is a system-level background job (cron) — intentionally not
+        filtered by user_id so that all users' calendars stay up to date.
+        """
         sources = await self.pool.fetch(
             """
             SELECT id, name, url, source_type, auth_user, auth_password
@@ -211,7 +228,10 @@ class CalendarSourceManager:
     async def sync_source(
         self, source_id: int, user_id: int | None = None
     ) -> int | None:
-        """Sync a single source by ID. Returns event count, or None if not found."""
+        """Sync a single source by ID. Returns event count, or None if not found.
+
+        ``user_id=None`` skips the ownership filter (admin/system use).
+        """
         row = await self.pool.fetchrow(
             """
             SELECT id, name, url, source_type, auth_user, auth_password

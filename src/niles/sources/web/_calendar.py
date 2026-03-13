@@ -104,7 +104,8 @@ async def calendar_source_add(
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-    assert _user is not None
+    if _user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
@@ -167,7 +168,8 @@ async def calendar_source_remove(request: Request, source_id: int):
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-    assert _user is not None
+    if _user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
@@ -190,7 +192,8 @@ async def calendar_source_sync(request: Request, source_id: int):
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
-    assert _user is not None
+    if _user is None:
+        return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
