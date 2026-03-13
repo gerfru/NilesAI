@@ -38,6 +38,7 @@ from .config import Settings, apply_overrides
 from .mcp.client import MCPManager
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
+from .notion_store import NotionStore
 from .settings_store import SettingsStore
 from .sources.web import router as web_router
 from .user_store import UserStore
@@ -160,6 +161,9 @@ async def lifespan(app: FastAPI):
     if overrides:
         settings = apply_overrides(settings, overrides)
         logger.info("Applied %d settings override(s) from DB", len(overrides))
+
+    # Notion store (pages + embeddings data access)
+    notion_store = NotionStore(pool)
 
     # Shared HTTP clients (connection pooling)
     http_clients = HttpClients(settings)
@@ -409,6 +413,7 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.pool = pool
     app.state.agent = agent
+    app.state.contacts_action = contacts
     app.state.whatsapp_action = whatsapp_action
     app.state.history = history
     app.state.settings_store = settings_store
@@ -426,6 +431,7 @@ async def lifespan(app: FastAPI):
     app.state.http_clients = http_clients
     app.state.google_token_store = google_token_store
     app.state.user_mcp_pool = user_mcp_pool
+    app.state.notion_store = notion_store
     app.state.notion_sync = notion_sync
     app.state.notion_embedder = notion_embedder
     app.state.notion_retriever = notion_retriever
