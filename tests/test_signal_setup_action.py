@@ -146,3 +146,17 @@ class TestDisconnect:
         await action.disconnect("+43123")
 
         store.set.assert_awaited_once_with("signal_disabled", "true")
+
+    async def test_db_cleanup_runs_even_if_unlink_fails(self):
+        sa = AsyncMock()
+        sa.unlink.side_effect = RuntimeError("network error")
+        store = AsyncMock()
+        action = _make_action(signal_action=sa, settings_store=store)
+
+        await action.disconnect("+43123")
+
+        # unlink was attempted
+        sa.unlink.assert_awaited_once_with("+43123")
+        # DB cleanup still happened despite the error
+        store.delete.assert_awaited_once_with("signal_phone_number")
+        store.set.assert_awaited_once_with("signal_disabled", "true")
