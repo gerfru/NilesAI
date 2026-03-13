@@ -53,6 +53,7 @@ def _make_request(
     settings_store=None,
     agent=None,
     scheduler=None,
+    notion_store=None,
     notion_sync=None,
     notion_embedder=None,
     notion_retriever=None,
@@ -69,6 +70,7 @@ def _make_request(
     request.app.state.user_store = AsyncMock()
     request.app.state.agent = agent or AsyncMock()
     request.app.state.scheduler = scheduler
+    request.app.state.notion_store = notion_store or AsyncMock()
     request.app.state.notion_sync = notion_sync
     request.app.state.notion_embedder = notion_embedder
     request.app.state.notion_retriever = notion_retriever
@@ -105,16 +107,16 @@ class TestNotionStatus:
 
     async def test_connected_shows_page_count(self):
         settings = _make_settings(feature_notion=True, notion_token="ntn_test_12345678")
-        pool = AsyncMock()
-        pool.fetchrow.return_value = {"cnt": 42, "last_sync": None}
-        pool.fetch.return_value = [
+        notion_store = AsyncMock()
+        notion_store.get_page_stats.return_value = {"cnt": 42, "last_sync": None}
+        notion_store.get_embedding_stats.return_value = [
             {"chunk_level": 1, "cnt": 128},
             {"chunk_level": 0, "cnt": 10},
         ]
         request = _make_request(
             cookies=_auth_cookies(),
             settings=settings,
-            pool=pool,
+            notion_store=notion_store,
         )
 
         with patch("niles.sources.web._notion.templates") as mock_tpl:
@@ -224,7 +226,7 @@ class TestNotionConnect:
 class TestNotionDisconnect:
     async def test_disconnect_clears_data(self):
         settings_store = AsyncMock()
-        pool = AsyncMock()
+        notion_store = AsyncMock()
         agent = MagicMock()
         agent._ctx = MagicMock()
         scheduler = MagicMock()
@@ -233,8 +235,8 @@ class TestNotionDisconnect:
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
-            pool=pool,
             settings_store=settings_store,
+            notion_store=notion_store,
             agent=agent,
             scheduler=scheduler,
             ollama_embedder=AsyncMock(),
@@ -251,10 +253,8 @@ class TestNotionDisconnect:
         # Should remove scheduler job
         scheduler.remove_job.assert_called_once_with("notion_sync")
 
-        # Should DELETE from both tables
-        execute_calls = [c[0][0] for c in pool.execute.call_args_list]
-        assert any("DELETE FROM notion_embeddings" in sql for sql in execute_calls)
-        assert any("DELETE FROM notion_pages" in sql for sql in execute_calls)
+        # Should clear via notion_store
+        notion_store.clear_all.assert_awaited_once()
 
         # Should set agent.notion_retriever = None
         assert agent.notion_retriever is None
