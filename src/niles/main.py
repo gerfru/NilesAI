@@ -34,6 +34,8 @@ from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
 from .actions.settings import SettingsAction
 from .actions.vikunja_setup import VikunjaSetupAction
+from .actions.signal_setup import SignalSetupAction
+from .actions.whatsapp_setup import WhatsAppSetupAction
 from .actions.signal import SignalAction
 from .actions.weather import WeatherAction
 from .actions.whatsapp import WhatsAppAction
@@ -332,14 +334,24 @@ async def lifespan(app: FastAPI):
         default_api_url=settings.vikunja_api_url,
     )
     whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
+    wa_setup_action = WhatsAppSetupAction(
+        wa_store,
+        whatsapp_action,
+        webhook_base_url=settings.webhook_base_url,
+        evolution_api_key=settings.evolution_api_key,
+    )
 
     # Signal (signal-cli-rest-api)
     signal_action = None
     signal_store = None
     signal_task = None
+    signal_setup_action = None
     if settings.signal_api_url:
         signal_action = SignalAction(settings)
         signal_store = SignalMessageStore(pool)
+        signal_setup_action = SignalSetupAction(
+            signal_action, settings_store=settings_store
+        )
         logger.info("Signal integration enabled (%s)", settings.signal_phone_number)
 
     # Agent (Vikunja tasks resolved per-user via vikunja_store, no global fallback)
@@ -447,11 +459,13 @@ async def lifespan(app: FastAPI):
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
     app.state.vikunja_setup_action = vikunja_setup
+    app.state.wa_setup_action = wa_setup_action
     app.state.vikunja_provisioner = vikunja_provisioner
     app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
     app.state.signal_action = signal_action
     app.state.signal_store = signal_store
+    app.state.signal_setup_action = signal_setup_action
     app.state.http_clients = http_clients
     app.state.google_token_store = google_token_store
     app.state.user_mcp_pool = user_mcp_pool
