@@ -80,7 +80,8 @@ async def calendar_sources_list(request: Request):
             request, "fragments/calendar_unavailable.html", {}
         )
 
-    sources = await manager.get_sources()
+    await manager.claim_orphan_sources(user["uid"])
+    sources = await manager.get_sources(user_id=user["uid"])
     return templates.TemplateResponse(
         request,
         "fragments/calendar_sources.html",
@@ -103,6 +104,7 @@ async def calendar_source_add(
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
+    assert _user is not None
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
@@ -116,6 +118,8 @@ async def calendar_source_add(
 
     writable = source_type == "caldav"
 
+    uid = _user["uid"]
+
     try:
         await manager.add_source(
             name=name.strip(),
@@ -124,9 +128,10 @@ async def calendar_source_add(
             writable=writable,
             auth_user=auth_user.strip() or None,
             auth_password=auth_password or None,
+            user_id=uid,
         )
     except asyncpg.UniqueViolationError:
-        sources = await manager.get_sources()
+        sources = await manager.get_sources(user_id=uid)
         return templates.TemplateResponse(
             request,
             "fragments/calendar_sources.html",
@@ -136,7 +141,7 @@ async def calendar_source_add(
             },
         )
     except ValueError as exc:
-        sources = await manager.get_sources()
+        sources = await manager.get_sources(user_id=uid)
         return templates.TemplateResponse(
             request,
             "fragments/calendar_sources.html",
@@ -146,7 +151,7 @@ async def calendar_source_add(
             },
         )
 
-    sources = await manager.get_sources()
+    sources = await manager.get_sources(user_id=uid)
     return templates.TemplateResponse(
         request,
         "fragments/calendar_sources.html",
@@ -162,6 +167,7 @@ async def calendar_source_remove(request: Request, source_id: int):
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
+    assert _user is not None
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
@@ -169,8 +175,9 @@ async def calendar_source_remove(request: Request, source_id: int):
             '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
         )
 
-    removed = await manager.remove_source(source_id)
-    sources = await manager.get_sources()
+    uid = _user["uid"]
+    removed = await manager.remove_source(source_id, user_id=uid)
+    sources = await manager.get_sources(user_id=uid)
     ctx = {"sources": sources}
     if not removed:
         ctx["error"] = "Quelle nicht gefunden."
@@ -183,6 +190,7 @@ async def calendar_source_sync(request: Request, source_id: int):
     _user, error = await _require_auth_and_csrf(request)
     if error:
         return error
+    assert _user is not None
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
@@ -190,15 +198,16 @@ async def calendar_source_sync(request: Request, source_id: int):
             '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
         )
 
+    uid = _user["uid"]
     ctx: dict = {}
     try:
-        count = await manager.sync_source(source_id)
+        count = await manager.sync_source(source_id, user_id=uid)
         if count is None:
             ctx["error"] = "Quelle nicht gefunden oder deaktiviert."
     except Exception:
         logger.exception("Manual sync failed for source %d", source_id)
 
-    sources = await manager.get_sources()
+    sources = await manager.get_sources(user_id=uid)
     ctx["sources"] = sources
     return templates.TemplateResponse(request, "fragments/calendar_sources.html", ctx)
 
