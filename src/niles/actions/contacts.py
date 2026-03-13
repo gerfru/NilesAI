@@ -69,8 +69,16 @@ class ContactsAction:
         """Test CardDAV connection, persist credentials, return updated Settings.
 
         Raises ConnectionError on test failure.
+        Requires settings_store and carddav_sync to be set at construction time.
         """
-        assert self.settings_store is not None
+        if self.settings_store is None:
+            raise RuntimeError(
+                "ContactsAction requires settings_store for connect/disconnect"
+            )
+        if self.carddav_sync is None:
+            raise RuntimeError(
+                "ContactsAction requires carddav_sync for connect/disconnect"
+            )
         url, user = url.strip(), user.strip()
 
         new_settings = apply_overrides(
@@ -91,7 +99,10 @@ class ContactsAction:
 
     async def disconnect(self, current_settings: Settings) -> Settings:
         """Remove CardDAV credentials, clear contacts, return updated Settings."""
-        assert self.settings_store is not None
+        if self.settings_store is None:
+            raise RuntimeError(
+                "ContactsAction requires settings_store for connect/disconnect"
+            )
         for key in ("carddav_url", "carddav_user", "carddav_password"):
             await self.settings_store.delete(key)
 
