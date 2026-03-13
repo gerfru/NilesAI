@@ -2,10 +2,10 @@
 
 import logging
 
-from argon2 import PasswordHasher
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
 
+from ...actions.admin import DuplicateEmailError
 from ._core import (
     _ensure_csrf_cookie,
     _require_admin,
@@ -16,8 +16,6 @@ from ._core import (
 
 logger = logging.getLogger(__name__)
 
-_ph = PasswordHasher()
-
 
 @router.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request):
@@ -26,8 +24,8 @@ async def admin_users_page(request: Request):
     if error:
         return error
     assert user is not None
-    user_store = request.app.state.user_store
-    users = await user_store.list_all()
+    admin_action = request.app.state.admin_action
+    users = await admin_action.list_users()
     response = templates.TemplateResponse(
         request,
         "admin_users.html",
@@ -50,62 +48,45 @@ async def admin_create_user(
         return error
     assert user is not None
 
-    user_store = request.app.state.user_store
+    admin_action = request.app.state.admin_action
 
-    # Validate input
-    email = email.strip().lower()
-    display_name = display_name.strip()
-    if not email or not display_name or not password:
-        users = await user_store.list_all()
+    try:
+        new_user = await admin_action.create_user(email, display_name, password)
+    except DuplicateEmailError as e:
+        users = await admin_action.list_users()
         return templates.TemplateResponse(
             request,
             "admin_users.html",
             {
                 "current_user": user,
                 "users": users,
-                "error": "Alle Felder müssen ausgefüllt sein.",
-                "success": None,
-            },
-            status_code=400,
-        )
-
-    if len(password) < 8:
-        users = await user_store.list_all()
-        return templates.TemplateResponse(
-            request,
-            "admin_users.html",
-            {
-                "current_user": user,
-                "users": users,
-                "error": "Passwort muss mindestens 8 Zeichen lang sein.",
-                "success": None,
-            },
-            status_code=400,
-        )
-
-    # Check if email already taken
-    existing = await user_store.get_by_email(email)
-    if existing:
-        users = await user_store.list_all()
-        return templates.TemplateResponse(
-            request,
-            "admin_users.html",
-            {
-                "current_user": user,
-                "users": users,
-                "error": f"E-Mail '{email}' ist bereits vergeben.",
+                "error": str(e),
                 "success": None,
             },
             status_code=409,
         )
+    except ValueError as e:
+        users = await admin_action.list_users()
+        return templates.TemplateResponse(
+            request,
+            "admin_users.html",
+            {
+                "current_user": user,
+                "users": users,
+                "error": str(e),
+                "success": None,
+            },
+            status_code=400,
+        )
 
-    hashed = _ph.hash(password)
-    new_user = await user_store.create_password_user(email, display_name, hashed)
     logger.info(
-        "Admin %s created user: %s (id=%s)", user["email"], email, new_user["id"]
+        "Admin %s created user: %s (id=%s)",
+        user["email"],
+        new_user["email"],
+        new_user["id"],
     )
 
-    users = await user_store.list_all()
+    users = await admin_action.list_users()
     return templates.TemplateResponse(
         request,
         "admin_users.html",
@@ -113,7 +94,7 @@ async def admin_create_user(
             "current_user": user,
             "users": users,
             "error": None,
-            "success": f"User '{display_name}' ({email}) angelegt.",
+            "success": f"User '{new_user['display_name']}' ({new_user['email']}) angelegt.",
         },
     )
 
@@ -130,19 +111,15 @@ async def admin_reset_password(
         return error
     assert admin is not None
 
-    if len(password) < 8:
-        return Response(
-            content="Passwort muss mindestens 8 Zeichen lang sein.",
-            status_code=400,
-        )
+    admin_action = request.app.state.admin_action
 
-    user_store = request.app.state.user_store
-    target = await user_store.get_by_id(user_id)
-    if not target:
-        return Response(content="User nicht gefunden.", status_code=404)
+    try:
+        await admin_action.reset_password(user_id, password)
+    except ValueError as e:
+        return Response(content=str(e), status_code=400)
+    except KeyError as e:
+        return Response(content=str(e), status_code=404)
 
-    hashed = _ph.hash(password)
-    await user_store.update_password(user_id, hashed)
     logger.info("Admin %s reset password for user_id=%s", admin["email"], user_id)
     return Response(
         content="Passwort geändert.",
@@ -158,23 +135,19 @@ async def admin_deactivate_user(request: Request, user_id: int):
         return error
     assert admin is not None
 
-    if admin["uid"] == user_id:
-        return Response(
-            content="Eigenen Account kann man nicht deaktivieren.",
-            status_code=400,
-        )
+    admin_action = request.app.state.admin_action
 
-    user_store = request.app.state.user_store
-    target = await user_store.get_by_id(user_id)
-    if not target:
-        return Response(content="User nicht gefunden.", status_code=404)
+    try:
+        await admin_action.deactivate_user(user_id, admin["uid"])
+    except ValueError as e:
+        return Response(content=str(e), status_code=400)
+    except KeyError as e:
+        return Response(content=str(e), status_code=404)
 
-    await user_store.deactivate_user(user_id)
     logger.info(
-        "Admin %s deactivated user_id=%s (%s)",
+        "Admin %s deactivated user_id=%s",
         admin["email"],
         user_id,
-        target["email"],
     )
     return Response(
         content="User deaktiviert.",

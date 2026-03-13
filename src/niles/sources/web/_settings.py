@@ -7,7 +7,6 @@ from fastapi import Form, Query, Request
 from fastapi.responses import HTMLResponse
 from openai import AsyncOpenAI
 
-from ...config import apply_overrides
 from ._core import (
     _USER_EDITABLE_SETTINGS,
     _ensure_csrf_cookie,
@@ -72,28 +71,19 @@ async def ollama_models(request: Request):
         return error
 
     settings = request.app.state.settings
-    # Strip /v1 suffix to get Ollama's native API base
-    base = settings.llm_base_url.rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-
     current_model = settings.llm_model
+
     try:
-        general = request.app.state.http_clients.general
-        resp = await general.get(f"{base}/api/tags", timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
+        settings_action = request.app.state.settings_action
+        models = await settings_action.list_ollama_models(
+            settings.llm_base_url, current_model
+        )
     except Exception:
         # Ollama unreachable — return single option with current value
         return HTMLResponse(
             f'<option value="{_html.escape(current_model)}" selected>'
             f"{_html.escape(current_model)} (Ollama nicht erreichbar)</option>"
         )
-
-    models = sorted(
-        (m["name"] for m in data.get("models", [])),
-        key=str.lower,
-    )
 
     if not models:
         return HTMLResponse(
@@ -102,15 +92,17 @@ async def ollama_models(request: Request):
         )
 
     options = []
-    for name in models:
-        selected = " selected" if name == current_model else ""
+    for m in models:
+        name = m["name"]
+        selected = " selected" if m["selected"] else ""
         options.append(
             f'<option value="{_html.escape(name)}"{selected}>'
             f"{_html.escape(name)}</option>"
         )
 
     # If current model is not in the list (e.g. deleted), add it at top
-    if current_model and current_model not in models:
+    model_names = [m["name"] for m in models]
+    if current_model and current_model not in model_names:
         options.insert(
             0,
             f'<option value="{_html.escape(current_model)}" selected>'
@@ -130,30 +122,11 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
     if error:
         return error
 
-    settings_store = request.app.state.settings_store
     settings = request.app.state.settings
-
-    # Validate key exists on settings before touching DB
-    if not hasattr(settings, key):
-        return templates.TemplateResponse(
-            request,
-            "fragments/toast.html",
-            {
-                "message": f"Unbekannte Einstellung: '{key}'",
-                "toast_type": "error",
-            },
-        )
-
-    # Convert value to appropriate type
-    parsed_value: str | bool
-    if key.startswith("feature_"):
-        parsed_value = value.lower() in ("true", "1", "on")
-    else:
-        parsed_value = value
+    settings_action = request.app.state.settings_action
 
     try:
-        await settings_store.set(key, parsed_value)
-        new_settings = apply_overrides(settings, {key: parsed_value})
+        new_settings = await settings_action.update(key, value, settings)
         request.app.state.settings = new_settings
         # Keep CalDAV sync config in sync so allowed_collections() reads fresh data
         caldav = getattr(request.app.state, "caldav", None)
