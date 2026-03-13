@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-03-09
+> **Updated:** 2026-03-13
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -594,7 +594,7 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
 
 ### Prerequisites
 
-- **Ollama embedding model**: `ollama pull nomic-embed-text`
+- **Ollama embedding model**: `ollama pull nomic-embed-text-v2-moe`
 - **Notion Internal Integration Token**: Create at [notion.so/my-integrations](https://www.notion.so/my-integrations) with "Read content" capability
 - **Share pages/databases** with the integration in Notion
 
@@ -609,7 +609,7 @@ Niles can use a Notion workspace as a knowledge base via RAG (Retrieval-Augmente
 
 3. Pull the embedding model on the host:
    ```bash
-   ollama pull nomic-embed-text
+   ollama pull nomic-embed-text-v2-moe
    ```
 
 4. **Option A: Via Settings UI** (recommended)
@@ -669,7 +669,7 @@ Then trigger a sync via the Settings UI. For embedding-only changes (e.g. chunk 
 | ------- | -------- |
 | "Notion-Integration nicht konfiguriert" | Enable `FEATURE_NOTION=true` or connect via Settings UI |
 | Connection test fails | Verify token is correct and integration has access to at least one page |
-| No search results | Check that sync has completed (`docker logs niles_core \| grep notion`), and that `nomic-embed-text` model is pulled |
+| No search results | Check that sync has completed (`docker logs niles_core \| grep notion`), and that `nomic-embed-text-v2-moe` model is pulled |
 | Slow embedding | Normal for first sync with many pages. Subsequent syncs only re-embed changed pages |
 | Sync shows "unchanged" after code change | Reset `content_md5` and `last_edited` (see Force Re-sync above) |
 | 0 summaries generated | Check Ollama is reachable and summary model supports `"think": false` |
@@ -926,7 +926,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `FEATURE_WHATSAPP_SEND_OTHERS` | `true` | May Niles send to other people? |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 | `FEATURE_SEARCH` | `false` | Enable SearXNG web search (requires Docker profile `search`) |
-| `FEATURE_NOTION` | `false` | Enable Notion knowledge base (requires `NOTION_TOKEN` + `ollama pull nomic-embed-text`) |
+| `FEATURE_NOTION` | `false` | Enable Notion knowledge base (requires `NOTION_TOKEN` + `ollama pull nomic-embed-text-v2-moe`) |
 
 Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Settings > Contacts / Calendar Sources). Google Calendar is connected per-user via OAuth (Settings > Calendar Sources > Connect Google Calendar). The complete list of all variables including internal defaults is in the [Technical Specification #6.1](Niles-Core-Spec.md#61-settings).
 

@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 8.0
-> **Updated:** 2026-03-09
+> **Version:** 9.0
+> **Updated:** 2026-03-13
 
 ---
 
@@ -109,8 +109,16 @@ Niles/
 │       ├── vikunja_provisioning.py  # Auto-provision Vikunja accounts on login
 │       ├── google_token_store.py   # Per-user Google OAuth tokens (PostgreSQL)
 │       ├── http_clients.py         # Shared httpx.AsyncClient instances
+│       ├── types.py                 # AppState Protocol, type definitions
+│       ├── errors.py                # DuplicateEmailError, error_response()
+│       ├── http_retry.py            # @retry_http decorator (tenacity)
+│       ├── notion_store.py          # Notion pages data access (PostgreSQL)
+│       ├── migrate.py               # Alembic migration runner
+│       ├── cli.py                   # CLI entrypoint
 │       ├── agent/
 │       │   ├── core.py               # NilesAgent, tool definitions, pipeline
+│       │   ├── context.py            # Context assembly, user/resource resolution
+│       │   ├── text_tool_parser.py   # JSON tool-call detection (pure functions)
 │       │   ├── prompts.py            # System prompt loading/building
 │       │   └── tools/                # Tool handler registry (decorator-based)
 │       │       ├── __init__.py       # TOOL_REGISTRY, @register_tool, ToolContext
@@ -126,20 +134,25 @@ Niles/
 │       ├── memory/
 │       │   ├── store.py              # Key-value memory (PostgreSQL)
 │       │   └── history.py            # Conversation history
-│       ├── actions/
+│       ├── actions/                  # 12 action modules (Routes → Actions → Stores)
+│       │   ├── admin.py              # User CRUD with password hashing
 │       │   ├── briefing.py           # BriefingGenerator (daily/weekly overview)
-│       │   ├── whatsapp.py           # WhatsApp send (Evolution API)
-│       │   ├── signal.py             # Signal send + status (signal-cli-rest-api)
-│       │   ├── contacts.py           # Contact lookup + normalize_phone
 │       │   ├── calendar.py           # Calendar queries
-│       │   ├── tasks.py              # Vikunja task management
-│       │   └── notion.py            # NotionRetriever (pgvector RAG search)
+│       │   ├── contacts.py           # Contact search + CardDAV connect/disconnect
+│       │   ├── notion.py             # NotionRetriever (pgvector RAG search)
+│       │   ├── settings.py           # Setting validation + persistence
+│       │   ├── signal.py             # Signal send + status (signal-cli-rest-api)
+│       │   ├── tasks.py              # Vikunja task CRUD (agent-facing)
+│       │   ├── vikunja_setup.py      # Vikunja credential management (UI-facing)
+│       │   ├── weather.py            # Location search + coordinate persistence
+│       │   └── whatsapp.py           # WhatsApp send (Evolution API)
 │       ├── jobs/
 │       │   └── briefing.py           # Scheduler jobs for briefing
 │       ├── sources/
 │       │   ├── whatsapp.py           # Webhook handler (token auth)
 │       │   ├── signal.py             # WebSocket listener (background task)
 │       │   ├── triggers.py           # Shared trigger detection (Hey Niles)
+│       │   ├── echo_guard.py         # Echo-loop prevention (10s TTL)
 │       │   └── web/                  # Web UI package (feature-based modules)
 │       │       ├── __init__.py       # Re-exports for backward compatibility
 │       │       ├── _core.py          # Router, templates, auth guards, shared helpers
@@ -160,8 +173,10 @@ Niles/
 │       │   ├── caldav.py             # CalDAV calendar sync
 │       │   ├── ical_parser.py        # Shared iCalendar parser
 │       │   ├── manager.py            # CalendarSourceManager (CRUD, sync, migration)
-│       │   ├── notion.py            # Notion API sync (pages → notion_pages)
-│       │   └── notion_embeddings.py # Ollama embedding pipeline (→ notion_embeddings)
+│       │   ├── notion.py             # Notion API sync (pages → notion_pages)
+│       │   ├── notion_embeddings.py  # Ollama embedding pipeline (→ notion_embeddings)
+│       │   ├── notion_summarizer.py  # Page summaries for chunk context
+│       │   └── ollama_embedder.py    # Ollama embedding client
 │       ├── mcp/
 │       │   ├── client.py             # MCP server manager
 │       │   ├── user_pool.py          # Per-user gws MCP server pool
@@ -228,11 +243,15 @@ Niles/
 │   ├── test_notion_retriever.py     # NotionRetriever (pgvector search, threshold)
 │   ├── test_notion_tool.py          # search_notion tool handler
 │   ├── test_notion_web.py           # Notion web routes (status/connect/disconnect/sync/search)
-│   └── test_notion_rag_prompt.py    # Notion RAG context injection into prompts
+│   ├── test_notion_rag_prompt.py    # Notion RAG context injection into prompts
+│   ├── test_settings_action.py      # SettingsAction validation + persistence
+│   ├── test_admin_action.py         # AdminAction user CRUD
+│   ├── test_contacts_action_setup.py # ContactsAction connect/disconnect
+│   └── test_vikunja_setup_action.py # VikunjaSetupAction SSRF, credentials, status
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
-│   └── versions/                    # Migration files (001_baseline, ..., 006_...)
+│   └── versions/                    # Migration files (001_baseline, ..., 007_...)
 ├── config/
 │   ├── soul.md                       # Agent personality
 │   ├── mcp_servers.yaml              # MCP server configuration
@@ -1071,7 +1090,7 @@ CREATE TABLE IF NOT EXISTS notion_embeddings (
     chunk_level INTEGER NOT NULL DEFAULT 1,        -- 0=summary, 1=detail
     chunk_index INTEGER NOT NULL DEFAULT 0,
     chunk_text TEXT NOT NULL,                       -- Prefixed with [Breadcrumb > # Heading] context
-    embedding vector(768),                         -- nomic-embed-text dimension
+    embedding vector(768),                         -- nomic-embed-text-v2-moe dimension
     page_title TEXT NOT NULL DEFAULT '',            -- Breadcrumb for keyword boost
     heading_context TEXT NOT NULL DEFAULT '',       -- Heading hierarchy for keyword boost
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -1241,7 +1260,7 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 
 \*\*\*\*\* Enables SearXNG web search. Requires the SearXNG Docker container (profile `search`).
 
-\*\*\*\*\*\* Enables Notion knowledge base (RAG). Requires `notion_token` and `ollama pull nomic-embed-text`.
+\*\*\*\*\*\* Enables Notion knowledge base (RAG). Requires `notion_token` and `ollama pull nomic-embed-text-v2-moe`.
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
