@@ -76,9 +76,9 @@ class ContextBuilder:
         self.user_mcp_pool = user_mcp_pool
         self.notion_retriever: object | None = None
 
-        # Cached calendar source names (refreshed every 5 minutes)
-        self._source_names_cache: list[str] = []
-        self._source_names_ts: float = 0.0
+        # Cached calendar source names per user (refreshed every 5 minutes)
+        self._source_names_cache: dict[int | None, list[str]] = {}
+        self._source_names_ts: dict[int | None, float] = {}
         # Pending phone choice: chat_id → {phones, text, contact_name, expires_at}
         self._pending_phone_choices: dict[str, dict] = {}
 
@@ -159,22 +159,22 @@ class ContextBuilder:
                         )
         return None
 
-    async def get_calendar_source_names(self) -> list[str]:
-        """Return enabled calendar source names, cached with a 5-minute TTL."""
+    async def get_calendar_source_names(self, user_id: int | None = None) -> list[str]:
+        """Return enabled calendar source names, cached per-user with 5-min TTL."""
         if not self.calendar_manager:
             return []
         now = time.monotonic()
-        if now - self._source_names_ts < self._SOURCE_CACHE_TTL:
-            return self._source_names_cache
+        cached_ts = self._source_names_ts.get(user_id, 0.0)
+        if now - cached_ts < self._SOURCE_CACHE_TTL:
+            return self._source_names_cache.get(user_id, [])
         try:
-            sources = await self.calendar_manager.get_sources()
-            self._source_names_cache = [
-                s["name"] for s in sources if s.get("enabled", True)
-            ]
-            self._source_names_ts = now
+            sources = await self.calendar_manager.get_sources(user_id=user_id)
+            names = [s["name"] for s in sources if s.get("enabled", True)]
+            self._source_names_cache[user_id] = names
+            self._source_names_ts[user_id] = now
         except Exception:
             logger.warning("Failed to load calendar sources for prompt")
-        return self._source_names_cache
+        return self._source_names_cache.get(user_id, [])
 
     async def handle_phone_choice(self, chat_id: str, content: str) -> str | None:
         """If user is responding to a phone choice prompt, send directly.
@@ -244,7 +244,8 @@ class ContextBuilder:
             return chat_id, messages, []
 
         # --- Normal mode: full soul.md prompt + tool filtering ---
-        source_names = await self.get_calendar_source_names()
+        uid = await self.resolve_user_id(chat_id) if chat_id else None
+        source_names = await self.get_calendar_source_names(user_id=uid)
 
         system_prompt = build_system_prompt(
             self.base_prompt,
@@ -323,18 +324,16 @@ class ContextBuilder:
                     [t["function"]["name"] for t in mcp_tools],
                 )
         # Per-user gws tools (Google Calendar via gws MCP)
-        if self.user_mcp_pool and chat_id:
-            uid = await self.resolve_user_id(chat_id)
-            if uid is not None:
-                gws_tools = await self.user_mcp_pool.get_openai_tools(uid)
-                if gws_tools:
-                    all_tools.extend(gws_tools)
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(
-                            "gws tools added for user %d: %s",
-                            uid,
-                            [t["function"]["name"] for t in gws_tools],
-                        )
+        if self.user_mcp_pool and uid is not None:
+            gws_tools = await self.user_mcp_pool.get_openai_tools(uid)
+            if gws_tools:
+                all_tools.extend(gws_tools)
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "gws tools added for user %d: %s",
+                        uid,
+                        [t["function"]["name"] for t in gws_tools],
+                    )
         return chat_id, messages, all_tools
 
     # Backward-compatible aliases — tests and older code use underscore-prefixed names.
