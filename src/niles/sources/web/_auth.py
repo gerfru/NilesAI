@@ -230,7 +230,9 @@ async def callback_google(
             timeout=10.0,
         )
         if token_resp.status_code != 200:
-            logger.error("Google token exchange failed: %s", token_resp.text)
+            logger.error(
+                "Google token exchange failed (HTTP %s)", token_resp.status_code
+            )
             return templates.TemplateResponse(
                 request,
                 "login.html",
@@ -250,7 +252,9 @@ async def callback_google(
             timeout=10.0,
         )
         if userinfo_resp.status_code != 200:
-            logger.error("Google userinfo failed: %s", userinfo_resp.text)
+            logger.error(
+                "Google userinfo request failed (HTTP %s)", userinfo_resp.status_code
+            )
             return templates.TemplateResponse(
                 request,
                 "login.html",
