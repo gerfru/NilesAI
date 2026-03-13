@@ -41,11 +41,11 @@ class VikunjaSetupAction:
             raise ValueError("host")
         try:
             addr = ipaddress.ip_address(host)
+        except ValueError:
+            pass  # hostname, not an IP literal — skip private check
+        else:
             if addr.is_private or addr.is_loopback or addr.is_link_local:
                 raise ValueError("private IP")
-        except ValueError as ve:
-            if str(ve) == "private IP":
-                raise
 
     async def test_connection(self, api_url: str, api_token: str) -> int:
         """Test Vikunja API connection.
@@ -119,6 +119,9 @@ class VikunjaSetupAction:
             result["vikunja_connected"] = True
             result["vikunja_project_count"] = count
         except Exception:
+            logger.warning(
+                "Vikunja status check failed for user %s", user_id, exc_info=True
+            )
             result["vikunja_connected"] = True
             result["vikunja_error"] = "Verbindung zum Vikunja-Server fehlgeschlagen."
 
