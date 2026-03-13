@@ -322,7 +322,9 @@ async def lifespan(app: FastAPI):
         logger.info("Per-user Google MCP pool initialized")
 
     # Actions
-    contacts = ContactsAction(pool)
+    contacts = ContactsAction(
+        pool, settings_store=settings_store, carddav_sync=carddav_sync
+    )
     whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
 
     # Signal (signal-cli-rest-api)
