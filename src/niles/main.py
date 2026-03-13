@@ -25,13 +25,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .logging_config import generate_request_id, setup_logging
 from .metrics import HTTP_DURATION, HTTP_REQUESTS
 
+from .actions.admin import AdminAction
 from .actions.briefing import BriefingGenerator
 from .errors import error_response
 from .http_clients import HttpClients
 from .actions.calendar import CalendarAction
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
+from .actions.settings import SettingsAction
 from .actions.signal import SignalAction
+from .actions.weather import WeatherAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
 from .config import Settings, apply_overrides
@@ -137,6 +140,9 @@ async def lifespan(app: FastAPI):
     user_store = UserStore(pool)
     await user_store.initialize()
 
+    # Admin action (user CRUD with password hashing)
+    admin_action = AdminAction(user_store)
+
     # WhatsApp session store (per-user Evolution API instances)
     wa_store = WhatsAppSessionStore(pool)
 
@@ -167,6 +173,12 @@ async def lifespan(app: FastAPI):
 
     # Shared HTTP clients (connection pooling)
     http_clients = HttpClients(settings)
+
+    # Settings action (validation + persistence)
+    settings_action = SettingsAction(settings_store, http_client=http_clients.general)
+
+    # Weather action (location search + persistence)
+    weather_action = WeatherAction(settings_store, http_client=http_clients.geocoding)
 
     # CardDAV Sync
     carddav_sync = CardDAVSync(pool, settings, client=http_clients.general)
@@ -417,7 +429,10 @@ async def lifespan(app: FastAPI):
     app.state.whatsapp_action = whatsapp_action
     app.state.history = history
     app.state.settings_store = settings_store
+    app.state.settings_action = settings_action
+    app.state.weather_action = weather_action
     app.state.user_store = user_store
+    app.state.admin_action = admin_action
     app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
