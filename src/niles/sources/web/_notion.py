@@ -32,22 +32,16 @@ async def _notion_status_ctx(request: Request) -> dict:
     else:
         ctx["notion_token_masked"] = "****"
 
-    pool = request.app.state.pool
+    notion_store = request.app.state.notion_store
     try:
-        row = await pool.fetchrow(
-            "SELECT COUNT(*) AS cnt, MAX(synced_at) AS last_sync FROM notion_pages"
-        )
-        if row:
-            ctx["page_count"] = row["cnt"]
-            ctx["last_sync"] = row["last_sync"]
+        stats = await notion_store.get_page_stats()
+        ctx["page_count"] = stats["cnt"]
+        ctx["last_sync"] = stats["last_sync"]
     except Exception:
         logger.warning("Failed to fetch notion page count")
 
     try:
-        rows = await pool.fetch(
-            "SELECT chunk_level, COUNT(*) AS cnt"
-            " FROM notion_embeddings GROUP BY chunk_level"
-        )
+        rows = await notion_store.get_embedding_stats()
         for row in rows:
             if row["chunk_level"] == 1:
                 ctx["chunk_count"] = row["cnt"]
@@ -251,11 +245,8 @@ async def notion_disconnect(request: Request):
         scheduler.remove_job("notion_sync")
 
     # Clear data
-    pool = request.app.state.pool
     try:
-        await pool.execute("DELETE FROM notion_embeddings")
-        await pool.execute("DELETE FROM notion_pages")
-        logger.info("Notion data cleared (disconnected)")
+        await request.app.state.notion_store.clear_all()
     except Exception:
         logger.exception("Failed to clear Notion data on disconnect")
 
