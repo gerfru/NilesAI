@@ -36,6 +36,18 @@ class ContactsAction:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
+    async def get_sync_status(self) -> dict:
+        """Return contact count and last sync timestamp."""
+        row = await self.pool.fetchrow(
+            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
+        )
+        return dict(row) if row else {"cnt": 0, "last_sync": None}
+
+    async def clear_all(self) -> None:
+        """Remove all contacts (disconnect cleanup)."""
+        await self.pool.execute("DELETE FROM contacts")
+        logger.info("All contacts cleared")
+
     async def find_by_name(self, name: str) -> dict | None:
         """
         Search contact by name (case-insensitive, partial match).
