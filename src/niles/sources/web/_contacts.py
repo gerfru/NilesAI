@@ -5,7 +5,6 @@ import logging
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
 
-from ...config import apply_overrides
 from ._core import (
     _get_session_user,
     _require_auth_and_csrf,
@@ -64,8 +63,8 @@ async def contacts_connect(
     if error:
         return error
 
-    carddav_sync = getattr(request.app.state, "carddav_sync", None)
-    if not carddav_sync:
+    contacts_action = request.app.state.contacts_action
+    if not contacts_action.carddav_sync:
         return templates.TemplateResponse(
             request,
             "fragments/carddav_status.html",
@@ -74,38 +73,16 @@ async def contacts_connect(
 
     settings = request.app.state.settings
 
-    # Apply overrides temporarily for connection test (not persisted yet)
-    new_settings = apply_overrides(
-        settings,
-        {
-            "carddav_url": url.strip(),
-            "carddav_user": username.strip(),
-            "carddav_password": password,
-        },
-    )
-    carddav_sync.update_config(new_settings)
-
-    # Test connection BEFORE saving to DB
-    ok, message = await carddav_sync.test_connection()
-    if not ok:
-        # Revert to previous config
-        carddav_sync.update_config(settings)
+    try:
+        new_settings = await contacts_action.connect(url, username, password, settings)
+    except ConnectionError as e:
         return templates.TemplateResponse(
             request,
             "fragments/carddav_status.html",
-            {"connected": False, "carddav_error": message},
+            {"connected": False, "carddav_error": str(e)},
         )
-
-    # Connection successful — persist credentials (plaintext in DB,
-    # acceptable for self-hosted; same pattern as CalDAV credentials).
-    settings_store = request.app.state.settings_store
-    try:
-        await settings_store.set("carddav_url", url.strip())
-        await settings_store.set("carddav_user", username.strip())
-        await settings_store.set("carddav_password", password)
     except Exception:
         logger.exception("Failed to persist CardDAV credentials")
-        carddav_sync.update_config(settings)
         return templates.TemplateResponse(
             request,
             "fragments/carddav_status.html",
@@ -118,6 +95,7 @@ async def contacts_connect(
     request.app.state.settings = new_settings
 
     # Register daily sync job if not already scheduled
+    carddav_sync = contacts_action.carddav_sync
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler and not scheduler.get_job("carddav_daily_sync"):
         scheduler.add_job(
@@ -152,32 +130,14 @@ async def contacts_disconnect(request: Request):
     if error:
         return error
 
-    settings_store = request.app.state.settings_store
+    contacts_action = request.app.state.contacts_action
+    settings = request.app.state.settings
 
-    # Delete credentials from settings store
-    for key in ("carddav_url", "carddav_user", "carddav_password"):
-        await settings_store.delete(key)
-
-    # Apply overrides (empty strings revert to env/defaults)
-    new_settings = apply_overrides(
-        request.app.state.settings,
-        {
-            "carddav_url": "",
-            "carddav_user": "",
-            "carddav_password": "",
-        },
-    )
-    request.app.state.settings = new_settings
-
-    carddav_sync = getattr(request.app.state, "carddav_sync", None)
-    if carddav_sync:
-        carddav_sync.update_config(new_settings)
-
-    # Delete all contacts
     try:
-        await request.app.state.contacts_action.clear_all()
+        new_settings = await contacts_action.disconnect(settings)
+        request.app.state.settings = new_settings
     except Exception:
-        logger.exception("Failed to delete contacts on disconnect")
+        logger.exception("Failed to disconnect contacts")
 
     return templates.TemplateResponse(
         request,
