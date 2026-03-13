@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from niles.actions.admin import AdminAction
+from niles.actions.admin import AdminAction, DuplicateEmailError
 
 
 class TestCreateUser:
@@ -59,7 +59,7 @@ class TestCreateUser:
         user_store.get_by_email.return_value = {"id": 1, "email": "dup@test.com"}
         action = AdminAction(user_store)
 
-        with pytest.raises(ValueError, match="bereits vergeben"):
+        with pytest.raises(DuplicateEmailError, match="bereits vergeben"):
             await action.create_user("dup@test.com", "Name", "password123")
 
 

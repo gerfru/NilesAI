@@ -954,6 +954,7 @@ class TestAdminEndpoints:
         admin_action.create_user.return_value = {
             "id": 3,
             "email": "new@test.com",
+            "display_name": "New User",
         }
         admin_action.list_users.return_value = []
         request = _make_request(
@@ -1004,7 +1005,9 @@ class TestAdminEndpoints:
             "is_admin": True,
         }
         admin_action = AsyncMock()
-        admin_action.create_user.side_effect = ValueError(
+        from niles.actions.admin import DuplicateEmailError
+
+        admin_action.create_user.side_effect = DuplicateEmailError(
             "E-Mail 'dup@test.com' ist bereits vergeben."
         )
         admin_action.list_users.return_value = []
