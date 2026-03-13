@@ -545,6 +545,7 @@ class TestFindEventGuard:
             date_from="2026-02-25",
             date_to="",
             calendar="",
+            user_id=None,
         )
         assert "events" in result
 
@@ -563,6 +564,7 @@ class TestFindEventGuard:
             date_from="2026-03-01",
             date_to="",
             calendar="Geburtstage",
+            user_id=None,
         )
         assert "events" in result
 
