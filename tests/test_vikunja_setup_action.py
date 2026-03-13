@@ -73,6 +73,10 @@ class TestSaveCredentials:
             headers={"Authorization": "Bearer tok"},
             timeout=10,
         )
+        # Default URL is only used for connection test, not persisted
+        store.upsert_credentials.assert_called_once_with(
+            user_id=1, api_token="tok", api_url=""
+        )
 
     @pytest.mark.asyncio
     async def test_no_url_raises_value_error(self):

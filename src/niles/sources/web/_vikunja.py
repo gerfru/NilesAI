@@ -2,7 +2,7 @@
 
 import logging
 
-import asyncpg
+import asyncpg  # FK violation handling requires cookie deletion (web concern)
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
 
