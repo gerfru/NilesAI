@@ -88,7 +88,12 @@ class SignalSetupAction:
         - Clearing ``signal_action.phone``
         """
         if phone:
-            await self.signal_action.unlink(phone)
+            try:
+                await self.signal_action.unlink(phone)
+            except Exception:
+                logger.warning(
+                    "Signal unlink failed for %s, proceeding with cleanup", phone
+                )
 
         await self.settings_store.delete("signal_phone_number")
         await self.settings_store.set("signal_disabled", "true")
