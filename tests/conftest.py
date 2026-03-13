@@ -1,4 +1,4 @@
-"""Shared pytest fixtures."""
+"""Shared pytest fixtures and helpers."""
 
 import pytest
 import structlog
