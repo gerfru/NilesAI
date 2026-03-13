@@ -1,12 +1,12 @@
 """Admin user management: create, password reset, deactivate."""
 
-import logging
-
 from argon2 import PasswordHasher
 
 from ..user_store import UserStore
 
-logger = logging.getLogger(__name__)
+
+class DuplicateEmailError(ValueError):
+    """Raised when attempting to create a user with an existing email."""
 
 
 class AdminAction:
@@ -29,7 +29,7 @@ class AdminAction:
             raise ValueError("Passwort muss mindestens 8 Zeichen lang sein.")
         existing = await self.user_store.get_by_email(email)
         if existing:
-            raise ValueError(f"E-Mail '{email}' ist bereits vergeben.")
+            raise DuplicateEmailError(f"E-Mail '{email}' ist bereits vergeben.")
         hashed = self._ph.hash(password)
         return await self.user_store.create_password_user(email, display_name, hashed)
 

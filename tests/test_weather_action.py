@@ -6,19 +6,8 @@ import httpx
 import pytest
 
 from niles.actions.weather import WeatherAction
-from niles.config import Settings
 
-
-def _make_settings(**overrides):
-    defaults = dict(
-        _env_file=None,
-        postgres_password="test",
-        evolution_api_key="test",
-        niles_api_key="test-key",
-        session_secret="test-secret",
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
+from tests.helpers import make_test_settings
 
 
 class TestSearchLocations:
@@ -69,7 +58,7 @@ class TestSetLocation:
     async def test_persists_and_returns_updated_settings(self):
         store = AsyncMock()
         action = WeatherAction(store, http_client=AsyncMock())
-        settings = _make_settings()
+        settings = make_test_settings()
 
         new_settings = await action.set_location(
             " 48.2082 ", " 16.3738 ", " Wien ", settings
@@ -83,13 +72,29 @@ class TestSetLocation:
         assert new_settings.weather_longitude == "16.3738"
         assert new_settings.weather_location_name == "Wien"
 
+    @pytest.mark.asyncio
+    async def test_invalid_lat_raises(self):
+        action = WeatherAction(AsyncMock(), http_client=AsyncMock())
+        settings = make_test_settings()
+
+        with pytest.raises(ValueError, match="Ungültige Koordinaten"):
+            await action.set_location("not-a-number", "16.3738", "Wien", settings)
+
+    @pytest.mark.asyncio
+    async def test_invalid_lon_raises(self):
+        action = WeatherAction(AsyncMock(), http_client=AsyncMock())
+        settings = make_test_settings()
+
+        with pytest.raises(ValueError, match="Ungültige Koordinaten"):
+            await action.set_location("48.2082", "abc", "Wien", settings)
+
 
 class TestRemoveLocation:
     @pytest.mark.asyncio
     async def test_deletes_and_returns_cleared_settings(self):
         store = AsyncMock()
         action = WeatherAction(store, http_client=AsyncMock())
-        settings = _make_settings(
+        settings = make_test_settings(
             weather_latitude="48.2082",
             weather_longitude="16.3738",
             weather_location_name="Wien",

@@ -5,6 +5,7 @@ import logging
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse
 
+from ...actions.admin import DuplicateEmailError
 from ._core import (
     _ensure_csrf_cookie,
     _require_admin,
@@ -51,10 +52,8 @@ async def admin_create_user(
 
     try:
         new_user = await admin_action.create_user(email, display_name, password)
-    except ValueError as e:
+    except DuplicateEmailError as e:
         users = await admin_action.list_users()
-        # Duplicate email → 409, other validation → 400
-        status = 409 if "bereits vergeben" in str(e) else 400
         return templates.TemplateResponse(
             request,
             "admin_users.html",
@@ -64,15 +63,26 @@ async def admin_create_user(
                 "error": str(e),
                 "success": None,
             },
-            status_code=status,
+            status_code=409,
+        )
+    except ValueError as e:
+        users = await admin_action.list_users()
+        return templates.TemplateResponse(
+            request,
+            "admin_users.html",
+            {
+                "current_user": user,
+                "users": users,
+                "error": str(e),
+                "success": None,
+            },
+            status_code=400,
         )
 
-    clean_email = email.strip().lower()
-    clean_name = display_name.strip()
     logger.info(
         "Admin %s created user: %s (id=%s)",
         user["email"],
-        clean_email,
+        new_user["email"],
         new_user["id"],
     )
 
@@ -84,7 +94,7 @@ async def admin_create_user(
             "current_user": user,
             "users": users,
             "error": None,
-            "success": f"User '{clean_name}' ({clean_email}) angelegt.",
+            "success": f"User '{new_user['display_name']}' ({new_user['email']}) angelegt.",
         },
     )
 

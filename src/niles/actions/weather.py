@@ -1,13 +1,9 @@
 """Weather location search and persistence."""
 
-import logging
-
 import httpx
 
 from ..config import Settings, apply_overrides
 from ..settings_store import SettingsStore
-
-logger = logging.getLogger(__name__)
 
 _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
@@ -36,7 +32,15 @@ class WeatherAction:
     async def set_location(
         self, lat: str, lon: str, name: str, current_settings: Settings
     ) -> Settings:
-        """Persist weather location, return updated settings."""
+        """Persist weather location, return updated settings.
+
+        Raises ValueError if lat/lon are not valid numbers.
+        """
+        try:
+            float(lat.strip())
+            float(lon.strip())
+        except ValueError:
+            raise ValueError("Ungültige Koordinaten.")
         await self.settings_store.set("weather_latitude", lat.strip())
         await self.settings_store.set("weather_longitude", lon.strip())
         await self.settings_store.set("weather_location_name", name.strip())
