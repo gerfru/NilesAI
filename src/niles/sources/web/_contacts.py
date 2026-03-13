@@ -27,14 +27,11 @@ async def _contacts_status_ctx(request: Request) -> dict:
     ctx["carddav_url"] = settings.carddav_url
     ctx["carddav_user"] = settings.carddav_user
 
-    pool = request.app.state.pool
+    contacts_action = request.app.state.contacts_action
     try:
-        row = await pool.fetchrow(
-            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
-        )
-        if row:
-            ctx["contact_count"] = row["cnt"]
-            ctx["last_sync"] = row["last_sync"]
+        stats = await contacts_action.get_sync_status()
+        ctx["contact_count"] = stats["cnt"]
+        ctx["last_sync"] = stats["last_sync"]
     except Exception:
         logger.warning("Failed to fetch contact status")
     return ctx
@@ -177,10 +174,8 @@ async def contacts_disconnect(request: Request):
         carddav_sync.update_config(new_settings)
 
     # Delete all contacts
-    pool = request.app.state.pool
     try:
-        await pool.execute("DELETE FROM contacts")
-        logger.info("All contacts deleted (CardDAV disconnected)")
+        await request.app.state.contacts_action.clear_all()
     except Exception:
         logger.exception("Failed to delete contacts on disconnect")
 

@@ -62,3 +62,5 @@ tailwindcss-*
 
 # Tailwind CSS compiled output (built from input.css via CLI)
 src/niles/static/css/style.css
+.claude/skills/refactor-service/checklist.md
+.claude/skills/refactor-service/SKILL.md

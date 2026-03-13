@@ -15,7 +15,7 @@ from niles.sources.web import (
     _require_admin,
     _require_auth_and_csrf,
     admin_create_user,
-    admin_delete_user,
+    admin_deactivate_user,
     admin_reset_password,
     callback_google_calendar,
     google_calendar_disconnect,
@@ -1025,24 +1025,24 @@ class TestAdminEndpoints:
         )
         assert response.status_code == 403
 
-    async def test_admin_delete_user_success(self):
+    async def test_admin_deactivate_user_success(self):
         user_store = AsyncMock()
         user_store.get_by_id.side_effect = lambda uid: (
             {"id": 1, "email": "admin@test.com", "is_admin": True}
             if uid == 1
             else {"id": 5, "email": "target@test.com", "is_admin": False}
         )
-        user_store.delete_user.return_value = True
+        user_store.deactivate_user.return_value = True
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
             user_store=user_store,
         )
-        response = await admin_delete_user(request, user_id=5)
+        response = await admin_deactivate_user(request, user_id=5)
         assert response.status_code == 200
-        user_store.delete_user.assert_awaited_once_with(5)
+        user_store.deactivate_user.assert_awaited_once_with(5)
 
-    async def test_admin_delete_self_rejected(self):
+    async def test_admin_deactivate_self_rejected(self):
         user_store = AsyncMock()
         user_store.get_by_id.return_value = {
             "id": 1,
@@ -1054,7 +1054,7 @@ class TestAdminEndpoints:
             headers=_csrf_headers(),
             user_store=user_store,
         )
-        response = await admin_delete_user(request, user_id=1)
+        response = await admin_deactivate_user(request, user_id=1)
         assert response.status_code == 400
 
     async def test_admin_reset_password_success(self):

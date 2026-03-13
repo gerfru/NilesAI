@@ -35,7 +35,7 @@ from . import (  # noqa: F401, E402
 # Re-export route functions used by tests and other consumers.
 from ._admin import (  # noqa: F401, E402
     admin_create_user,
-    admin_delete_user,
+    admin_deactivate_user,
     admin_reset_password,
     admin_users_page,
 )
