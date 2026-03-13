@@ -1,9 +1,12 @@
-"""Contact lookup in PostgreSQL."""
+"""Contact lookup and CardDAV connection management."""
 
 import logging
 import re
 
 import asyncpg
+
+from ..config import Settings, apply_overrides
+from ..settings_store import SettingsStore
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +34,18 @@ def normalize_phone(phone: str) -> str:
 
 
 class ContactsAction:
-    """Search contacts by name and return phone numbers."""
+    """Contact search, CardDAV connection management."""
 
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        *,
+        settings_store: SettingsStore | None = None,
+        carddav_sync=None,
+    ):
         self.pool = pool
+        self.settings_store = settings_store
+        self.carddav_sync = carddav_sync
 
     async def get_sync_status(self) -> dict:
         """Return contact count and last sync timestamp."""
@@ -47,6 +58,51 @@ class ContactsAction:
         """Remove all contacts (disconnect cleanup)."""
         await self.pool.execute("DELETE FROM contacts")
         logger.info("All contacts cleared")
+
+    async def connect(
+        self,
+        url: str,
+        user: str,
+        password: str,
+        current_settings: Settings,
+    ) -> Settings:
+        """Test CardDAV connection, persist credentials, return updated Settings.
+
+        Raises ConnectionError on test failure.
+        """
+        assert self.settings_store is not None
+        url, user = url.strip(), user.strip()
+
+        new_settings = apply_overrides(
+            current_settings,
+            {"carddav_url": url, "carddav_user": user, "carddav_password": password},
+        )
+        self.carddav_sync.update_config(new_settings)
+
+        ok, message = await self.carddav_sync.test_connection()
+        if not ok:
+            self.carddav_sync.update_config(current_settings)
+            raise ConnectionError(message)
+
+        await self.settings_store.set("carddav_url", url)
+        await self.settings_store.set("carddav_user", user)
+        await self.settings_store.set("carddav_password", password)
+        return new_settings
+
+    async def disconnect(self, current_settings: Settings) -> Settings:
+        """Remove CardDAV credentials, clear contacts, return updated Settings."""
+        assert self.settings_store is not None
+        for key in ("carddav_url", "carddav_user", "carddav_password"):
+            await self.settings_store.delete(key)
+
+        new_settings = apply_overrides(
+            current_settings,
+            {"carddav_url": "", "carddav_user": "", "carddav_password": ""},
+        )
+        if self.carddav_sync:
+            self.carddav_sync.update_config(new_settings)
+        await self.clear_all()
+        return new_settings
 
     async def find_by_name(self, name: str) -> dict | None:
         """
