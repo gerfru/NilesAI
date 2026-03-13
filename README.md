@@ -37,10 +37,11 @@ Browser / curl / WhatsApp
 |                 |                                           |
 |                 +-- actions/contacts.py ----> PostgreSQL    |
 |                 +-- actions/whatsapp.py ----> Evolution API |
+|                 +-- actions/signal.py -----> signal-cli API |
 |                 +-- actions/calendar.py ----> PostgreSQL    |
 |                 +-- actions/tasks.py -------> Vikunja       |
+|                 +-- actions/notion.py -----> pgvector (RAG) |
 |                 +-- memory/store.py -------> PostgreSQL     |
-|                 +-- actions/notion.py ----> pgvector (RAG)  |
 |                 +-- mcp/client.py ---------> MCP Servers    |
 |                                                             |
 |  /webhook/whatsapp --- sources/whatsapp.py                  |
@@ -78,20 +79,19 @@ Niles/
 src/niles/                     Python Backend
   main.py                      FastAPI + Lifespan + Middleware
   config.py                    Pydantic Settings
-  agent/                       LLM Agent, Tool Definitions + Registry, Prompts
+  agent/                       LLM Agent (core, context, text_tool_parser), Prompts
     tools/                     Tool handler modules (registry-based)
   memory/                      Key-Value Store, Conversation History
-  actions/                     WhatsApp, Contacts, Calendar, Tasks, Briefing
+  actions/                     12 action modules (Routes → Actions → Stores)
   jobs/                        Scheduled Jobs (Briefing)
-  sources/                     Webhook Handler, Web UI (feature-based package)
-  sync/                        CardDAV, CalDAV, Google Calendar, iCal Parser
-  mcp/                         MCP Server Manager
-  vikunja_store.py             Per-user Vikunja credentials (PostgreSQL)
-  vikunja_provisioning.py      Auto-provision Vikunja accounts on login
+  sources/                     Webhook Handler, Web UI (13 feature modules)
+  sync/                        CardDAV, CalDAV, Notion, iCal Parser, Embeddings
+  mcp/                         MCP Server Manager, Weather + Fetch servers
+  *_store.py                   7 data stores (asyncpg, per-user credentials)
   templates/                   Jinja2 Templates (Tailwind CSS)
   static/                      CSS, JavaScript
-alembic/                       Database migrations (Alembic)
-tests/                         586 tests (pytest + pytest-asyncio)
+alembic/                       Database migrations (7 versions)
+tests/                         914 tests across 45 files (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
 docker/                        Dockerfile, docker-compose.yml, Caddyfile
 scripts/                       start, stop, status, dev, test, backup
@@ -100,21 +100,24 @@ docs/                          Technical Documentation
 
 ## Stack
 
-| Component     | Technology                         |
-| ------------- | ---------------------------------- |
-| Backend       | FastAPI (Python 3.12)              |
-| Web UI        | Jinja2 + htmx + Tailwind CSS + SSE |
-| LLM           | Ollama (local, llama3.1:8b)        |
-| Database      | PostgreSQL 15 + pgvector            |
-| WhatsApp      | Evolution API v2.3.7               |
-| Tasks         | Vikunja 1.1.0                      |
-| Reverse Proxy | Caddy 2 (self-signed TLS)          |
-| Logging       | structlog (JSON to stdout)         |
-| Metrics       | Prometheus (prometheus-client)     |
-| Scheduling    | APScheduler                        |
-| Web Search    | SearXNG (self-hosted, optional)    |
-| Web Fetch     | trafilatura (HTML text extraction) |
-| Extensions    | MCP (Model Context Protocol)       |
+| Component      | Technology                                  |
+| -------------- | ------------------------------------------- |
+| Backend        | FastAPI (Python 3.12)                       |
+| Web UI         | Jinja2 + htmx + Tailwind CSS + SSE         |
+| LLM            | Ollama (local, llama3.1:8b)                 |
+| Embeddings     | nomic-embed-text-v2-moe (Ollama)            |
+| Database       | PostgreSQL 15 + pgvector                    |
+| WhatsApp       | Evolution API v2.3.7                        |
+| Signal         | signal-cli-rest-api (signal-cli v0.13.24)   |
+| Tasks          | Vikunja 1.1.0                               |
+| Knowledge Base | Notion API + pgvector RAG                   |
+| Reverse Proxy  | Caddy 2 (self-signed TLS)                   |
+| Logging        | structlog (JSON to stdout)                  |
+| Metrics        | Prometheus (prometheus-client)              |
+| Scheduling     | APScheduler                                 |
+| Web Search     | SearXNG (self-hosted, optional)             |
+| Web Fetch      | trafilatura (HTML text extraction)          |
+| Extensions     | MCP (Model Context Protocol)                |
 
 ## Agent Tools
 
@@ -156,3 +159,6 @@ See [Development Guide](docs/Development.md) for details on testing, Docker work
 - [API Reference](docs/API.md) -- Endpoints, payloads, agent tools
 - [Development Guide](docs/Development.md) -- Testing, Docker, conventions
 - [Technical Spec](docs/Niles-Core-Spec.md) -- Architecture, components, roadmap
+- [RAG Architecture](docs/RAG.md) -- Notion knowledge base, embeddings, retrieval
+- [Quality Assessment](docs/Quality-Assessment.md) -- Codebase quality scores and metrics
+- [Legal](docs/LEGAL.md) -- Licenses, legal notices
