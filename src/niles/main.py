@@ -33,6 +33,7 @@ from .actions.calendar import CalendarAction
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .actions.contacts import ContactsAction
 from .actions.settings import SettingsAction
+from .actions.vikunja_setup import VikunjaSetupAction
 from .actions.signal import SignalAction
 from .actions.weather import WeatherAction
 from .actions.whatsapp import WhatsAppAction
@@ -325,6 +326,11 @@ async def lifespan(app: FastAPI):
     contacts = ContactsAction(
         pool, settings_store=settings_store, carddav_sync=carddav_sync
     )
+    vikunja_setup = VikunjaSetupAction(
+        vikunja_store,
+        http_client=http_clients.general,
+        default_api_url=settings.vikunja_api_url,
+    )
     whatsapp_action = WhatsAppAction(settings, client=http_clients.evolution)
 
     # Signal (signal-cli-rest-api)
@@ -440,6 +446,7 @@ async def lifespan(app: FastAPI):
     app.state.wa_store = wa_store
     app.state.carddav_sync = carddav_sync
     app.state.vikunja_store = vikunja_store
+    app.state.vikunja_setup_action = vikunja_setup
     app.state.vikunja_provisioner = vikunja_provisioner
     app.state.briefing_generator = briefing_generator
     app.state.scheduler = scheduler
