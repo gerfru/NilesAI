@@ -18,16 +18,18 @@ class UserStore:
 
         Schema creation is handled by Alembic (see alembic/versions/).
         """
-        # Auto-promote: if exactly one user exists and no admin, make them admin
+        # Auto-promote: if exactly one active user exists and no admin, make them admin
         admin_count = await self.pool.fetchval(
-            "SELECT COUNT(*) FROM users WHERE is_admin = TRUE"
+            "SELECT COUNT(*) FROM users WHERE is_admin = TRUE AND is_active = TRUE"
         )
         if admin_count == 0:
-            total = await self.pool.fetchval("SELECT COUNT(*) FROM users")
+            total = await self.pool.fetchval(
+                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+            )
             if total == 1:
                 await self.pool.execute(
                     "UPDATE users SET is_admin = TRUE WHERE id = "
-                    "(SELECT id FROM users LIMIT 1)"
+                    "(SELECT id FROM users WHERE is_active = TRUE LIMIT 1)"
                 )
                 logger.info("Auto-promoted single existing user to admin")
         logger.info("User store initialized")
@@ -60,19 +62,26 @@ class UserStore:
         email: str,
         display_name: str,
         avatar_url: str | None = None,
-    ) -> dict:
+    ) -> dict | None:
         """Create a new user or update last_login + profile for existing user.
 
         Used by Google OAuth flow. Sets auth_method='google'.
         First user is automatically promoted to admin.
+        Returns None if user exists but is deactivated.
         """
-        is_first = await self.pool.fetchval("SELECT COUNT(*) FROM users") == 0
+        is_first = (
+            await self.pool.fetchval(
+                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+            )
+            == 0
+        )
         row = await self.pool.fetchrow(
             """
             INSERT INTO users (email, display_name, avatar_url, auth_method, is_admin)
             VALUES ($1, $2, $3, 'google', $4)
             ON CONFLICT (email) DO UPDATE
             SET display_name = $2, avatar_url = $3, last_login = NOW()
+            WHERE users.is_active = TRUE
             RETURNING id, email, display_name, avatar_url, is_admin
             """,
             email,
@@ -80,7 +89,9 @@ class UserStore:
             avatar_url,
             is_first,
         )
-        return dict(row)
+        if row:
+            return dict(row)
+        return None
 
     async def create_password_user(
         self,
@@ -159,8 +170,9 @@ class UserStore:
         return result == "UPDATE 1"
 
     async def has_password_users(self) -> bool:
-        """Check if any password-auth users exist (for login page display)."""
+        """Check if any active password-auth users exist (for login page display)."""
         count = await self.pool.fetchval(
-            "SELECT COUNT(*) FROM users WHERE auth_method = 'password'"
+            "SELECT COUNT(*) FROM users"
+            " WHERE auth_method = 'password' AND is_active = TRUE"
         )
         return count > 0

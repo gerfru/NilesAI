@@ -30,6 +30,8 @@ class NotionStore:
 
     async def clear_all(self) -> None:
         """Remove all Notion pages and embeddings (disconnect cleanup)."""
-        await self.pool.execute("DELETE FROM notion_embeddings")
-        await self.pool.execute("DELETE FROM notion_pages")
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("DELETE FROM notion_embeddings")
+                await conn.execute("DELETE FROM notion_pages")
         logger.info("Notion data cleared")
