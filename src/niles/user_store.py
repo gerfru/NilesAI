@@ -103,7 +103,12 @@ class UserStore:
 
         First user is automatically promoted to admin.
         """
-        is_first = await self.pool.fetchval("SELECT COUNT(*) FROM users") == 0
+        is_first = (
+            await self.pool.fetchval(
+                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+            )
+            == 0
+        )
         row = await self.pool.fetchrow(
             """
             INSERT INTO users (email, display_name, password_hash, auth_method, is_admin)
