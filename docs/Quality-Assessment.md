@@ -1,6 +1,6 @@
 # Technical Quality Assessment
 
-> Last updated: 2026-03-12 | After Phase 1 + Phase 2 + Notion RAG + RAG Docs (PR #57)
+> Last updated: 2026-03-13 | After Phase 3 (PR #59) + Phase 4a (PR #60) — Action Layer Extraction
 
 ## Score Overview
 
@@ -8,7 +8,7 @@
 |--------------------|-------|-------|-------------------------------------------------|
 | KISS / Complexity  | 8.5   | =     | Extract `main.py` startup logic                 |
 | Security           | 9.5   | =     | HSTS at app level, SBOM                         |
-| Architecture       | 8.5   | =     | Extract `main.py` lifespan into builder/factory |
+| Architecture       | 9.0   | +0.5  | Extract `main.py` lifespan into builder/factory |
 | DevOps             | 9.5   | =     | Staging environment, rollback docs              |
 | UI/UX              | 8.0   | =     | axe-core CI integration, HTMX focus management  |
 | Maintainability    | 8.5   | =     | Reduce remaining 10 mypy overrides              |
@@ -31,6 +31,7 @@
 | 2026-03-03 | Phase 1 (PR #45) + Phase 2 (PR #46)            | 8.5   |
 | 2026-03-09 | Notion RAG + Per-User Google MCP (PRs #50-#52) | 8.5   |
 | 2026-03-12 | Markdown-aware chunking + RAG docs (PR #57)    | 8.5   |
+| 2026-03-13 | Action layer extraction (PRs #59, #60)          | 8.5   |
 
 The drop from 8.2 to 7.9 (2026-03-02) was due to adding four new dimensions
 (Observability, Resilience, Performance, API Design) that scored lower. Phase 1
@@ -38,9 +39,10 @@ raised 4 weak dimensions (Resilience +1.5, Performance +1.0, UI +1.0,
 Maintainability +0.5). Phase 2 raised 4 structural dimensions (KISS +1.0,
 Security +0.5, DevOps +0.5, API Design +0.5).
 
-Score stable at 8.5 since Phase 2. Incremental improvements (860 tests, RAG
-architecture docs, 6 migrations) keep metrics healthy but don't move needle
-on remaining gaps (Observability 7.0 is the biggest drag).
+Architecture +0.5 (2026-03-13) from action layer extraction — 12 action modules
+now mediate between routes and stores. Weighted average unchanged at 8.5 because
+Architecture's gain is offset by `main.py` growing to 802 LOC (34 app.state
+attributes). Observability 7.0 remains the biggest drag.
 
 ---
 
@@ -49,32 +51,33 @@ on remaining gaps (Observability 7.0 is the biggest drag).
 | Metric              | Value                                                          |
 |---------------------|----------------------------------------------------------------|
 | Largest file        | `agent/core.py` — 866 LOC (was 1,126)                         |
-| Second largest      | `main.py` — 772 LOC                                           |
+| Second largest      | `main.py` — 802 LOC (was 772)                                 |
 | Agent modules       | `core.py` 866, `context.py` 346, `text_tool_parser.py` 121    |
-| Web module max      | 397 LOC (`_notion.py`) — was 2,444                             |
+| Web module max      | 388 LOC (`_notion.py`) — was 2,444                             |
 | Direct dependencies | 26 (pyproject.toml)                                            |
-| Avg file size       | ~157 LOC across 84 Python files                                |
-| File size dist.     | 51% < 100 LOC, 73% < 200 LOC, 90% < 400 LOC, 2 files > 800   |
+| Avg file size       | ~151 LOC across 89 Python files                                |
+| File size dist.     | 49% < 100 LOC, 74% < 200 LOC, 94% < 400 LOC, 2 files > 800   |
 
 ### Evidence
 
 **Why 8.5 and not higher:**
 
-`main.py` at 772 LOC still mixes app factory, middleware setup, lifespan
+`main.py` at 802 LOC still mixes app factory, middleware setup, lifespan
 management, health endpoints, and metrics endpoint in one file. The lifespan
-handler initializes 28 `app.state` attributes (grew with Notion RAG,
-per-user Google MCP pool, and embedding pipeline components). Six files are in
-the 400-799 LOC range (`caldav.py` 489, `briefing.py` 461,
-`notion_embeddings.py` 410, `_notion.py` 397, `user_pool.py` 366,
-`manager.py` 360).
+handler initializes 34 `app.state` attributes (grew with action layer wiring:
+`vikunja_setup_action`, `contacts_action`, `settings_action`, `weather_action`,
+`admin_action`). Four files are in the 400-799 LOC range (`caldav.py` 489,
+`briefing.py` 461, `notion_embeddings.py` 410, `user_pool.py` 366).
 
 **Why 8.5 and not lower:**
 
 - NilesAgent split into 3 focused modules: `core.py` (orchestration, ~486 LOC
   class + 340 LOC TOOLS constant), `context.py` (context assembly, user/resource
   resolution), `text_tool_parser.py` (pure functions for JSON tool-call detection)
-- 90% of files under 400 LOC, 73% under 200 LOC
-- Web split (13 feature modules, max 397 LOC) demonstrates the target structure
+- 94% of files under 400 LOC, 74% under 200 LOC (improved from 90%/73%)
+- Web modules slimmed: 5 route files reduced by action extraction
+  (`_contacts.py` 176, `_vikunja.py` 116, `_settings.py` 168, `_weather.py` 131,
+  `_admin.py` 155). Max web module 388 LOC (`_notion.py`)
 
 **Score change (Phase 2):** +1.0 from 7.5 — NilesAgent split eliminated the
 last >1,000 LOC file. Each module now has a single responsibility.
@@ -102,7 +105,7 @@ Jinja2 auto-escaping is enabled (default for `Jinja2Templates`). The custom
 `_NilesTemplates` class (`web/_core.py:31-37`) injects a CSP nonce into every
 template context, which the base template uses for inline scripts.
 
-CSP policy (`main.py:547-556`):
+CSP policy (`main.py:577-586`):
 
 ```text
 default-src 'self';
@@ -147,7 +150,7 @@ CSRF token generated via `secrets.token_urlsafe(32)`. Cookie uses
   of expired entries to prevent memory leak
 - Exempt: `/health`, `/ready`, `/static` skip rate limiting
 
-**Security headers** (`main.py:533-558`):
+**Security headers** (`main.py:563-588`):
 
 ```text
 X-Content-Type-Options: nosniff
@@ -160,7 +163,7 @@ X-Request-ID: <per-request UUID>
 Middleware execution order: RequestIdMiddleware → RateLimitMiddleware →
 SecurityHeadersMiddleware → MetricsMiddleware.
 
-**CSP violation reporting** (`main.py:735-754`):
+**CSP violation reporting** (`main.py:765-784`):
 
 `report-uri /csp-report` directive in CSP header. The `POST /csp-report`
 endpoint logs violations at WARNING level and returns 204. Gracefully handles
@@ -191,23 +194,24 @@ close the two gaps identified in the initial assessment.
 
 ---
 
-## 3. Architecture — 8.5/10
+## 3. Architecture — 9.0/10
 
 **Layer separation verified by import graph:**
 
 ```text
 Routes (web/_*.py) — 13 feature modules
-  imports from: _core (auth guards), actions/*, sync/*
-  does NOT import from: agent/core, stores directly (except settings_store
-  in _settings.py for runtime config — acceptable)
+  imports from: _core (auth guards), actions/*
+  does NOT import from: agent/core, stores directly
+  5 routes fully delegate to action layer (no store access)
+  5 routes still access stores via app.state (see below)
 
 Agent (agent/core.py, agent/context.py)
   imports from: agent/tools/*, actions/*, config, memory/*
   does NOT import from: web/*, main
 
-Actions (actions/*.py) — 7 modules
-  imports from: config, external SDKs (httpx, openai)
-  does NOT import from: web/*, agent/*, stores
+Actions (actions/*.py) — 12 modules (was 7)
+  imports from: config, stores, external SDKs (httpx, openai)
+  does NOT import from: web/*, agent/*
 
 Stores (*_store.py, memory/store.py) — 7 stores
   imports from: asyncpg only
@@ -217,6 +221,39 @@ Stores (*_store.py, memory/store.py) — 7 stores
 No circular imports detected. Dependency arrows point strictly downward.
 `TYPE_CHECKING` blocks in `types.py` prevent runtime cycles. Agent accesses
 web via `app.state`, not imports.
+
+**Action layer (Phase 3 + Phase 4a):**
+
+12 action modules (2,157 LOC total) mediate between routes and stores:
+
+| Module             | LOC | Purpose                                  |
+|--------------------|-----|------------------------------------------|
+| `briefing.py`      | 461 | Daily/weekly briefing generation         |
+| `notion.py`        | 319 | Notion RAG retrieval                     |
+| `whatsapp.py`      | 299 | Evolution API operations                 |
+| `contacts.py`      | 229 | Contact search + CardDAV connect/disconnect |
+| `calendar.py`      | 229 | Event queries                            |
+| `tasks.py`         | 197 | Vikunja task CRUD (agent-facing)         |
+| `vikunja_setup.py` | 128 | Vikunja credential management (UI-facing)|
+| `signal.py`        | 116 | Signal API operations                    |
+| `weather.py`       | 67  | Location search + coordinate persistence |
+| `admin.py`         | 63  | User CRUD with password hashing          |
+| `settings.py`      | 49  | Setting validation + persistence         |
+
+**Route → Action delegation status:**
+
+| Route file      | Store access | Status                              |
+|-----------------|-------------|-------------------------------------|
+| `_settings.py`  | None        | Fully delegates to `SettingsAction`  |
+| `_weather.py`   | None        | Fully delegates to `WeatherAction`   |
+| `_admin.py`     | None        | Fully delegates to `AdminAction`     |
+| `_contacts.py`  | None        | Fully delegates to `ContactsAction`  |
+| `_vikunja.py`   | None        | Fully delegates to `VikunjaSetupAction` |
+| `_whatsapp.py`  | `wa_store` ×4 | Planned for Phase 4b              |
+| `_signal.py`    | `settings_store` ×4 | Planned for Phase 4b        |
+| `_notion.py`    | `settings_store` ×2, `notion_store` ×2 | Deferred (complex pipeline) |
+| `_auth.py`      | `user_store` ×2 | Deferred (auth IS the route)     |
+| `_calendar.py`  | `google_token_store` ×1 | Deferred (minimal, 15 LOC) |
 
 **Tool handler registry** (`agent/tools/__init__.py`):
 
@@ -242,15 +279,28 @@ def register_tool(name: str):
 `_notion`, `_settings`, `_signal`, `_vikunja`, `_weather`, `_whatsapp`.
 
 **Type safety:** `AppState` Protocol (`types.py:36-62`) provides typed access
-to all 28 `app.state` attributes, replacing untyped `request.app.state.X`
-patterns in web routes.
+to `app.state` attributes, replacing untyped `request.app.state.X` patterns
+in web routes.
 
-**Why 8.5 and not higher:**
+**Why 9.0 and not higher:**
 
-- `main.py` lifespan handler initializes 28 app.state attributes —
+- `main.py` lifespan handler initializes 34 app.state attributes —
   a factory or builder pattern would be cleaner
-- No explicit service layer for CRUD operations — routes call stores directly
-  for simple read/write, which is pragmatic but skips validation
+- 5 of 13 route files still access stores via `app.state` (WhatsApp, Signal,
+  Notion, Auth, Calendar) — planned for Phase 4b or deferred
+
+**Why 9.0 and not lower:**
+
+- Clean Routes → Actions → Stores layering for 8 of 13 feature routes
+  (5 fully delegated + 3 thin wrappers like `_chat`, `_briefing`, `_legal`)
+- 12 action modules with explicit interfaces, testable in isolation
+- No circular imports, strict downward dependency arrows
+- Action constructors use keyword-only DI with optional params for
+  backward compatibility
+
+**Score change (Phase 3 + 4a):** +0.5 from 8.5 — action layer extraction
+eliminates direct store access in 5 route files. Routes now contain only HTTP
+concerns (templates, cookies, redirects, scheduler jobs).
 
 ---
 
@@ -367,13 +417,13 @@ pass addresses BFSG/EU Accessibility Act basics.
 
 **Test suite:**
 
-- 860 test functions across 49 files (37 unit + 9 integration + 3 E2E)
-- Code-to-test ratio: 13,212 LOC source / 14,660 LOC tests = 1:1.11
+- 914 test functions across 45 test files (+ 3 E2E)
+- Code-to-test ratio: 13,483 LOC source / ~15,400 LOC tests = 1:1.14
 - Coverage threshold: 65% minimum enforced in CI (`pyproject.toml`)
 - Test categories: unit tests for stores, agent core, security, calendar sync,
   web routes, signal integration, migrations, Notion RAG (5 test files),
-  Google MCP pool, integration tests (multi-component), E2E tests
-  (Docker-based, LLM judge)
+  Google MCP pool, action layer (5 test files), integration tests
+  (multi-component), E2E tests (Docker-based, LLM judge)
 
 **Modules with tests vs without:**
 
@@ -390,6 +440,10 @@ pass addresses BFSG/EU Accessibility Act basics.
 | Contacts               | test_contacts.py             | ~25   |
 | MCP / Google pool      | test_mcp, test_user_mcp_pool | ~40   |
 | Notion RAG             | 5 test files                 | ~80   |
+| Settings action        | test_settings_action         | ~10   |
+| Admin action           | test_admin_action            | ~10   |
+| Contacts action setup  | test_contacts_action_setup   | ~3    |
+| Vikunja setup action   | test_vikunja_setup_action    | ~16   |
 | Docker deployment      | tests/e2e/ (3 files)         | ~48   |
 
 **Documentation:**
@@ -424,8 +478,8 @@ Remaining overrides: `sync.manager`, `main`, `sync.ical_parser`,
 
 **Why 8.5 and not lower:**
 
-- 860 tests with good behavior-oriented style (+10% since PR #52)
-- Test LOC exceeds source LOC (1:1.11 ratio)
+- 914 tests with good behavior-oriented style (+6% since action layer PRs)
+- Test LOC exceeds source LOC (1:1.14 ratio)
 - Integration tests (9 files) and E2E tests (3 files) add multi-layer coverage
 - structlog JSON logging is production-ready
 - AppState Protocol and removal of `web.*` overrides show type safety
@@ -529,7 +583,7 @@ Applied to 8 callables across 5 modules:
 | actions/briefing.py   | 2 methods (weather + Vikunja tasks fetch) |
 | mcp/weather/server.py | 1 function (Open-Meteo data fetch)        |
 
-**Graceful shutdown** (`main.py:452-484`):
+**Graceful shutdown** (`main.py:482-514`):
 
 `shutdown_event` is an `asyncio.Event` set during lifespan teardown. Shutdown
 sequence: set event → 0.5s SSE drain → cancel Signal WebSocket → close Signal
@@ -736,16 +790,37 @@ the primary gap. The remaining HTMX/API duality is by design.
 | 7   | DevOps           | 9.0    | 9.5   | `pip-audit` CI job + Renovate configured                                    |
 | 8   | Security         | 9.0    | 9.5   | CSP `report-uri /csp-report` endpoint + pip-audit                           |
 
-### Phase 3 — Long-term (7.0-8.5 → ~9.0 avg)
+### Phase 3 — Action Layer: Settings, Weather, Admin (done, PR #59)
+
+| #   | Dimension    | Before | After | Measure                                                            |
+|-----|--------------|--------|-------|--------------------------------------------------------------------|
+| 9   | Architecture | 8.5    | —     | `SettingsAction`, `WeatherAction`, `AdminAction` extracted from routes |
+
+Intermediate step — score change deferred to Phase 4a (combined impact).
+
+### Phase 4a — Action Layer: Contacts, Vikunja (done, PR #60)
+
+| #   | Dimension    | Before | After | Measure                                                                      |
+|-----|--------------|--------|-------|------------------------------------------------------------------------------|
+| 10  | Architecture | 8.5    | 9.0   | `ContactsAction` expanded, `VikunjaSetupAction` created. 5/13 routes clean   |
+
+### Phase 5 — Long-term (7.0-8.5 → ~9.0 avg)
 
 | #   | Dimension       | Score | Measure                                                                | Effort |
 |-----|-----------------|-------|------------------------------------------------------------------------|--------|
-| 9   | Observability   | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs  | Large  |
-| 10  | Architecture    | 8.5   | Extract `main.py` lifespan into builder/factory pattern                | Medium |
-| 11  | Maintainability | 8.5   | Reduce remaining 10 mypy overrides, raise coverage to 70%              | Medium |
-| 12  | UI/UX           | 8.0   | axe-core in CI, HTMX focus management, aria-live on toasts             | Small  |
-| 13  | Performance     | 8.5   | Settings/contact caching, Ollama model list caching                    | Small  |
-| 14  | Resilience      | 8.0   | Circuit breakers for CalDAV, Ollama retry with backoff                 | Medium |
+| 11  | Observability   | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs  | Large  |
+| 12  | Architecture    | 9.0   | Extract `main.py` lifespan into builder/factory pattern                | Medium |
+| 13  | Maintainability | 8.5   | Reduce remaining 10 mypy overrides, raise coverage to 70%              | Medium |
+| 14  | UI/UX           | 8.0   | axe-core in CI, HTMX focus management, aria-live on toasts             | Small  |
+| 15  | Performance     | 8.5   | Settings/contact caching, Ollama model list caching                    | Small  |
+| 16  | Resilience      | 8.0   | Circuit breakers for CalDAV, Ollama retry with backoff                 | Medium |
+
+### Phase 4b — Action Layer: WhatsApp, Signal (planned)
+
+| Route file     | Store access             | Action module  | Status  |
+|----------------|--------------------------|----------------|---------|
+| `_whatsapp.py` | `wa_store` ×4            | `whatsapp.py`  | Planned |
+| `_signal.py`   | `settings_store` ×4      | `signal.py`    | Planned |
 
 ---
 
@@ -758,8 +833,8 @@ the primary gap. The remaining HTMX/API duality is by design.
   for Security, Architecture, Maintainability (highest impact on project
   longevity); 0.8x for UI/UX (lower weight for backend-focused project);
   1.0x for all others.
-- **Trend:** Delta compared to previous assessment (2026-03-09). Dimensions
+- **Trend:** Delta compared to previous assessment (2026-03-12). Dimensions
   unchanged since that assessment show "=".
 - **Bias disclosure:** This assessment was performed by the same tool that
-  implemented PRs #43-#57. Findings should be validated independently.
+  implemented PRs #43-#60. Findings should be validated independently.
   Scores may be biased toward overvaluing recent improvements.
