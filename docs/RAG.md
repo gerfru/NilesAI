@@ -341,7 +341,7 @@ notion_pages table          PostgreSQL
     |
     v
 [Embed]                     src/niles/sync/ollama_embedder.py
-  Ollama + nomic-embed-text
+  Ollama + nomic-embed-text-v2-moe
   768-dim vectors
   Task prefixes
     |
@@ -412,11 +412,11 @@ Niles uses **document-structure-aware chunking** because Notion pages are inhere
 
 **Module:** `src/niles/sync/ollama_embedder.py` -- `OllamaEmbedder`
 
-- **Model:** `nomic-embed-text` running locally via Ollama
+- **Model:** `nomic-embed-text-v2-moe` running locally via Ollama
 - **Dimensions:** 768
 - **Connection:** Persistent `httpx.AsyncClient` for connection pooling to `http://host.docker.internal:11434/api/embed`
 
-**Task prefixes** (required by nomic-embed-text for optimal retrieval):
+**Task prefixes** (required by nomic-embed-text-v2-moe for optimal retrieval):
 - `"search_document: "` -- prepended when indexing chunks
 - `"search_query: "` -- prepended when embedding user queries
 
@@ -434,7 +434,7 @@ Niles uses **document-structure-aware chunking** because Notion pages are inhere
 | `chunk_level` | INT | 0 = summary, 1 = detail |
 | `chunk_index` | INT | Position within page |
 | `chunk_text` | TEXT | Full chunk with prefix |
-| `embedding` | VECTOR(768) | nomic-embed-text vector |
+| `embedding` | VECTOR(768) | nomic-embed-text-v2-moe vector |
 | `page_title` | TEXT | Breadcrumb for keyword boost |
 | `heading_context` | TEXT | Heading hierarchy for keyword boost |
 | `created_at` | TIMESTAMP | For freshness tracking |
@@ -515,7 +515,7 @@ Niles already runs PostgreSQL for all other data. Adding Pinecone or Qdrant woul
 
 ### Why local embedding instead of cloud APIs?
 
-Privacy is a core principle. Notion pages contain personal notes, work documents, and private information. Sending this to OpenAI or Cohere for embedding would violate the "100% local" guarantee. The quality difference between nomic-embed-text (768d, local) and text-embedding-3-small (1536d, cloud) exists but is acceptable for a personal knowledge base.
+Privacy is a core principle. Notion pages contain personal notes, work documents, and private information. Sending this to OpenAI or Cohere for embedding would violate the "100% local" guarantee. The quality difference between nomic-embed-text-v2-moe (768d, local) and text-embedding-3-small (1536d, cloud) exists but is acceptable for a personal knowledge base.
 
 ### Why keyword boost instead of full hybrid search?
 
@@ -539,7 +539,7 @@ IVFFlat with default settings (`probes=1`) only searches 1 out of N clusters. Du
 |---------|---------|-------------|
 | `NOTION_TOKEN` | -- | Internal Integration Token (required) |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API endpoint |
-| `notion_embedding_model` | `nomic-embed-text` | Embedding model name |
+| `notion_embedding_model` | `nomic-embed-text-v2-moe` | Embedding model name |
 | `notion_similarity_threshold` | `0.30` | Minimum cosine similarity for results |
 | `notion_auto_sync` | `true` | Enable automatic sync scheduler |
 | Chunk size | 600 chars | Hardcoded in `NotionEmbeddingPipeline.__init__` |
