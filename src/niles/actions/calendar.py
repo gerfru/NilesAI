@@ -51,6 +51,7 @@ class CalendarAction:
         date_from: str = "",
         date_to: str = "",
         calendar: str = "",
+        user_id: int | None = None,
     ) -> list[dict]:
         """
         Search events by keyword and/or date range.
@@ -60,6 +61,7 @@ class CalendarAction:
             date_from: Start date (ISO format, e.g. '2026-02-20')
             date_to: End date (ISO format, e.g. '2026-02-28')
             calendar: Calendar source name to filter by (optional)
+            user_id: Only return events from this user's calendar sources
 
         Returns:
             List of event dicts (max 10), sorted by dtstart ascending.
@@ -86,34 +88,43 @@ class CalendarAction:
         # Resolve optional calendar source filter
         source_id = None
         if calendar:
-            source_id = await self._resolve_source_id(calendar)
+            source_id = await self._resolve_source_id(calendar, user_id=user_id)
 
         rows = await self.pool.fetch(
             """
-            SELECT summary, dtstart, dtend, all_day, description, location, transp
-            FROM events
-            WHERE ($1 = '' OR summary ILIKE '%' || $1 || '%'
-                   OR description ILIKE '%' || $1 || '%'
-                   OR location ILIKE '%' || $1 || '%')
-              AND ($2::timestamptz IS NULL OR dtstart >= $2)
-              AND ($3::timestamptz IS NULL OR dtstart <= $3)
-              AND ($4::integer IS NULL OR source_id = $4)
-            ORDER BY dtstart ASC
+            SELECT e.summary, e.dtstart, e.dtend, e.all_day,
+                   e.description, e.location, e.transp
+            FROM events e
+            JOIN calendar_sources cs ON e.source_id = cs.id
+            WHERE ($1 = '' OR e.summary ILIKE '%' || $1 || '%'
+                   OR e.description ILIKE '%' || $1 || '%'
+                   OR e.location ILIKE '%' || $1 || '%')
+              AND ($2::timestamptz IS NULL OR e.dtstart >= $2)
+              AND ($3::timestamptz IS NULL OR e.dtstart <= $3)
+              AND ($4::integer IS NULL OR e.source_id = $4)
+              AND ($5::integer IS NULL OR cs.user_id = $5)
+            ORDER BY e.dtstart ASC
             LIMIT 10
             """,
             query,
             ts_from,
             ts_to,
             source_id,
+            user_id,
         )
 
         return [self._row_to_dict(row) for row in rows]
 
-    async def _resolve_source_id(self, name: str) -> int | None:
+    async def _resolve_source_id(
+        self, name: str, user_id: int | None = None
+    ) -> int | None:
         """Resolve a calendar source name to its ID."""
         row = await self.pool.fetchrow(
-            "SELECT id FROM calendar_sources WHERE LOWER(name) = LOWER($1)",
+            "SELECT id FROM calendar_sources"
+            " WHERE LOWER(name) = LOWER($1)"
+            " AND ($2::integer IS NULL OR user_id = $2)",
             name,
+            user_id,
         )
         return row["id"] if row else None
 

@@ -82,19 +82,22 @@ class BriefingGenerator:
         self,
         date_from: datetime,
         date_to: datetime,
+        user_id: int | None = None,
     ) -> list[dict]:
-        """Fetch calendar events within a date range."""
+        """Fetch calendar events within a date range, scoped to user."""
         rows = await self.pool.fetch(
             """
-            SELECT summary, dtstart, dtend, all_day, location,
+            SELECT e.summary, e.dtstart, e.dtend, e.all_day, e.location,
                    cs.name AS calendar_name
             FROM events e
             LEFT JOIN calendar_sources cs ON e.source_id = cs.id
-            WHERE dtstart >= $1 AND dtstart <= $2
-            ORDER BY dtstart ASC
+            WHERE e.dtstart >= $1 AND e.dtstart <= $2
+              AND ($3::integer IS NULL OR cs.user_id = $3)
+            ORDER BY e.dtstart ASC
             """,
             date_from,
             date_to,
+            user_id,
         )
         return [dict(r) for r in rows]
 
@@ -315,7 +318,7 @@ class BriefingGenerator:
         # Day events: full day range
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start.replace(hour=23, minute=59, second=59)
-        events = await self._get_events_for_range(day_start, day_end)
+        events = await self._get_events_for_range(day_start, day_end, user_id=user_id)
 
         # Open tasks (all, not just today) — single API call, per-user
         tasks = await self._get_open_tasks(user_id)
@@ -395,7 +398,7 @@ class BriefingGenerator:
             f"{week_start.strftime('%d.%m.')} – {week_end.strftime('%d.%m.%Y')}"
         )
 
-        events = await self._get_events_for_range(week_start, week_end)
+        events = await self._get_events_for_range(week_start, week_end, user_id=user_id)
         tasks = await self._get_open_tasks(user_id)
 
         # Group events by day
