@@ -52,3 +52,15 @@
 	}
 	reverse_proxy vikunja:3456
 }
+
+# PulseBase (Garmin Dashboard) — garmin.local
+{$CADDY_HOSTS_GARMIN:https://garmin.local} {
+	tls internal
+	import security_headers
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+	reverse_proxy garmin-api:8000
+}
