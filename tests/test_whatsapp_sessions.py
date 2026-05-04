@@ -1,6 +1,7 @@
 """Tests for WhatsApp session management (per-user Evolution API instances)."""
 
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -56,6 +57,7 @@ class TestWhatsAppAction:
 
     async def test_fetch_messages(self, action):
         """fetch_messages calls Evolution API findMessages endpoint."""
+        recent_ts = int(time.time()) - 3600  # 1 hour ago
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "messages": {
@@ -69,7 +71,7 @@ class TestWhatsAppAction:
                         },
                         "pushName": "Max",
                         "message": {"conversation": "Hallo!"},
-                        "messageTimestamp": 1771900000,
+                        "messageTimestamp": recent_ts,
                     },
                 ],
             },
@@ -121,6 +123,7 @@ class TestWhatsAppAction:
 
     async def test_fetch_messages_media_placeholder(self, action):
         """Media messages without caption get a placeholder."""
+        recent_ts = int(time.time()) - 3600
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "messages": {
@@ -129,7 +132,7 @@ class TestWhatsAppAction:
                         "key": {"fromMe": False},
                         "pushName": "Img",
                         "message": {"imageMessage": {"url": "..."}},
-                        "messageTimestamp": 1771900000,
+                        "messageTimestamp": recent_ts,
                     },
                 ],
             },
@@ -149,6 +152,7 @@ class TestWhatsAppAction:
 
     async def test_fetch_messages_handles_string_timestamp(self, action):
         """messageTimestamp may be a string — must be cast to int."""
+        recent_ts = int(time.time()) - 3600
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "messages": {
@@ -157,7 +161,7 @@ class TestWhatsAppAction:
                         "key": {"fromMe": False},
                         "pushName": "Anna",
                         "message": {"conversation": "Hey!"},
-                        "messageTimestamp": "1771900000",  # string!
+                        "messageTimestamp": str(recent_ts),  # string!
                     },
                 ],
             },
@@ -174,7 +178,7 @@ class TestWhatsAppAction:
 
         assert len(result) == 1
         assert result[0]["text"] == "Hey!"
-        assert result[0]["timestamp"] == 1771900000  # int, not string
+        assert result[0]["timestamp"] == recent_ts  # int, not string
 
     async def test_fetch_messages_lid_filter(self, action):
         """Payload includes both remoteJid and remoteJidAlt for LID support."""

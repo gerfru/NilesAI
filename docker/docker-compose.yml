@@ -151,12 +151,14 @@ services:
       - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
       - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
       - CADDY_HOSTS_3457=${CADDY_HOSTS_3457:-https://localhost:3457}
+      - CADDY_HOSTS_GARMIN=${CADDY_HOSTS_GARMIN:-https://garmin.local}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
       - niles_network
+      - proxy
     depends_on:
       niles_core:
         condition: service_healthy
@@ -236,3 +238,5 @@ volumes:
 networks:
   niles_network:
     driver: bridge
+  proxy:
+    external: true
