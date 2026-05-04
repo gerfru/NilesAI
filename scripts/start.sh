@@ -33,6 +33,9 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Ensure shared proxy network exists (used by Caddy for cross-project routing)
+docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
+
 # Build docker compose command with optional profiles
 COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
 if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
