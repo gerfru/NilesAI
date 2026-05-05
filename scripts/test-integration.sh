@@ -30,16 +30,16 @@ export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-5432}"
 export POSTGRES_DB="${POSTGRES_DB:-evolution_db}"
 export POSTGRES_USER="${POSTGRES_USER:-evolution}"
 # Docker-internal URLs are not reachable from the host.
-# Rewrite to Caddy reverse proxy (HTTPS, self-signed certs).
-# Evolution API: http://evolution_api:8080 → https://localhost:8443
+# Rewrite to homelab-gateway (HTTPS via subdomains).
+# Evolution API: http://evolution_api:8080 → https://whatsapp.example.local
 if [[ "${EVOLUTION_API_URL:-}" == *"evolution"* ]]; then
-    export EVOLUTION_API_URL="https://localhost:8443"
+    export EVOLUTION_API_URL="https://whatsapp.example.local"
 fi
-export EVOLUTION_API_URL="${EVOLUTION_API_URL:-https://localhost:8443}"
+export EVOLUTION_API_URL="${EVOLUTION_API_URL:-https://whatsapp.example.local}"
 
-# Vikunja: http://vikunja:3456 → https://localhost:3457
+# Vikunja: http://vikunja:3456 → https://vikunja.example.local/api/v1
 if [[ "${VIKUNJA_API_URL:-}" == *"vikunja:"* ]]; then
-    export VIKUNJA_API_URL="https://localhost:3457/api/v1"
+    export VIKUNJA_API_URL="https://vikunja.example.local/api/v1"
 fi
 
 # Signal API: only reachable inside Docker network (no Caddy route).
