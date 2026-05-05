@@ -24,14 +24,13 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | --------- | ------------- | --------------- | ------- |
 | Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM inference (OpenAI-compatible) |
 | PostgreSQL | 5432 | Not exposed | Database (evolution_db) |
-| Evolution API v2.3.7 | 8080 | `https://localhost:8443` | WhatsApp gateway |
-| Niles Core (FastAPI) | 8000 | `https://localhost` | Python backend + web UI |
-| Vikunja 1.1.0 | 3456 | `https://localhost:3457` | Todo/task management |
+| Evolution API v2.3.7 | 8080 | `https://whatsapp.home.lab` | WhatsApp gateway |
+| Niles Core (FastAPI) | 8000 | `https://niles.home.lab` | Python backend + web UI |
+| Vikunja 1.1.0 | 3456 | `https://vikunja.home.lab` | Todo/task management |
 | signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
 | SearXNG | 8080 | Not exposed | Meta search engine (optional, profile `search`) |
-| Caddy | -- | :443, :8443, :3457 | HTTPS reverse proxy |
 
-**Network architecture:** All Docker services communicate internally via HTTP. External access exclusively through Caddy (HTTPS, self-signed). PostgreSQL and service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
+**Network architecture:** All Docker services communicate internally via HTTP on `niles_network`. External access through homelab-gateway (Caddy reverse proxy on `proxy` network, HTTPS with self-signed certs, subdomain-based routing). PostgreSQL and internal service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
 
 **Database:** `evolution_db`, user `evolution`, password via `EVOLUTION_POSTGRES_PASSWORD`. Vikunja uses its own database `vikunja_db` (one-time: `CREATE DATABASE vikunja_db OWNER evolution;`). Signal messages are stored in `signal_messages` table (same database).
 
@@ -44,14 +43,15 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 ```text
 External Clients (Browser, curl, Tailscale)
     |
-    v HTTPS (self-signed)
+    v HTTPS (self-signed, subdomain routing)
 +---------------------------------------------+
-|  Caddy Reverse Proxy                        |
-|  :443 -> niles_core:8000                    |
-|  :8443 -> evolution_api:8080                |
+|  homelab-gateway (Caddy)                    |
+|  niles.home.lab    -> niles_core:8000       |
+|  whatsapp.home.lab -> evolution_api:8080    |
+|  vikunja.home.lab  -> vikunja:3456          |
 |  Security Headers, Access Logs              |
 +-------------------+-------------------------+
-                    | HTTP (internal)
+                    | HTTP (proxy network)
                     v
 Event Sources                Niles Core (FastAPI :8000)              External
                          +--------------------------------+
@@ -88,7 +88,7 @@ POST /chat  ---------->  |  agent/core.py (NilesAgent)    |--> Ollama :11434
                          +--------------------------------+
 ```
 
-All components run in Docker containers on the same network (`niles_network`). Ollama runs natively on the host and is reachable via `host.docker.internal:11434`.
+All components run in Docker containers on `niles_network` (internal) and `proxy` (external, shared with homelab-gateway). Ollama runs natively on the host and is reachable via `host.docker.internal:11434`.
 
 ### 2.2 Directory Structure
 
@@ -1292,7 +1292,7 @@ GOOGLE_ALLOWED_EMAILS=user1@gmail.com,user2@gmail.com
 # Vikunja (optional, accounts auto-provisioned)
 VIKUNJA_JWT_SECRET=<openssl rand -hex 32>
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
-VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
+VIKUNJA_PUBLIC_URL=https://vikunja.home.lab
 ```
 
 ### 6.4 Environment Variables
@@ -1365,19 +1365,20 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 ### 7.2 Docker Compose Services
 
-| Container | Image | Exposed Port | Purpose |
-| --------- | ----- | ------------ | ------- |
-| `niles_caddy` | `caddy:2-alpine` | 443, 8443, 3457 | HTTPS reverse proxy |
-| `niles_core` | `niles-core:${NILES_VERSION:-latest}` (Dockerfile.niles) | -- (via Caddy) | Python backend + web UI |
-| `niles_evolution_postgres` | `postgres:15-alpine` | -- | PostgreSQL |
-| `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | -- (via Caddy) | WhatsApp gateway |
-| `vikunja` | `vikunja/vikunja:1.1.0` | 3456 | Todo/task management |
-| `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | -- | Signal gateway (signal-cli v0.13.24) |
-| `niles_searxng` | `searxng/searxng:2025.5.10-1b787ed35` | -- | Meta search engine (profile `search`) |
+| Container | Image | Network | Purpose |
+| --------- | ----- | ------- | ------- |
+| `niles_core` | `niles-core:${NILES_VERSION:-latest}` (Dockerfile.niles) | niles_network, proxy | Python backend + web UI |
+| `niles_evolution_postgres` | `postgres:15-alpine` | niles_network | PostgreSQL |
+| `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | niles_network, proxy | WhatsApp gateway |
+| `vikunja` | `vikunja/vikunja:1.1.0` | niles_network, proxy | Todo/task management |
+| `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | niles_network | Signal gateway (signal-cli v0.13.24) |
+| `niles_searxng` | `searxng/searxng:2025.5.10-1b787ed35` | niles_network | Meta search engine (profile `search`) |
+
+HTTPS termination is handled by `gateway-caddy` in the separate [homelab-gateway](../../homelab-gateway) repo.
 
 ### 7.3 Network
 
-All containers on bridge network `niles_network`. Container names serve as hostnames for internal communication:
+All containers on bridge network `niles_network` (internal) + `proxy` (external, for gateway routing). Container names serve as hostnames for internal communication:
 
 - `niles_core` -> `evolution_postgres:5432`
 - `niles_core` -> `evolution_api:8080` (only for WhatsApp sending)

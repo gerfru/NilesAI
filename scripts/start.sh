@@ -33,7 +33,7 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Ensure shared proxy network exists (used by Caddy for cross-project routing)
+# Ensure shared proxy network exists (used by homelab-gateway for routing)
 docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
 
 # Build docker compose command with optional profiles
@@ -67,10 +67,10 @@ echo "Status:"
 docker compose -f docker/docker-compose.yml ps
 
 echo ""
-echo "Service URLs (HTTPS via Caddy, self-signed):"
-echo "  - Niles Web UI:      https://localhost/ui/login"
-echo "  - Evolution Manager: https://localhost:8443/manager"
-echo "  - Vikunja (Todos):   https://localhost:3457"
+echo "Service URLs (HTTPS via homelab-gateway):"
+echo "  - Niles Web UI:      https://niles.home.lab/ui/login"
+echo "  - Evolution Manager: https://whatsapp.home.lab/manager"
+echo "  - Vikunja (Todos):   https://vikunja.home.lab"
 echo "  - Ollama API:        http://localhost:11434/v1"
 echo ""
 
