@@ -18,14 +18,14 @@ A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsA
 - **Web UI** -- Chat with SSE streaming, settings dashboard, calendar/contact management.
 - **MCP** -- Extend Niles with community tools via Model Context Protocol.
 - **Multi-User** -- Google OAuth login, per-user WhatsApp sessions and task lists.
-- **Security** -- HTTPS (Caddy), rate limiting, CSRF protection, no-delete policy.
+- **Security** -- HTTPS (homelab-gateway), rate limiting, CSRF protection, no-delete policy.
 
 ## Architecture
 
 ```text
 Browser / curl / WhatsApp
     |
-    v  HTTPS (Caddy, self-signed)
+    v  HTTPS (homelab-gateway)
 +-------------------------------------------------------------+
 |  Niles Core (FastAPI :8000)                                 |
 |                                                             |
@@ -93,7 +93,7 @@ src/niles/                     Python Backend
 alembic/                       Database migrations (7 versions)
 tests/                         914 tests across 45 files (pytest + pytest-asyncio)
 config/                        soul.md (Agent Personality)
-docker/                        Dockerfile, docker-compose.yml, Caddyfile
+docker/                        Dockerfile, docker-compose.yml
 scripts/                       start, stop, status, dev, test, backup
 docs/                          Technical Documentation
 ```
@@ -111,7 +111,7 @@ docs/                          Technical Documentation
 | Signal         | signal-cli-rest-api (signal-cli v0.13.24)   |
 | Tasks          | Vikunja 1.1.0                               |
 | Knowledge Base | Notion API + pgvector RAG                   |
-| Reverse Proxy  | Caddy 2 (self-signed TLS)                   |
+| Reverse Proxy  | homelab-gateway (Caddy + CoreDNS)           |
 | Logging        | structlog (JSON to stdout)                  |
 | Metrics        | Prometheus (prometheus-client)              |
 | Scheduling     | APScheduler                                 |
