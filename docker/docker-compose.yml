@@ -1,5 +1,6 @@
 # Niles AI - Complete Docker Setup
-# Services: Niles Core + Evolution API + PostgreSQL + Caddy
+# Services: Niles Core + Evolution API + PostgreSQL
+# HTTPS termination handled by homelab-gateway (external Caddy)
 
 services:
   # PostgreSQL for Evolution API
@@ -31,7 +32,7 @@ services:
     container_name: niles_evolution_api
     image: evoapicloud/evolution-api@sha256:456b4104b0ddffbb092d6b3c0560a4ae86fc3e014e885b882aca4b1b371dfc81  # v2.3.7
     restart: unless-stopped
-    # No port exposed -- access only via Caddy reverse proxy (HTTPS :8443)
+    # No port exposed -- access via gateway-caddy reverse proxy
     environment:
       # API Authentication
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
@@ -57,6 +58,7 @@ services:
       - ~/.evolution/instances:/evolution/instances
     networks:
       - niles_network
+      - proxy
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 30s
@@ -84,7 +86,7 @@ services:
       VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
-    # No port exposed -- access only via Caddy reverse proxy (HTTPS :3457)
+    # No port exposed -- access via gateway-caddy reverse proxy
     volumes:
       - vikunja_files:/app/vikunja/files
     healthcheck:
@@ -98,6 +100,7 @@ services:
         condition: service_healthy
     networks:
       - niles_network
+      - proxy
     restart: unless-stopped
 
   # Signal (signal-cli-rest-api) — activate via Settings UI (feature_signal)
@@ -138,36 +141,6 @@ services:
     profiles:
       - search
 
-  # Caddy Reverse Proxy (HTTPS termination)
-  caddy:
-    container_name: niles_caddy
-    image: caddy:2-alpine@sha256:3b2a0196e0687279c14c27adff9fc6b44acfa318dbb97eaebe385bdf99e5364c
-    restart: unless-stopped
-    ports:
-      - "443:443"
-      - "8443:8443"
-      - "3457:3457"
-      - "3458:3458"
-    environment:
-      - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
-      - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
-      - CADDY_HOSTS_3457=${CADDY_HOSTS_3457:-https://localhost:3457}
-      - CADDY_HOSTS_GARMIN=${CADDY_HOSTS_GARMIN:-https://garmin.local}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - niles_network
-      - proxy
-    depends_on:
-      niles_core:
-        condition: service_healthy
-      evolution_api:
-        condition: service_started
-      vikunja:
-        condition: service_started
-
   # Niles AI Core
   niles_core:
     container_name: niles_core
@@ -176,7 +149,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.niles
     restart: unless-stopped
-    # No port exposed -- access only via Caddy reverse proxy (HTTPS :443)
+    # No port exposed -- access via gateway-caddy reverse proxy
     environment:
       - PYTHONPATH=/app/src
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
@@ -216,6 +189,7 @@ services:
       - ../config:/app/config:ro
     networks:
       - niles_network
+      - proxy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -231,8 +205,6 @@ services:
 volumes:
   evolution_postgres:
   vikunja_files:
-  caddy_data:
-  caddy_config:
   signal_cli_config:
   searxng_data:
 
