@@ -147,6 +147,7 @@ services:
       - "443:443"
       - "8443:8443"
       - "3457:3457"
+      - "3458:3458"
     environment:
       - CADDY_HOSTS_443=${CADDY_HOSTS_443:-https://localhost}
       - CADDY_HOSTS_8443=${CADDY_HOSTS_8443:-https://localhost:8443}
