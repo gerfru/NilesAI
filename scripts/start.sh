@@ -33,8 +33,15 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Ensure shared proxy network exists (used by homelab-gateway for routing)
-docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
+# Check that proxy network exists (created by homelab-gateway)
+if ! docker network inspect proxy >/dev/null 2>&1; then
+    echo "Error: 'proxy' Docker network not found!"
+    echo ""
+    echo "Start homelab-gateway first:"
+    echo "  cd ~/Documents/homelab-gateway && make up"
+    echo ""
+    exit 1
+fi
 
 # Build docker compose command with optional profiles
 COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"

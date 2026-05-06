@@ -41,7 +41,7 @@ For technical details on architecture and development, see [Development.md](Deve
 
 | Software | Version | Purpose |
 | -------- | ------- | ------- |
-| Docker Desktop | current | Container runtime (PostgreSQL, Evolution API, Caddy, Vikunja) |
+| Docker Desktop | current | Container runtime (PostgreSQL, Evolution API, Vikunja) |
 | Ollama | >= 0.13 | Local LLM inference (GPU accelerated) |
 | Git | current | Clone repository |
 | Tailscale | optional | Secure remote access from anywhere |
@@ -81,7 +81,20 @@ EVOLUTION_POSTGRES_PASSWORD=a-secure-password
 EVOLUTION_API_KEY=a-secure-api-key
 ```
 
-### Start
+### Start homelab-gateway (prerequisite)
+
+Niles requires the [homelab-gateway](../../homelab-gateway) for HTTPS routing. Start it first:
+
+```bash
+cd ~/Documents/homelab-gateway
+cp .env.example .env          # set TAILSCALE_IP (tailscale ip -4)
+make generate                 # generate DNS config from templates
+make up                       # start CoreDNS + Caddy
+```
+
+Then configure Tailscale Split-DNS (once): [Tailscale Admin → DNS](https://login.tailscale.com/admin/dns) → Add nameserver → your Tailscale IP → restrict to `example.local`.
+
+### Start Niles
 
 ```bash
 ./scripts/start.sh
@@ -90,7 +103,7 @@ EVOLUTION_API_KEY=a-secure-api-key
 The script:
 1. Checks if Docker is running
 2. Builds the Niles Core image
-3. Starts all containers (PostgreSQL, Evolution API, Vikunja, Caddy, Niles Core)
+3. Starts all containers (PostgreSQL, Evolution API, Vikunja, Niles Core)
 4. Applies database migrations automatically (Alembic)
 5. Automatically creates the `vikunja_db` database
 6. Outputs the service URLs
