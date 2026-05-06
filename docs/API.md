@@ -4,19 +4,19 @@
 
 ---
 
-## HTTPS (Caddy Reverse Proxy)
+## HTTPS (homelab-gateway)
 
-All external access goes through HTTPS via the Caddy reverse proxy with self-signed certificates (`tls internal`).
+All external access goes through HTTPS via the homelab-gateway (Caddy reverse proxy in a separate repo) with subdomain-based routing.
 
-| Port | Service | Internal |
-| ---- | ------- | -------- |
-| 443 | Niles Core API + Web UI | niles_core:8000 |
-| 8443 | Evolution API | evolution_api:8080 |
-| 3457 | Vikunja (Task Management) | vikunja:3456 |
+| Subdomain | Service | Internal |
+| --------- | ------- | -------- |
+| niles.home.lab | Niles Core API + Web UI | niles_core:8000 |
+| whatsapp.home.lab | Evolution API | evolution_api:8080 |
+| vikunja.home.lab | Vikunja (Task Management) | vikunja:3456 |
 
-- **Self-signed certificates:** Accept the browser warning on first access
-- **curl:** Use the `--insecure` flag (or `-k`)
+- **TLS termination:** Handled by homelab-gateway (separate docker-compose with CoreDNS + Caddy)
 - **Internal Docker traffic:** Remains HTTP (container-to-container)
+- **Network:** Services connect to the `proxy` external Docker network
 
 ---
 
@@ -768,7 +768,7 @@ Times and feature flags are configurable via the web UI (Settings > Briefing) or
 The Evolution API must be configured to send webhooks to Niles:
 
 ```bash
-curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
+curl -k -X POST https://whatsapp.home.lab/webhook/set/niles-whatsapp \
   -H "apikey: <EVOLUTION_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -780,7 +780,7 @@ curl -k -X POST https://localhost:8443/webhook/set/niles-whatsapp \
   }'
 ```
 
-**Note:** The webhook URL uses the Docker-internal hostname `niles_core` (HTTP, container-to-container). The `curl` call itself goes through Caddy (HTTPS).
+**Note:** The webhook URL uses the Docker-internal hostname `niles_core` (HTTP, container-to-container). The `curl` call itself goes through homelab-gateway (HTTPS).
 
 ---
 

@@ -31,11 +31,11 @@ fi
 $COMPOSE_CMD ps
 echo ""
 
-# Check Niles Core (via Caddy HTTPS)
+# Check Niles Core (via homelab-gateway)
 echo "Niles Core:"
-if HEALTH=$(curl -sk https://localhost/health 2>&1); then
+if HEALTH=$(curl -sk https://niles.home.lab/health 2>&1); then
     if echo "$HEALTH" | grep -q '"status":"ok"'; then
-        echo "  Running on https://localhost"
+        echo "  Running on https://niles.home.lab"
     else
         echo "  Running but health check failed"
     fi
@@ -43,17 +43,17 @@ else
     echo "  Not reachable"
 fi
 
-# Check Evolution API (via Caddy HTTPS)
+# Check Evolution API (via homelab-gateway)
 echo ""
 echo "Evolution API:"
-if RESPONSE=$(curl -sk https://localhost:8443/ 2>&1); then
+if RESPONSE=$(curl -sk https://whatsapp.home.lab/ 2>&1); then
     if echo "$RESPONSE" | grep -q "Welcome to the Evolution API"; then
-        echo "  Running on https://localhost:8443"
+        echo "  Running on https://whatsapp.home.lab"
 
         # Check WhatsApp instance status
         echo ""
         echo "  WhatsApp Instance:"
-        if INSTANCE=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://localhost:8443/instance/connectionState/niles-whatsapp 2>&1); then
+        if INSTANCE=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://whatsapp.home.lab/instance/connectionState/niles-whatsapp 2>&1); then
             if echo "$INSTANCE" | grep -q '"state":"open"'; then
                 echo "    Connected"
             elif echo "$INSTANCE" | grep -q '"state":"connecting"'; then
@@ -71,11 +71,11 @@ else
     echo "  Not reachable"
 fi
 
-# Check Vikunja (via Caddy HTTPS)
+# Check Vikunja (via homelab-gateway)
 echo ""
 echo "Vikunja:"
-if RESPONSE=$(curl -sk https://localhost:3457/ 2>&1); then
-    echo "  Running on https://localhost:3457"
+if RESPONSE=$(curl -sk https://vikunja.home.lab/ 2>&1); then
+    echo "  Running on https://vikunja.home.lab"
 else
     echo "  Not reachable"
 fi
@@ -109,8 +109,8 @@ else
 fi
 
 echo ""
-echo "Service URLs (HTTPS via Caddy, self-signed):"
-echo "  - Niles Web UI:         https://localhost/ui/login"
-echo "  - Evolution Manager:    https://localhost:8443/manager"
-echo "  - Vikunja (Todos):      https://localhost:3457"
+echo "Service URLs (HTTPS via homelab-gateway):"
+echo "  - Niles Web UI:         https://niles.home.lab/ui/login"
+echo "  - Evolution Manager:    https://whatsapp.home.lab/manager"
+echo "  - Vikunja (Todos):      https://vikunja.home.lab"
 echo "  - Ollama API:           http://localhost:11434/v1"
