@@ -41,7 +41,7 @@ For technical details on architecture and development, see [Development.md](Deve
 
 | Software | Version | Purpose |
 | -------- | ------- | ------- |
-| Docker Desktop | current | Container runtime (PostgreSQL, Evolution API, Caddy, Vikunja) |
+| Docker Desktop | current | Container runtime (PostgreSQL, Evolution API, Vikunja) |
 | Ollama | >= 0.13 | Local LLM inference (GPU accelerated) |
 | Git | current | Clone repository |
 | Tailscale | optional | Secure remote access from anywhere |
@@ -81,7 +81,20 @@ EVOLUTION_POSTGRES_PASSWORD=a-secure-password
 EVOLUTION_API_KEY=a-secure-api-key
 ```
 
-### Start
+### Start homelab-gateway (prerequisite)
+
+Niles requires the [homelab-gateway](../../homelab-gateway) for HTTPS routing. Start it first:
+
+```bash
+cd ~/Documents/homelab-gateway
+cp .env.example .env          # set TAILSCALE_IP (tailscale ip -4)
+make generate                 # generate DNS config from templates
+make up                       # start CoreDNS + Caddy
+```
+
+Then configure Tailscale Split-DNS (once): [Tailscale Admin → DNS](https://login.tailscale.com/admin/dns) → Add nameserver → your Tailscale IP → restrict to `home.lab`.
+
+### Start Niles
 
 ```bash
 ./scripts/start.sh
@@ -90,7 +103,7 @@ EVOLUTION_API_KEY=a-secure-api-key
 The script:
 1. Checks if Docker is running
 2. Builds the Niles Core image
-3. Starts all containers (PostgreSQL, Evolution API, Vikunja, Caddy, Niles Core)
+3. Starts all containers (PostgreSQL, Evolution API, Vikunja, Niles Core)
 4. Applies database migrations automatically (Alembic)
 5. Automatically creates the `vikunja_db` database
 6. Outputs the service URLs
@@ -255,7 +268,7 @@ Niles can be addressed directly in your own WhatsApp chat -- without a second pe
 The Evolution API has its own web interface:
 
 ```
-https://localhost:8443/manager
+https://whatsapp.example.local/manager
 ```
 
 Login with the `EVOLUTION_API_KEY` from `.env`.
@@ -409,11 +422,11 @@ VIKUNJA_JWT_SECRET=<generated-hex-string>
 ```bash
 VIKUNJA_API_URL=http://vikunja:3456/api/v1
 
-# For Tailscale/remote access: external URL for nav link + Vikunja web UI
-VIKUNJA_PUBLIC_URL=https://niles.example.ts.net:3457
+# External URL for nav link + Vikunja web UI
+VIKUNJA_PUBLIC_URL=https://vikunja.example.local
 ```
 
-**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` must be the **externally reachable** URL (port 3457).
+**Important:** `VIKUNJA_API_URL` must use the Docker-internal hostname `vikunja` (not `localhost`). `VIKUNJA_PUBLIC_URL` must be the **externally reachable** URL.
 
 #### 3. Start Containers
 
@@ -432,7 +445,7 @@ When a user logs in to Niles (via Google OAuth or API key), a Vikunja account is
 3. Niles creates a persistent API token (`tk_...`)
 4. The token is stored in `vikunja_credentials` (per-user)
 
-No manual account creation or token generation required. The Vikunja web UI (`https://<host>:3457`) is available for direct task management.
+No manual account creation or token generation required. The Vikunja web UI (`https://vikunja.example.local`) is available for direct task management.
 
 ### Verification
 
@@ -676,57 +689,53 @@ Then trigger a sync via the Settings UI. For embedding-only changes (e.g. chunk 
 
 ---
 
-## 13. HTTPS & Remote Access (Tailscale + Caddy)
+## 13. HTTPS & Remote Access (homelab-gateway + Tailscale)
 
-### Caddy (Reverse Proxy)
+### homelab-gateway (Reverse Proxy)
 
-[Caddy](https://caddyserver.com/docs/) runs as a Docker container and terminates TLS with **self-signed certificates**. Configuration in `docker/Caddyfile`.
+HTTPS termination and routing is handled by the **homelab-gateway** repository (separate docker-compose with CoreDNS + Caddy). Niles no longer ships its own Caddy configuration.
 
-#### Adjust Hostnames
+#### How It Works
 
-Caddy hostnames are configured via environment variables in `.env` (not hardcoded in the Caddyfile). Three variables control the three server blocks:
+- homelab-gateway runs Caddy as a reverse proxy on a shared `proxy` Docker network
+- Niles services connect to the `proxy` external network
+- Routing is subdomain-based (no port-based routing)
+- TLS certificates are managed by homelab-gateway's Caddy instance
 
-```bash
-# Comma-separated list of hostnames/IPs for each service
-CADDY_HOSTS_443=https://localhost, https://192.168.1.100, https://niles.example.ts.net
-CADDY_HOSTS_8443=https://localhost:8443, https://192.168.1.100:8443, https://niles.example.ts.net:8443
-CADDY_HOSTS_3457=https://localhost:3457, https://192.168.1.100:3457, https://niles.example.ts.net:3457
-```
+#### Subdomains
 
-Enter your own IPs/hostnames (Tailscale, LAN, etc.). After changes:
+| Subdomain | Service |
+| --------- | ------- |
+| niles.example.local | Niles Core (Web UI + API) |
+| whatsapp.example.local | Evolution API Manager |
+| vikunja.example.local | Vikunja Web UI |
 
-```bash
-./scripts/start.sh
-```
-
-#### Ports
+#### Other Ports
 
 | Port | Service | Access |
 | ---- | ------- | ------ |
-| 443 | Niles Web UI + API | HTTPS via Caddy |
-| 8443 | Evolution API Manager | HTTPS via Caddy |
-| 3457 | Vikunja Web UI | HTTPS via Caddy |
-| 11434 | Ollama API | HTTP local |
+| 11434 | Ollama API | HTTP local only |
+
+For homelab-gateway setup details, see the homelab-gateway README.
 
 ### Tailscale (Remote Access)
 
-[Tailscale](https://tailscale.com/kb/1081/magicdns) enables secure access from anywhere -- without port forwarding or VPN configuration. See also: [Tailscale HTTPS](https://tailscale.com/kb/1153/enabling-https).
+[Tailscale](https://tailscale.com/kb/1081/magicdns) enables secure access from anywhere -- without port forwarding or VPN configuration.
 
 #### Setup
 
 1. [Install Tailscale](https://tailscale.com/download)
 2. Log in on the Mac Mini: `tailscale up`
-3. Note the Tailscale IP or MagicDNS name (e.g., `niles.example.ts.net`)
-4. Add the hostname to `CADDY_HOSTS_*` in `.env` (see above)
-5. Set `BASE_URL` in `.env`:
+3. Configure Tailscale Split-DNS to route `*.example.local` to the Mac Mini's Tailscale IP
+4. Set `BASE_URL` in `.env`:
 
 ```bash
-BASE_URL=https://niles.example.ts.net
+BASE_URL=https://niles.example.local
 ```
 
-6. Restart: `./scripts/start.sh`
+5. Restart: `./scripts/start.sh`
 
-Niles is now accessible from any device on the Tailscale network.
+Niles is now accessible from any device on the Tailscale network via `https://niles.example.local`.
 
 ---
 
@@ -860,14 +869,6 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `LLM_MODEL` | `llama3.1:8b` | Ollama model |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
 
-**Caddy (reverse proxy hostnames):**
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `CADDY_HOSTS_443` | `https://localhost` | Hostnames for Niles Core (:443) |
-| `CADDY_HOSTS_8443` | `https://localhost:8443` | Hostnames for Evolution API (:8443) |
-| `CADDY_HOSTS_3457` | `https://localhost:3457` | Hostnames for Vikunja (:3457) |
-
 **Google OAuth (optional):**
 
 | Variable | Description |
@@ -881,7 +882,7 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | Variable | Description |
 | -------- | ----------- |
 | `VIKUNJA_API_URL` | API endpoint (`http://vikunja:3456/api/v1`) |
-| `VIKUNJA_PUBLIC_URL` | External URL for nav link + web UI (`https://<host>:3457`) |
+| `VIKUNJA_PUBLIC_URL` | External URL for nav link + web UI (`https://vikunja.example.local`) |
 | `VIKUNJA_JWT_SECRET` | JWT secret for the Vikunja container |
 
 **Signal (optional, configured via Settings UI):**
@@ -934,14 +935,13 @@ Contacts (CardDAV) and calendars (CalDAV) are configured via the **web UI** (Set
 
 | Port | Service | Protocol |
 | ---- | ------- | -------- |
-| 443 | Niles Web UI + API | HTTPS (Caddy, self-signed) |
-| 8443 | Evolution API Manager | HTTPS (Caddy, self-signed) |
-| 3457 | Vikunja Web UI | HTTPS (Caddy, self-signed) |
 | 11434 | Ollama API | HTTP (local only) |
-| 8000 | Niles Core (internal) | HTTP (not directly accessible) |
-| 8080 | Evolution API (internal) | HTTP (not directly accessible) |
+| 8000 | Niles Core (internal) | HTTP (proxy network) |
+| 8080 | Evolution API (internal) | HTTP (proxy network) |
 | 8080 | signal-cli-rest-api (internal, profile: signal) | HTTP (not directly accessible) |
 | 8080 | SearXNG (internal, profile: search) | HTTP (not directly accessible) |
+
+External HTTPS access is provided by homelab-gateway via subdomains (niles.example.local, whatsapp.example.local, vikunja.example.local).
 
 ### Scripts
 
