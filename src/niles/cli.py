@@ -1,13 +1,21 @@
 """Niles CLI — user management commands.
 
 Usage:
-    # Interactive (password prompt, not visible in ps):
+    # Create user (interactive):
     docker exec -it niles_core python -m niles.cli create-user \\
         --email admin@example.com --name "Admin"
 
-    # Non-interactive (for scripts):
+    # Create user (non-interactive):
     echo "secure-pw" | docker exec -i niles_core python -m niles.cli create-user \\
         --email admin@example.com --name "Admin" --password-stdin
+
+    # Reset password (interactive):
+    docker exec -it niles_core python -m niles.cli reset-password \\
+        --email admin@example.com
+
+    # Reset password (non-interactive):
+    echo "new-pw" | docker exec -i niles_core python -m niles.cli reset-password \\
+        --email admin@example.com --password-stdin
 """
 
 import argparse
@@ -24,9 +32,9 @@ from .user_store import UserStore
 ph = PasswordHasher()
 
 
-async def _create_user(email: str, name: str, password: str) -> None:
+async def _get_pool():
     settings = Settings()
-    pool = await asyncpg.create_pool(
+    return await asyncpg.create_pool(
         host=settings.postgres_host,
         port=settings.postgres_port,
         database=settings.postgres_db,
@@ -35,6 +43,32 @@ async def _create_user(email: str, name: str, password: str) -> None:
         min_size=1,
         max_size=2,
     )
+
+
+async def _reset_password(email: str, password: str) -> None:
+    pool = await _get_pool()
+    try:
+        store = UserStore(pool)
+        await store.initialize()
+
+        user = await store.get_by_email(email)
+        if not user:
+            print(f"Error: No user found with email '{email}'")
+            sys.exit(1)
+
+        hashed = ph.hash(password)
+        updated = await store.update_password(user["id"], hashed)
+        if updated:
+            print(f"Password reset for {email} (id={user['id']})")
+        else:
+            print(f"Error: Could not update password for '{email}'")
+            sys.exit(1)
+    finally:
+        await pool.close()
+
+
+async def _create_user(email: str, name: str, password: str) -> None:
+    pool = await _get_pool()
     try:
         store = UserStore(pool)
         await store.initialize()
@@ -79,6 +113,14 @@ def main() -> None:
         help="Read password from stdin (for scripts)",
     )
 
+    reset = sub.add_parser("reset-password", help="Reset password for existing user")
+    reset.add_argument("--email", required=True, help="User email address")
+    reset.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read password from stdin (for scripts)",
+    )
+
     args = parser.parse_args()
     if args.command == "create-user":
         password = _read_password(args)
@@ -86,6 +128,12 @@ def main() -> None:
             print("Error: password must be at least 8 characters")
             sys.exit(1)
         asyncio.run(_create_user(args.email, args.name, password))
+    elif args.command == "reset-password":
+        password = _read_password(args)
+        if len(password) < 8:
+            print("Error: password must be at least 8 characters")
+            sys.exit(1)
+        asyncio.run(_reset_password(args.email, password))
     else:
         parser.print_help()
         sys.exit(1)
