@@ -108,7 +108,7 @@ services:
   # Note-to-Self self-chat bug NOT yet fixed (upstream signal-cli #1930)
   signal_api:
     container_name: niles_signal_api
-    image: bbernhard/signal-cli-rest-api@sha256:be07effb5ef2de750862e106c6a8eab72a0d1df0b40f1aef560ceb105a1e1b0d  # 1771797934-ci
+    image: bbernhard/signal-cli-rest-api@sha256:419d08b18db00ecabd30386765662330fda85bdacc7c302f0cd541244895aeb5  # 1771797934-ci
     restart: unless-stopped
     environment:
       - MODE=json-rpc
