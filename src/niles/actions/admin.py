@@ -1,8 +1,19 @@
 """Admin user management: create, password reset, deactivate."""
 
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
 from argon2 import PasswordHasher
 
 from ..user_store import UserStore
+
+if TYPE_CHECKING:
+    from ..vikunja_provisioning import VikunjaProvisioner
+    from ..vikunja_store import VikunjaCredentialStore
+
+logger = logging.getLogger(__name__)
 
 
 class DuplicateEmailError(ValueError):
@@ -12,9 +23,17 @@ class DuplicateEmailError(ValueError):
 class AdminAction:
     """Admin user management with validation and password hashing."""
 
-    def __init__(self, user_store: UserStore):
+    def __init__(
+        self,
+        user_store: UserStore,
+        *,
+        vikunja_provisioner: VikunjaProvisioner | None = None,
+        vikunja_store: VikunjaCredentialStore | None = None,
+    ):
         self.user_store = user_store
         self._ph = PasswordHasher()
+        self._vikunja = vikunja_provisioner
+        self._vikunja_store = vikunja_store
 
     async def create_user(self, email: str, display_name: str, password: str) -> dict:
         """Validate, hash password, create user.
@@ -31,7 +50,16 @@ class AdminAction:
         if existing:
             raise DuplicateEmailError(f"E-Mail '{email}' ist bereits vergeben.")
         hashed = self._ph.hash(password)
-        return await self.user_store.create_password_user(email, display_name, hashed)
+        user = await self.user_store.create_password_user(email, display_name, hashed)
+
+        # Best-effort Vikunja password sync
+        if self._vikunja:
+            try:
+                await self._vikunja.sync_password(user["id"], email, password)
+            except Exception:
+                logger.warning("Vikunja sync failed for new user %s", email)
+
+        return user
 
     async def reset_password(self, user_id: int, password: str) -> None:
         """Validate and reset password.
@@ -45,6 +73,16 @@ class AdminAction:
             raise KeyError("User nicht gefunden.")
         hashed = self._ph.hash(password)
         await self.user_store.update_password(user_id, hashed)
+
+        # Mark Vikunja password as out-of-sync; will be re-synced on next login
+        if self._vikunja_store:
+            try:
+                await self._vikunja_store.set_password_synced(user_id, False)
+            except Exception:
+                logger.warning(
+                    "Failed to mark Vikunja password as unsynced for user_id=%d",
+                    user_id,
+                )
 
     async def deactivate_user(self, user_id: int, admin_uid: int) -> None:
         """Deactivate user.
