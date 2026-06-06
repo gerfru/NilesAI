@@ -6,63 +6,52 @@ import pytest
 
 from niles.actions.contacts import ContactsAction
 
-from tests.helpers import make_test_settings
-
 
 class TestContactsConnect:
     @pytest.mark.asyncio
-    async def test_success_persists_and_returns_settings(self):
-        store = AsyncMock()
-        carddav = AsyncMock()
-        carddav.test_connection.return_value = (True, "OK")
-        action = ContactsAction(AsyncMock(), settings_store=store, carddav_sync=carddav)
-        settings = make_test_settings()
+    async def test_success_creates_source_and_syncs(self):
+        manager = AsyncMock()
+        manager.test_connection.return_value = (True, "OK")
+        manager.add_source.return_value = {
+            "id": 1,
+            "name": "test",
+            "url": "https://dav.example.com",
+        }
+        action = ContactsAction(AsyncMock(), carddav_manager=manager)
 
         result = await action.connect(
-            "  https://dav.example.com  ", "  user  ", "pass", settings
+            "  https://dav.example.com  ", "  user  ", "pass", user_id=42
         )
 
-        assert result.carddav_url == "https://dav.example.com"
-        assert result.carddav_user == "user"
-        assert store.set.call_count == 3
-        store.set.assert_any_call("carddav_url", "https://dav.example.com")
-        store.set.assert_any_call("carddav_user", "user")
-        store.set.assert_any_call("carddav_password", "pass")
+        manager.test_connection.assert_called_once_with(
+            "https://dav.example.com", "user", "pass"
+        )
+        manager.add_source.assert_called_once_with(
+            "https://dav.example.com", "user", "pass", user_id=42
+        )
+        manager.sync_source.assert_called_once_with(1, user_id=42)
+        assert result["id"] == 1
 
     @pytest.mark.asyncio
-    async def test_connection_failure_raises_and_reverts(self):
-        store = AsyncMock()
-        carddav = AsyncMock()
-        carddav.test_connection.return_value = (False, "Auth failed")
-        action = ContactsAction(AsyncMock(), settings_store=store, carddav_sync=carddav)
-        settings = make_test_settings()
+    async def test_connection_failure_raises(self):
+        manager = AsyncMock()
+        manager.test_connection.return_value = (False, "Auth failed")
+        action = ContactsAction(AsyncMock(), carddav_manager=manager)
 
         with pytest.raises(ConnectionError, match="Auth failed"):
-            await action.connect("https://dav.example.com", "user", "pass", settings)
+            await action.connect("https://dav.example.com", "user", "pass", user_id=42)
 
-        store.set.assert_not_called()
-        # Config reverted to original
-        carddav.update_config.assert_called_with(settings)
+        manager.add_source.assert_not_called()
 
 
 class TestContactsDisconnect:
     @pytest.mark.asyncio
-    async def test_deletes_credentials_and_clears_contacts(self):
-        store = AsyncMock()
-        carddav = AsyncMock()
-        pool = AsyncMock()
-        action = ContactsAction(pool, settings_store=store, carddav_sync=carddav)
-        settings = make_test_settings(
-            carddav_url="https://dav.example.com",
-            carddav_user="user",
-        )
+    async def test_removes_source(self):
+        manager = AsyncMock()
+        manager.remove_source.return_value = True
+        action = ContactsAction(AsyncMock(), carddav_manager=manager)
 
-        result = await action.disconnect(settings)
+        result = await action.disconnect(source_id=1, user_id=42)
 
-        assert store.delete.call_count == 3
-        store.delete.assert_any_call("carddav_url")
-        store.delete.assert_any_call("carddav_user")
-        store.delete.assert_any_call("carddav_password")
-        assert result.carddav_url == ""
-        carddav.update_config.assert_called_once()
-        pool.execute.assert_called_once()  # clear_all
+        assert result is True
+        manager.remove_source.assert_called_once_with(1, user_id=42)

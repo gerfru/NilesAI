@@ -17,8 +17,6 @@ from niles.sources.web import (
     admin_create_user,
     admin_deactivate_user,
     admin_reset_password,
-    callback_google_calendar,
-    google_calendar_disconnect,
     chat_clear,
     chat_page,
     chat_send,
@@ -30,7 +28,6 @@ from niles.sources.web import (
     update_setting,
 )
 from niles.sources.web._auth import _login_attempts
-from niles.sources.web._calendar import _GCAL_OAUTH_COOKIE
 from niles.sources.web._chat import _CHAT_PAGE_SIZE
 from niles.sources.web._core import _verify_csrf
 
@@ -100,7 +97,6 @@ def _make_request(
     request.app.state.wa_store = wa_store
     request.app.state.vikunja_provisioner = None
     request.app.state.shutdown_event = None
-    request.app.state.google_token_store = AsyncMock()
     request.app.state.http_clients = http_clients or MagicMock()
     request.client.host = client_ip
     request.url.scheme = "http"
@@ -698,196 +694,6 @@ class TestChatStreamEndpoint:
         # Should contain error message and done event
         assert any("Fehler" in e.get("text", "") for e in events)
         assert events[-1]["type"] == "done"
-
-
-class TestGoogleCalendarCallback:
-    """Tests for callback_google_calendar OAuth flow."""
-
-    def _gcal_settings(self):
-        return _make_settings(
-            google_client_id="test-gid",
-            google_client_secret="test-gsecret",
-            base_url="https://niles.example.com",
-        )
-
-    def _gcal_request(self, *, state="valid-state", cookies=None, http_clients=None):
-        """Build request with session + gcal_oauth_state cookie."""
-        c = _auth_cookies()
-        c[_GCAL_OAUTH_COOKIE] = state
-        if cookies:
-            c.update(cookies)
-        request = _make_request(
-            cookies=c,
-            settings=self._gcal_settings(),
-            http_clients=http_clients,
-        )
-        request.app.state.calendar_manager = AsyncMock()
-        return request
-
-    async def test_rejects_without_session(self):
-        """Callback without login session redirects to login."""
-        request = _make_request(
-            cookies={_GCAL_OAUTH_COOKIE: "state"},
-            settings=self._gcal_settings(),
-        )
-        response = await callback_google_calendar(
-            request,
-            code="abc",
-            state="state",
-        )
-        assert response.status_code == 303
-        assert "/ui/login" in response.headers["location"]
-
-    async def test_rejects_invalid_state(self):
-        """Callback with mismatched state redirects with error."""
-        request = self._gcal_request(state="correct-state")
-        response = await callback_google_calendar(
-            request,
-            code="abc",
-            state="wrong-state",
-        )
-        assert response.status_code == 303
-        assert "error=calendar_connect_failed" in response.headers["location"]
-
-    async def test_rejects_missing_code(self):
-        """Callback without code redirects with error."""
-        request = self._gcal_request()
-        response = await callback_google_calendar(
-            request,
-            code="",
-            state="valid-state",
-        )
-        assert response.status_code == 303
-        assert "error=calendar_connect_failed" in response.headers["location"]
-
-    async def test_rejects_google_error(self):
-        """Callback with error param from Google redirects with error."""
-        request = self._gcal_request()
-        response = await callback_google_calendar(
-            request,
-            code="",
-            state="valid-state",
-            error="access_denied",
-        )
-        assert response.status_code == 303
-        assert "error=calendar_connect_failed" in response.headers["location"]
-
-    async def test_rejects_failed_token_exchange(self):
-        """Failed token exchange redirects with error."""
-        mock_token_resp = MagicMock()
-        mock_token_resp.status_code = 400
-
-        mock_http_clients = MagicMock()
-        mock_http_clients.google_oauth = AsyncMock()
-        mock_http_clients.google_oauth.post = AsyncMock(return_value=mock_token_resp)
-
-        request = self._gcal_request(http_clients=mock_http_clients)
-
-        response = await callback_google_calendar(
-            request,
-            code="test-code",
-            state="valid-state",
-        )
-
-        assert response.status_code == 303
-        assert "error=calendar_connect_failed" in response.headers["location"]
-
-    async def test_rejects_missing_refresh_token(self):
-        """Missing refresh_token redirects with error."""
-        mock_token_resp = MagicMock()
-        mock_token_resp.status_code = 200
-        mock_token_resp.json.return_value = {
-            "access_token": "at",
-            "expires_in": 3600,
-            # no refresh_token
-        }
-
-        mock_http_clients = MagicMock()
-        mock_http_clients.google_oauth = AsyncMock()
-        mock_http_clients.google_oauth.post = AsyncMock(return_value=mock_token_resp)
-
-        request = self._gcal_request(http_clients=mock_http_clients)
-
-        response = await callback_google_calendar(
-            request,
-            code="test-code",
-            state="valid-state",
-        )
-
-        assert response.status_code == 303
-        assert "error=calendar_connect_failed" in response.headers["location"]
-
-    async def test_successful_token_storage(self):
-        """Successful flow stores tokens and redirects to settings."""
-        mock_token_resp = MagicMock()
-        mock_token_resp.status_code = 200
-        mock_token_resp.json.return_value = {
-            "access_token": "at",
-            "refresh_token": "rt",
-            "expires_in": 3600,
-        }
-
-        mock_http_clients = MagicMock()
-        mock_google = AsyncMock()
-        mock_google.post = AsyncMock(return_value=mock_token_resp)
-        mock_http_clients.google_oauth = mock_google
-
-        request = self._gcal_request(http_clients=mock_http_clients)
-
-        response = await callback_google_calendar(
-            request,
-            code="test-code",
-            state="valid-state",
-        )
-
-        assert response.status_code == 303
-        assert response.headers["location"] == "/ui/settings"
-
-        # Verify tokens were stored via GoogleTokenStore
-        token_store = request.app.state.google_token_store
-        token_store.upsert_tokens.assert_called_once()
-        call_kwargs = token_store.upsert_tokens.call_args[1]
-        assert call_kwargs["refresh_token"] == "rt"
-        assert call_kwargs["access_token"] == "at"
-
-
-class TestGoogleCalendarDisconnect:
-    """Tests for google_calendar_disconnect endpoint."""
-
-    async def test_disconnect_requires_auth(self):
-        """Disconnect without session returns 401."""
-        request = _make_request(cookies={})
-        response = await google_calendar_disconnect(request)
-        assert response.status_code == 401
-
-    async def test_disconnect_calls_pool(self):
-        """Disconnect with valid auth calls user_mcp_pool.disconnect_user."""
-        request = _make_request(
-            cookies=_admin_cookies(),
-            headers={"x-csrf-token": CSRF_TOKEN},
-        )
-        mock_pool = AsyncMock()
-        request.app.state.user_mcp_pool = mock_pool
-
-        response = await google_calendar_disconnect(request)
-
-        assert response.status_code == 200
-        assert response.headers.get("hx-redirect") == "/ui/settings"
-        mock_pool.disconnect_user.assert_called_once_with(_TEST_USER["uid"])
-
-    async def test_disconnect_fallback_to_token_store(self):
-        """Without user_mcp_pool, falls back to token_store.delete_tokens."""
-        request = _make_request(
-            cookies=_admin_cookies(),
-            headers={"x-csrf-token": CSRF_TOKEN},
-        )
-        request.app.state.user_mcp_pool = None
-
-        response = await google_calendar_disconnect(request)
-
-        assert response.status_code == 200
-        token_store = request.app.state.google_token_store
-        token_store.delete_tokens.assert_called_once_with(_TEST_USER["uid"])
 
 
 def _admin_cookies():
