@@ -626,9 +626,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"script-src 'nonce-{nonce}' 'strict-dynamic' 'self'; "
-            "style-src 'self'; "
+            f"script-src 'nonce-{nonce}' 'strict-dynamic'; "
+            "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https://*.googleusercontent.com; "
+            "media-src 'self' data:; "
             "font-src 'self'; "
             "connect-src 'self'; "
             "base-uri 'self'; "

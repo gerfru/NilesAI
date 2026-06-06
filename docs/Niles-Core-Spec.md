@@ -499,7 +499,7 @@ class NilesAgent:
 | `mcp__gws__*` | varies | Google Calendar tools via per-user gws MCP (when Google connected). |
 | `mcp__weather__*` | varies | Weather tools via MCP (Open-Meteo, always active). |
 | `mcp__fetch__fetch_url` | `url: str, max_chars?: int` | Fetch and extract text from a web page (always active). SSRF-protected. |
-| `mcp__searxng__search` | `query: str, max_results?: int, ...` | Web search via SearXNG (when `feature_search=true`). |
+| `mcp__searxng__web_search` | `query: str, result_count?: int, ...` | Web search via SearXNG (when `feature_search=true`). |
 | `search_notion` | `query: str, max_results?: int` | Semantic search over Notion knowledge base (when `feature_notion=true`). |
 
 **Pipeline per event:**
@@ -803,7 +803,7 @@ The `enabled` field supports environment variable expansion and defaults to `"tr
 | ------ | ------ | ------------- | ----------- |
 | `weather` | `niles.mcp.weather` | Yes | Open-Meteo weather data (current + forecast) |
 | `fetch` | `niles.mcp.fetch` | Yes | Web page text extraction via trafilatura. SSRF protection (private IP blocklist). |
-| `searxng` | `searxng_simple_mcp.server` | No (`FEATURE_SEARCH`) | SearXNG meta search (Google, Bing, DuckDuckGo, Wikipedia). Requires SearXNG Docker container. |
+| `searxng` | `niles.mcp.search` | No (`FEATURE_SEARCH`) | SearXNG meta search (Google, Bing, DuckDuckGo, Wikipedia). Requires SearXNG Docker container. |
 
 **Destructive tool blocking:** During tool discovery, MCP tools with destructive name prefixes are automatically blocked (delete, remove, drop, destroy, purge, erase, wipe, truncate). Case-insensitive. Blocked tools are logged but not registered. This prevents an MCP server from accidentally exposing deletion capabilities to the LLM.
 
@@ -1429,7 +1429,7 @@ All containers on bridge network `niles_network` (internal) + `proxy` (external,
 | WhatsApp Gateway | Evolution API | v2.3.7 |
 | Signal Gateway | signal-cli-rest-api | 1771797934-ci (signal-cli v0.13.24) |
 | HTML Extraction | trafilatura | >= 2.0.0 |
-| Search MCP | searxng-simple-mcp | >= 0.3.0 |
+| Search MCP | niles.mcp.search (built-in) | — |
 | Search Engine | SearXNG | 2025.5.10-1b787ed35 (Docker) |
 
 ### pyproject.toml Dependencies
@@ -1456,8 +1456,7 @@ structlog>=24.1.0         # Structured JSON Logging
 prometheus-client>=0.21.0 # Prometheus Metrics
 websockets>=14.0          # Signal WebSocket listener
 trafilatura>=2.0.0        # HTML text extraction (Web Fetch MCP)
-fastmcp>=2.0,<3.0         # FastMCP (searxng-simple-mcp dependency, pinned <3)
-searxng-simple-mcp>=0.3.0 # SearXNG MCP client (Web Search)
+# MCP Web Search is built-in (src/niles/mcp/search)
 json-repair>=0.58.0       # Robust JSON repair for malformed LLM tool-call output
 ```
 

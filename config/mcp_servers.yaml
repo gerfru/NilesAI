@@ -23,13 +23,12 @@ servers:
   # Web Search via SearXNG (enabled when FEATURE_SEARCH=true)
   searxng:
     command: python
-    args: ["-m", "searxng_simple_mcp.server"]
+    args: ["-m", "niles.mcp.search"]
     enabled: "${FEATURE_SEARCH}"
     env:
-      SEARXNG_MCP_SEARXNG_URL: "${SEARXNG_URL}"
-      SEARXNG_MCP_DEFAULT_RESULT_COUNT: "10"
-      SEARXNG_MCP_DEFAULT_LANGUAGE: "de"
-      SEARXNG_MCP_DEFAULT_FORMAT: "text"
+      SEARXNG_URL: "${SEARXNG_URL}"
+      SEARXNG_RESULT_COUNT: "10"
+      SEARXNG_LANGUAGE: "de"
 
   # Web Fetch — extract text from URLs (always active, no external container)
   fetch:

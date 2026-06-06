@@ -1,3 +1,5 @@
+use_default_settings: true
+
 general:
   instance_name: "Niles Search"
   debug: false
@@ -23,4 +25,5 @@ default_doi_resolver: 'oadoi.org'
 # All default engines stay active except those explicitly disabled below.
 engines:
   - name: duckduckgo
+    engine: duckduckgo
     disabled: true    # CAPTCHA-Blockaden bei automatisierten Anfragen

@@ -57,11 +57,7 @@ dependencies = [
     # WebSocket client (Signal integration)
     "websockets>=14.0",
 
-    # MCP Web Search (SearXNG client — only active when feature_search=true)
-    # searxng-simple-mcp 1.2.0 passes deprecated log_level to FastMCP() —
-    # harmless deprecation warning, no crash.
-    "fastmcp>=3.2.0",
-    "searxng-simple-mcp>=0.3.0",
+    # MCP Web Search is built-in (src/niles/mcp/search)
 
     # HTML text extraction for web fetch MCP server
     "trafilatura>=2.0.0",
