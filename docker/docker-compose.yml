@@ -35,7 +35,7 @@ services:
   # Evolution API (WhatsApp)
   evolution_api:
     container_name: niles_evolution_api
-    image: evoapicloud/evolution-api@sha256:456b4104b0ddffbb092d6b3c0560a4ae86fc3e014e885b882aca4b1b371dfc81  # v2.3.7
+    image: evoapicloud/evolution-api@sha256:e15508de128b9ab232d9cabb2441ca897a4802fba2c8186ed384b4f4508767d9  # v2.3.7
     restart: unless-stopped
     # No port exposed -- access via gateway-caddy reverse proxy
     environment:
