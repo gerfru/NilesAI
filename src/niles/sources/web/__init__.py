@@ -48,14 +48,11 @@ from ._auth import (  # noqa: F401, E402
 )
 from ._briefing import briefing_test  # noqa: F401, E402
 from ._calendar import (  # noqa: F401, E402
-    callback_google_calendar,
     caldav_calendars,
     calendar_source_add,
     calendar_source_remove,
     calendar_source_sync,
     calendar_sources_list,
-    google_calendar_connect,
-    google_calendar_disconnect,
 )
 from ._chat import (  # noqa: F401, E402
     chat_clear,
