@@ -15,7 +15,8 @@ This document contains legal notices, third-party license obligations, risk disc
 5. [Vikunja — License Obligations](#5-vikunja--license-obligations)
 6. [Evolution API — License Obligations](#6-evolution-api--license-obligations)
 7. [Data Privacy (GDPR / DSGVO)](#7-data-privacy-gdpr--dsgvo)
-8. [General Disclaimer](#8-general-disclaimer)
+8. [AI Disclosure (EU AI Act Art. 52)](#8-ai-disclosure-eu-ai-act-art-52)
+9. [General Disclaimer](#9-general-disclaimer)
 
 ---
 
@@ -277,7 +278,43 @@ Operators processing personal data of third parties (e.g., contacts, message con
 
 ---
 
-## 8. General Disclaimer
+## 8. AI Disclosure (EU AI Act Art. 52)
+
+Niles AI is an **AI-powered personal assistant** that uses a locally-hosted
+Large Language Model (LLM) for natural language understanding, task execution,
+and text generation.
+
+### System Description
+
+| Property | Value |
+| -------- | ----- |
+| **AI System** | Niles AI (open-source, self-hosted) |
+| **Default Model** | Llama 3.1 8B (via Ollama, locally hosted) |
+| **Processing** | All LLM inference runs locally — no data sent to cloud AI providers |
+| **Purpose** | Personal assistant: calendar management, messaging, task management, web search |
+| **Risk Category** | Minimal risk (EU AI Act Art. 6) — personal productivity tool |
+
+### Transparency
+
+- All interactions with Niles AI are AI-generated responses.
+- The system executes tool calls (send messages, create events, manage tasks)
+  only after explicit user confirmation.
+- LLM outputs may be inaccurate, incomplete, or inappropriate.
+  Users should verify critical information independently.
+- The operator can configure the specific LLM model used via settings.
+
+### Limitations
+
+- Niles AI does not perform autonomous decision-making with legal or
+  significant personal effects.
+- The system does not perform biometric identification, social scoring,
+  or emotion recognition.
+- Output quality depends on the locally deployed model and available
+  hardware resources.
+
+---
+
+## 9. General Disclaimer
 
 Niles AI is provided **"as is"**, without warranty of any kind, express or implied. See the [MIT License](../LICENSE) for the full warranty disclaimer.
 
