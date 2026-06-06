@@ -356,17 +356,27 @@ document.body.addEventListener("htmx:afterRequest", function(evt) {
 });
 
 /* Calendar source add form -- show/hide auth fields based on type + populate hidden fields */
+function _syncCalAuthFields() {
+    var sel = document.getElementById("cal-source-type");
+    var authFields = document.getElementById("caldav-auth-fields");
+    if (!sel || !authFields) return;
+    if (sel.value === "caldav") {
+        authFields.classList.remove("hidden");
+    } else {
+        authFields.classList.add("hidden");
+    }
+}
+
 document.body.addEventListener("change", function(evt) {
     if (evt.target.id !== "cal-source-type") return;
-    const authFields = document.getElementById("caldav-auth-fields");
-    if (authFields) {
-        if (evt.target.value === "caldav") {
-            authFields.classList.remove("hidden");
-        } else {
-            authFields.classList.add("hidden");
-        }
-    }
+    _syncCalAuthFields();
 });
+
+/* Init on page load (handles browser form-state restoration which skips change events) */
+_syncCalAuthFields();
+
+/* Re-init after HTMX settles (in case the form DOM is swapped) */
+document.body.addEventListener("htmx:afterSettle", _syncCalAuthFields);
 
 document.body.addEventListener("click", function(evt) {
     if (!evt.target.hasAttribute("data-calendar-add")) return;

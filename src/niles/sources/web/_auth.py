@@ -13,7 +13,6 @@ from argon2.exceptions import VerifyMismatchError
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ...mcp.user_pool import GOOGLE_TOKEN_URL
 from ._core import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
@@ -28,6 +27,8 @@ from ._core import (
     router,
     templates,
 )
+
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 logger = logging.getLogger(__name__)
 
