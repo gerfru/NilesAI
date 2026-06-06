@@ -48,6 +48,7 @@ class ToolContext:
     resolve_vikunja: Callable[..., Awaitable[Any]]
     get_own_phone_number: Callable[..., Awaitable[str | None]]
     pending_phone_choices: dict[str, dict]
+    pending_confirmations: dict[str, dict]
     notion_retriever: Any = None  # actions.notion.NotionRetriever
     user_mcp_pool: UserMCPPool | None = None
     user_id: int | None = None

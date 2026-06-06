@@ -38,10 +38,10 @@ class TestCreateUser:
         action = AdminAction(AsyncMock())
 
         with pytest.raises(ValueError, match="Alle Felder"):
-            await action.create_user("", "Name", "password123")
+            await action.create_user("", "Name", "password12345")
 
         with pytest.raises(ValueError, match="Alle Felder"):
-            await action.create_user("email@test.com", "", "password123")
+            await action.create_user("email@test.com", "", "password12345")
 
         with pytest.raises(ValueError, match="Alle Felder"):
             await action.create_user("email@test.com", "Name", "")
@@ -50,7 +50,7 @@ class TestCreateUser:
     async def test_short_password_raises(self):
         action = AdminAction(AsyncMock())
 
-        with pytest.raises(ValueError, match="mindestens 8 Zeichen"):
+        with pytest.raises(ValueError, match="mindestens 12 Zeichen"):
             await action.create_user("a@b.com", "Name", "short")
 
     @pytest.mark.asyncio
@@ -60,7 +60,7 @@ class TestCreateUser:
         action = AdminAction(user_store)
 
         with pytest.raises(DuplicateEmailError, match="bereits vergeben"):
-            await action.create_user("dup@test.com", "Name", "password123")
+            await action.create_user("dup@test.com", "Name", "password12345")
 
 
 class TestResetPassword:
@@ -81,7 +81,7 @@ class TestResetPassword:
     async def test_short_password_raises(self):
         action = AdminAction(AsyncMock())
 
-        with pytest.raises(ValueError, match="mindestens 8 Zeichen"):
+        with pytest.raises(ValueError, match="mindestens 12 Zeichen"):
             await action.reset_password(1, "short")
 
     @pytest.mark.asyncio
@@ -91,7 +91,7 @@ class TestResetPassword:
         action = AdminAction(user_store)
 
         with pytest.raises(KeyError, match="nicht gefunden"):
-            await action.reset_password(999, "password123")
+            await action.reset_password(999, "password12345")
 
 
 class TestDeactivateUser:
@@ -120,6 +120,34 @@ class TestDeactivateUser:
 
         with pytest.raises(KeyError, match="nicht gefunden"):
             await action.deactivate_user(999, admin_uid=1)
+
+
+class TestHardDeleteUser:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {"id": 2, "email": "user@test.com"}
+        action = AdminAction(user_store)
+
+        await action.hard_delete_user(2, admin_uid=1)
+
+        user_store.hard_delete_user.assert_called_once_with(2)
+
+    @pytest.mark.asyncio
+    async def test_self_deletion_raises(self):
+        action = AdminAction(AsyncMock())
+
+        with pytest.raises(ValueError, match="Eigenen Account"):
+            await action.hard_delete_user(1, admin_uid=1)
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_raises(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = None
+        action = AdminAction(user_store)
+
+        with pytest.raises(KeyError, match="nicht gefunden"):
+            await action.hard_delete_user(999, admin_uid=1)
 
 
 class TestListUsers:
