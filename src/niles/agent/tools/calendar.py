@@ -1,6 +1,7 @@
 """Calendar tools: find_event and create_event."""
 
 import logging
+import time
 
 import httpx
 
@@ -67,14 +68,39 @@ async def handle_create_event(args: dict, chat_id: str, ctx: ToolContext) -> dic
         writable = await ctx.calendar_manager.get_writable_source(user_id=ctx.user_id)
         if not writable:
             return {"error": "Kein beschreibbarer Kalender konfiguriert"}
-        return await ctx.calendar_manager.create_event(
-            source=writable,
-            summary=args["summary"],
-            dtstart_str=args["start"],
-            dtend_str=args.get("end"),
-            description=args.get("description", ""),
-            location=args.get("location", ""),
-        )
+
+        # Store pending confirmation and ask user
+        summary = args["summary"]
+        start = args["start"]
+        end = args.get("end", "")
+        location = args.get("location", "")
+
+        details = [f"Titel: {summary}", f"Start: {start}"]
+        if end:
+            details.append(f"Ende: {end}")
+        if location:
+            details.append(f"Ort: {location}")
+
+        ctx.pending_confirmations[chat_id] = {
+            "action": "create_event",
+            "params": {
+                "source": writable,
+                "summary": summary,
+                "dtstart_str": start,
+                "dtend_str": end or None,
+                "description": args.get("description", ""),
+                "location": location,
+            },
+            "display": f"Termin: {summary} am {start}",
+            "expires_at": time.monotonic() + 300,
+        }
+        return {
+            "confirm": (
+                "Soll ich diesen Termin erstellen?\n"
+                + "\n".join(details)
+                + "\n\nAntworte mit ja oder nein."
+            )
+        }
     except httpx.HTTPError as e:
         logger.error("HTTP error creating event: %s", e)
         return {"error": "Termin konnte nicht erstellt werden (Netzwerkfehler)"}

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from niles.crypto import FieldEncryptor
 from niles.google_token_store import GoogleTokenStore
 
 
@@ -67,3 +68,54 @@ class TestGoogleTokenStore:
         store.pool.execute.assert_called_once()
         sql = store.pool.execute.call_args[0][0]
         assert "DELETE FROM user_google_tokens" in sql
+
+
+class TestGoogleTokenStoreEncryption:
+    """Test that GoogleTokenStore encrypts/decrypts tokens."""
+
+    @pytest.fixture
+    def enc(self):
+        return FieldEncryptor(FieldEncryptor.generate_key())
+
+    @pytest.fixture
+    def store(self, enc):
+        pool = AsyncMock()
+        return GoogleTokenStore(pool, encryptor=enc)
+
+    async def test_upsert_encrypts_tokens(self, store, enc):
+        await store.upsert_tokens(
+            user_id=5,
+            refresh_token="rt-secret",
+            access_token="at-secret",
+        )
+        args = store.pool.execute.call_args[0]
+        # args[2] = refresh_token, args[3] = access_token
+        assert args[2].startswith("v1:")
+        assert args[3].startswith("v1:")
+        assert enc.decrypt(args[2]) == "rt-secret"
+        assert enc.decrypt(args[3]) == "at-secret"
+
+    async def test_get_decrypts_tokens(self, store, enc):
+        store.pool.fetchrow.return_value = {
+            "user_id": 5,
+            "refresh_token": enc.encrypt("rt-secret"),
+            "access_token": enc.encrypt("at-secret"),
+            "token_expiry": None,
+            "scopes": "calendar",
+        }
+        result = await store.get_tokens(5)
+        assert result["refresh_token"] == "rt-secret"
+        assert result["access_token"] == "at-secret"
+
+    async def test_get_decrypts_legacy_plaintext(self, store):
+        """Pre-encryption plaintext tokens are returned as-is."""
+        store.pool.fetchrow.return_value = {
+            "user_id": 5,
+            "refresh_token": "legacy-rt",
+            "access_token": "legacy-at",
+            "token_expiry": None,
+            "scopes": "",
+        }
+        result = await store.get_tokens(5)
+        assert result["refresh_token"] == "legacy-rt"
+        assert result["access_token"] == "legacy-at"

@@ -983,7 +983,7 @@ class TestAdminEndpoints:
         }
         admin_action = AsyncMock()
         admin_action.create_user.side_effect = ValueError(
-            "Passwort muss mindestens 8 Zeichen lang sein."
+            "Passwort muss mindestens 12 Zeichen lang sein."
         )
         admin_action.list_users.return_value = []
         request = _make_request(
@@ -1106,7 +1106,7 @@ class TestAdminEndpoints:
         }
         admin_action = AsyncMock()
         admin_action.reset_password.side_effect = ValueError(
-            "Passwort muss mindestens 8 Zeichen lang sein."
+            "Passwort muss mindestens 12 Zeichen lang sein."
         )
         request = _make_request(
             cookies=_admin_cookies(),

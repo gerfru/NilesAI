@@ -71,6 +71,9 @@ dependencies = [
 
     # Notion workspace integration (RAG pipeline)
     "notion-client>=2.0.0",
+
+    # Column-level credential encryption (Fernet AES-128-CBC + HMAC)
+    "cryptography>=44.0",
 ]
 
 [project.optional-dependencies]
