@@ -89,6 +89,36 @@ async def _create_user(email: str, name: str, password: str) -> None:
         await pool.close()
 
 
+async def _delete_user(email: str, confirm: bool) -> None:
+    pool = await _get_pool()
+    try:
+        store = UserStore(pool)
+        await store.initialize()
+
+        user = await store.get_by_email(email)
+        if not user:
+            print(f"Error: No user found with email '{email}'")
+            sys.exit(1)
+
+        if not confirm:
+            answer = input(
+                f"Permanently delete user '{email}' (id={user['id']}) "
+                "and ALL associated data? [y/N]: "
+            )
+            if answer.strip().lower() not in ("y", "yes"):
+                print("Aborted.")
+                sys.exit(0)
+
+        deleted = await store.hard_delete_user(user["id"])
+        if deleted:
+            print(f"User '{email}' (id={user['id']}) and all data permanently deleted.")
+        else:
+            print(f"Error: Could not delete user '{email}'")
+            sys.exit(1)
+    finally:
+        await pool.close()
+
+
 def _read_password(args) -> str:
     """Read password from --password-stdin or interactive prompt."""
     if args.password_stdin:
@@ -97,7 +127,7 @@ def _read_password(args) -> str:
             print("Error: empty password from stdin")
             sys.exit(1)
         return pw
-    return getpass.getpass("Password (min 8 chars): ")
+    return getpass.getpass("Password (min 12 chars): ")
 
 
 def main() -> None:
@@ -121,19 +151,31 @@ def main() -> None:
         help="Read password from stdin (for scripts)",
     )
 
+    delete = sub.add_parser(
+        "delete-user", help="Permanently delete a user and all data (GDPR Art. 17)"
+    )
+    delete.add_argument("--email", required=True, help="User email address")
+    delete.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Skip confirmation prompt (for scripts)",
+    )
+
     args = parser.parse_args()
     if args.command == "create-user":
         password = _read_password(args)
-        if len(password) < 8:
-            print("Error: password must be at least 8 characters")
+        if len(password) < 12:
+            print("Error: password must be at least 12 characters")
             sys.exit(1)
         asyncio.run(_create_user(args.email, args.name, password))
     elif args.command == "reset-password":
         password = _read_password(args)
-        if len(password) < 8:
-            print("Error: password must be at least 8 characters")
+        if len(password) < 12:
+            print("Error: password must be at least 12 characters")
             sys.exit(1)
         asyncio.run(_reset_password(args.email, password))
+    elif args.command == "delete-user":
+        asyncio.run(_delete_user(args.email, args.confirm))
     else:
         parser.print_help()
         sys.exit(1)

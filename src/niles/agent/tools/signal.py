@@ -1,6 +1,7 @@
 """Signal tools: send_signal and get_signal_messages."""
 
 import logging
+import time
 
 from . import ToolContext, register_tool
 from .formatting import format_message_transcript
@@ -31,13 +32,35 @@ async def handle_send_signal(args: dict, chat_id: str, ctx: ToolContext) -> dict
             "Du kannst diese Funktion in den Einstellungen aktivieren."
         }
 
-    # 4. Send message
+    # 4. Confirmation before sending (skip for self-messages)
     if not ctx.signal:
         return {"error": "Signal ist nicht konfiguriert"}
-    result = await ctx.signal.send_message(to=resolved_number, text=text)
-    return (
-        {"status": "sent", "to": resolved_number} if "error" not in result else result
-    )
+
+    if is_self:
+        result = await ctx.signal.send_message(to=resolved_number, text=text)
+        return (
+            {"status": "sent", "to": resolved_number}
+            if "error" not in result
+            else result
+        )
+
+    # Store pending confirmation and ask user
+    display_to = to if to != resolved_number else resolved_number
+    ctx.pending_confirmations[chat_id] = {
+        "action": "send_signal",
+        "params": {"to": resolved_number, "text": text},
+        "display": f"Signal an {display_to}: {text[:100]}",
+        "expires_at": time.monotonic() + 300,
+    }
+    preview = text[:200] + ("..." if len(text) > 200 else "")
+    return {
+        "confirm": (
+            f"Soll ich diese Signal-Nachricht senden?\n"
+            f"An: {display_to}\n"
+            f"Text: {preview}\n\n"
+            f"Antworte mit ja oder nein."
+        )
+    }
 
 
 @register_tool("get_signal_messages")
