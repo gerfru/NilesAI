@@ -1,14 +1,21 @@
 """Calendar source manager – unified CRUD, sync, and .env migration."""
 
+from __future__ import annotations
+
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import asyncpg
 import httpx
 
 from niles.http_retry import retry_http
+from niles.network import is_private_host
+
+if TYPE_CHECKING:
+    from niles.crypto import FieldEncryptor
 
 from .caldav import (
     CalDAVSync,
@@ -47,10 +54,13 @@ class CalendarSourceManager:
         pool: asyncpg.Pool,
         settings,
         client: httpx.AsyncClient | None = None,
+        *,
+        encryptor: FieldEncryptor | None = None,
     ):
         self.pool = pool
         self.settings = settings
         self._client = client or httpx.AsyncClient(timeout=10)
+        self._enc = encryptor
 
     async def initialize(self) -> None:
         """Run post-migration business logic.
@@ -75,8 +85,12 @@ class CalendarSourceManager:
         """Add a new calendar source. Returns the created row."""
         if not url.startswith("https://"):
             raise ValueError("Nur HTTPS-URLs sind erlaubt")
-        # Strip embedded credentials from URL (https://user:pass@host → https://host)
+        # SSRF protection: block private/internal IPs
         parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        if is_private_host(hostname):
+            raise ValueError("Interne Adressen sind nicht erlaubt")
+        # Strip embedded credentials from URL
         if parsed.username or parsed.password:
             url = parsed._replace(
                 netloc=(parsed.hostname or "")
@@ -89,6 +103,11 @@ class CalendarSourceManager:
         if source_type not in ("ics", "caldav"):
             raise ValueError(f"Unbekannter Typ: {source_type}")
 
+        enc_password = (
+            self._enc.encrypt(auth_password)
+            if self._enc and auth_password
+            else auth_password
+        )
         row = await self.pool.fetchrow(
             """
             INSERT INTO calendar_sources
@@ -102,7 +121,7 @@ class CalendarSourceManager:
             source_type,
             writable,
             auth_user,
-            auth_password,
+            enc_password,
             user_id,
         )
         logger.info("Added calendar source: %s (%s)", name, source_type)
@@ -325,11 +344,12 @@ class CalendarSourceManager:
             raise
 
     def _build_auth(self, source: dict) -> httpx.Auth | None:
-        """Build httpx auth for a source. Returns None for ICS."""
+        """Build httpx auth for a source (decrypts password). Returns None for ICS."""
         if source["source_type"] == "caldav":
-            return httpx.BasicAuth(
-                source["auth_user"] or "", source["auth_password"] or ""
-            )
+            password = source["auth_password"] or ""
+            if self._enc and password:
+                password = self._enc.decrypt(password)
+            return httpx.BasicAuth(source["auth_user"] or "", password)
         return None
 
     # --- Event creation ---

@@ -82,6 +82,8 @@ class ContextBuilder:
         self._source_names_ts: dict[int | None, float] = {}
         # Pending phone choice: chat_id → {phones, text, contact_name, expires_at}
         self._pending_phone_choices: dict[str, dict] = {}
+        # Generic pending confirmations: chat_id → {action, params, display, expires_at}
+        self._pending_confirmations: dict[str, dict] = {}
 
     async def resolve_user_id(self, chat_id: str) -> int | None:
         """Extract user_id from chat_id, resolving phone lookups as needed.
@@ -222,6 +224,72 @@ class ContextBuilder:
         if "error" not in result:
             return f"Nachricht an {pending['contact_name']} (00{phone}) gesendet."
         return f"Fehler beim Senden: {result['error']}"
+
+    async def handle_confirmation(self, chat_id: str, content: str) -> str | None:
+        """If user is responding to a confirmation prompt, execute or cancel.
+
+        Returns the reply text if handled, or None if not a pending confirmation.
+        Accepts: ja/yes/ok/1 → execute, nein/no/abbrechen/2 → cancel.
+        Anything else → clear pending state and return None (falls through to LLM).
+        """
+        if chat_id not in self._pending_confirmations:
+            return None
+
+        pending = self._pending_confirmations[chat_id]
+
+        # Expire stale confirmations (5 min TTL)
+        if time.monotonic() > pending.get("expires_at", float("inf")):
+            del self._pending_confirmations[chat_id]
+            return None
+
+        stripped = content.strip().lower()
+
+        # Accept
+        if stripped in ("ja", "yes", "ok", "1", "j", "y"):
+            del self._pending_confirmations[chat_id]
+            return await self._execute_confirmed_action(pending, chat_id)
+
+        # Reject
+        if stripped in ("nein", "no", "abbrechen", "2", "n"):
+            del self._pending_confirmations[chat_id]
+            return "Aktion abgebrochen."
+
+        # Unrecognized → clear pending state and let LLM handle
+        del self._pending_confirmations[chat_id]
+        return None
+
+    async def _execute_confirmed_action(self, pending: dict, chat_id: str) -> str:
+        """Execute a previously confirmed action."""
+        action = pending["action"]
+        params = pending["params"]
+        try:
+            if action == "send_whatsapp":
+                result = await self.whatsapp.send_message(**params)
+                if "error" not in result:
+                    return f"Nachricht an {params['to']} gesendet."
+                return f"Fehler beim Senden: {result['error']}"
+
+            if action == "send_signal":
+                if self.signal is None:
+                    return "Signal ist nicht konfiguriert."
+                result = await self.signal.send_message(**params)
+                if "error" not in result:
+                    return f"Signal-Nachricht an {params['to']} gesendet."
+                return f"Fehler beim Senden: {result['error']}"
+
+            if action == "create_event":
+                if self.calendar_manager is None:
+                    return "Kalender ist nicht konfiguriert."
+                result = await self.calendar_manager.create_event(**params)
+                if isinstance(result, dict) and "error" in result:
+                    return f"Fehler: {result['error']}"
+                return "Termin erstellt."
+
+            logger.warning("Unknown confirmed action: %s", action)
+            return "Unbekannte Aktion."
+        except Exception:
+            logger.exception("Error executing confirmed action %s", action)
+            return "Fehler bei der Ausführung."
 
     async def prepare_messages(
         self, event: dict, tools: list

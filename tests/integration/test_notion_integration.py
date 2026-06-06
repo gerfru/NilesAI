@@ -50,7 +50,17 @@ class TestNotionRetriever:
         # seeding INSERTs and the search query run on the same connection
         # within the same rolled-back transaction.
 
-        # Use a unique document that won't collide with production data
+        # Force sequential scan — pgvector's HNSW index uses approximate
+        # nearest-neighbor search and may miss rows inserted within an
+        # uncommitted transaction (the index graph still contains deleted
+        # nodes and the new node may be unreachable via graph traversal).
+        await db_conn.execute("SET LOCAL enable_indexscan = OFF")
+
+        # Clear existing data so production embeddings don't drown out
+        # the test document.  The outer transaction rolls this back.
+        await db_conn.execute("DELETE FROM notion_embeddings")
+        await db_conn.execute("DELETE FROM notion_pages")
+
         unique_text = "Xylophon-Reparaturanleitung für linkshändige Astronauten"
         page_title = "IntegTest Xylophon Handbuch"
 

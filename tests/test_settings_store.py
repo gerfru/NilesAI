@@ -1,9 +1,18 @@
 """Tests for runtime settings store and apply_overrides."""
 
+import json
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from niles.config import Settings, apply_overrides
-from niles.settings_store import EDITABLE_SETTINGS, _validate_key
+from niles.crypto import FieldEncryptor
+from niles.settings_store import (
+    EDITABLE_SETTINGS,
+    SettingsStore,
+    _ENCRYPTED_KEYS,
+    _validate_key,
+)
 
 
 class TestEditableWhitelist:
@@ -136,3 +145,68 @@ class TestApplyOverrides:
         )
         assert result.timezone == "US/Eastern"
         assert result.log_level == "DEBUG"
+
+
+class TestSettingsStoreEncryption:
+    """Test that SettingsStore encrypts/decrypts sensitive keys."""
+
+    @pytest.fixture
+    def enc(self):
+        return FieldEncryptor(FieldEncryptor.generate_key())
+
+    @pytest.fixture
+    def conn(self):
+        """Mock connection with transaction context manager."""
+        conn = AsyncMock()
+        # conn.transaction() is a sync call returning an async context manager
+        tx_ctx = MagicMock()
+        tx_ctx.__aenter__ = AsyncMock()
+        tx_ctx.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=tx_ctx)
+        return conn
+
+    @pytest.fixture
+    def store(self, enc, conn):
+        pool = AsyncMock()
+        # asyncpg pool.acquire() is a sync call returning an async context manager
+        acq_ctx = MagicMock()
+        acq_ctx.__aenter__ = AsyncMock(return_value=conn)
+        acq_ctx.__aexit__ = AsyncMock(return_value=False)
+        pool.acquire = MagicMock(return_value=acq_ctx)
+        return SettingsStore(pool, encryptor=enc)
+
+    def test_encrypted_keys_are_editable(self):
+        """All keys in _ENCRYPTED_KEYS must be in EDITABLE_SETTINGS."""
+        assert _ENCRYPTED_KEYS.issubset(EDITABLE_SETTINGS)
+
+    async def test_set_encrypts_sensitive_key(self, store, enc, conn):
+        await store.set("notion_token", "ntn_secret_abc123")
+        args = conn.execute.call_args[0]
+        stored_json = args[2]
+        stored_value = json.loads(stored_json)
+        assert stored_value.startswith("v1:")
+        assert enc.decrypt(stored_value) == "ntn_secret_abc123"
+
+    async def test_set_does_not_encrypt_nonsensitive_key(self, store, conn):
+        await store.set("llm_model", "gpt-4o")
+        args = conn.execute.call_args[0]
+        stored_json = args[2]
+        assert json.loads(stored_json) == "gpt-4o"
+
+    async def test_get_all_decrypts_sensitive_keys(self, store, enc):
+        encrypted_token = enc.encrypt("ntn_secret_abc123")
+        store.pool.fetch.return_value = [
+            {"key": "notion_token", "value": json.dumps(encrypted_token)},
+            {"key": "llm_model", "value": json.dumps("gpt-4o")},
+        ]
+        result = await store.get_all()
+        assert result["notion_token"] == "ntn_secret_abc123"
+        assert result["llm_model"] == "gpt-4o"
+
+    async def test_get_all_handles_legacy_plaintext(self, store):
+        """Pre-encryption plaintext values are returned as-is."""
+        store.pool.fetch.return_value = [
+            {"key": "notion_token", "value": json.dumps("plain-legacy-token")},
+        ]
+        result = await store.get_all()
+        assert result["notion_token"] == "plain-legacy-token"

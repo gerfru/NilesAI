@@ -153,3 +153,31 @@ async def admin_deactivate_user(request: Request, user_id: int):
         content="User deaktiviert.",
         headers={"HX-Trigger": "userUpdated"},
     )
+
+
+@router.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(request: Request, user_id: int):
+    """Permanently delete a user and all data (GDPR Art. 17, admin only)."""
+    admin, error = await _require_admin(request)
+    if error:
+        return error
+    assert admin is not None
+
+    admin_action = request.app.state.admin_action
+
+    try:
+        await admin_action.hard_delete_user(user_id, admin["uid"])
+    except ValueError as e:
+        return Response(content=str(e), status_code=400)
+    except KeyError as e:
+        return Response(content=str(e), status_code=404)
+
+    logger.info(
+        "Admin %s hard-deleted user_id=%s (GDPR Art. 17)",
+        admin["email"],
+        user_id,
+    )
+    return Response(
+        content="User und alle Daten gelöscht.",
+        headers={"HX-Trigger": "userUpdated"},
+    )

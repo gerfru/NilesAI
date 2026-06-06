@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     notion_summary_max_tokens: int = 200  # max LLM output tokens for summary
     feature_notion: bool = False
 
+    # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    credential_encryption_key: str = ""
+
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False

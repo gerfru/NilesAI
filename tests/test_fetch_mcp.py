@@ -287,7 +287,7 @@ class TestIsPrivateHost:
 
     def test_private_ip_is_private(self):
         with patch(
-            "niles.mcp.fetch.server.socket.getaddrinfo",
+            "niles.network.socket.getaddrinfo",
             return_value=[
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))
             ],
@@ -296,7 +296,7 @@ class TestIsPrivateHost:
 
     def test_public_ip_is_not_private(self):
         with patch(
-            "niles.mcp.fetch.server.socket.getaddrinfo",
+            "niles.network.socket.getaddrinfo",
             return_value=[
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
             ],
@@ -305,7 +305,7 @@ class TestIsPrivateHost:
 
     def test_unresolvable_host_returns_false(self):
         with patch(
-            "niles.mcp.fetch.server.socket.getaddrinfo",
+            "niles.network.socket.getaddrinfo",
             side_effect=socket.gaierror("not found"),
         ):
             assert _is_private_host("nonexistent.invalid") is False

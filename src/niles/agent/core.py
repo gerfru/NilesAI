@@ -494,6 +494,15 @@ class NilesAgent:
             yield {"type": "done"}
             return
 
+        # Intercept pending confirmation (bypass LLM entirely)
+        reply = await self._ctx.handle_confirmation(chat_id, event["content"])
+        if reply is not None:
+            await self.history.add_message(chat_id, "user", _history_content)
+            await self.history.add_message(chat_id, "assistant", reply)
+            yield {"type": "chunk", "text": reply}
+            yield {"type": "done"}
+            return
+
         chat_id, messages, all_tools = await self._prepare_messages(event)
         _temperature = 0.3 if not all_tools else 0.7
 
@@ -661,6 +670,15 @@ class NilesAgent:
                     yield {"type": "done"}
                     return
 
+                # confirm → bypass LLM, ask user for confirmation
+                if isinstance(result, dict) and "confirm" in result:
+                    text = result["confirm"]
+                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "assistant", text)
+                    yield {"type": "chunk", "text": text}
+                    yield {"type": "done"}
+                    return
+
                 messages.append(
                     {
                         "role": "tool",
@@ -694,6 +712,13 @@ class NilesAgent:
 
         # Intercept pending phone choice (bypass LLM entirely)
         reply = await self._handle_phone_choice(chat_id, event["content"])
+        if reply is not None:
+            await self.history.add_message(chat_id, "user", _history_content)
+            await self.history.add_message(chat_id, "assistant", reply)
+            return reply
+
+        # Intercept pending confirmation (bypass LLM entirely)
+        reply = await self._ctx.handle_confirmation(chat_id, event["content"])
         if reply is not None:
             await self.history.add_message(chat_id, "user", _history_content)
             await self.history.add_message(chat_id, "assistant", reply)
@@ -757,6 +782,13 @@ class NilesAgent:
                         )
                         await self.history.add_message(chat_id, "assistant", text)
                         return text
+                    if isinstance(result, dict) and "confirm" in result:
+                        text = result["confirm"]
+                        await self.history.add_message(
+                            chat_id, "user", _history_content
+                        )
+                        await self.history.add_message(chat_id, "assistant", text)
+                        return text
                     messages.append(
                         {
                             "role": "tool",
@@ -799,6 +831,13 @@ class NilesAgent:
                     await self.history.add_message(chat_id, "assistant", text)
                     return text
 
+                # confirm → bypass LLM, ask user for confirmation
+                if isinstance(result, dict) and "confirm" in result:
+                    text = result["confirm"]
+                    await self.history.add_message(chat_id, "user", event["content"])
+                    await self.history.add_message(chat_id, "assistant", text)
+                    return text
+
                 messages.append(
                     {
                         "role": "tool",
@@ -835,6 +874,7 @@ class NilesAgent:
             resolve_vikunja=self._resolve_vikunja_tasks,
             get_own_phone_number=self._get_own_phone_number,
             pending_phone_choices=self._pending_phone_choices,
+            pending_confirmations=self._pending_confirmations,
             notion_retriever=getattr(self, "notion_retriever", None),
         )
 
