@@ -73,7 +73,8 @@ jobs:
         # --skip-editable: skip niles-core (not on PyPI)
         # CVE-2025-69872: diskcache pickle deserialisation (transitive via trafilatura, no fix available)
         # GHSA-pjjw-68hj-v9mw: uv RECORD path traversal on uninstall (build tool, not runtime dep; fixed in uv >=0.11.6)
-        run: uv run --extra dev pip-audit --desc --skip-editable --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw
+        # PYSEC-2026-196: pip console_scripts path traversal (build tool, not runtime; fixed in pip >=26.1.2)
+        run: uv run --extra dev pip-audit --desc --skip-editable --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw --ignore-vuln PYSEC-2026-196
 
   secret-scan:
     runs-on: ubuntu-latest

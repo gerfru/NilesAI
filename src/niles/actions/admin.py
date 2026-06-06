@@ -25,8 +25,8 @@ class AdminAction:
         display_name = display_name.strip()
         if not email or not display_name or not password:
             raise ValueError("Alle Felder müssen ausgefüllt sein.")
-        if len(password) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen lang sein.")
+        if len(password) < 12:
+            raise ValueError("Passwort muss mindestens 12 Zeichen lang sein.")
         existing = await self.user_store.get_by_email(email)
         if existing:
             raise DuplicateEmailError(f"E-Mail '{email}' ist bereits vergeben.")
@@ -38,8 +38,8 @@ class AdminAction:
 
         Raises ValueError for short password, KeyError if user not found.
         """
-        if len(password) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen lang sein.")
+        if len(password) < 12:
+            raise ValueError("Passwort muss mindestens 12 Zeichen lang sein.")
         target = await self.user_store.get_by_id(user_id)
         if not target:
             raise KeyError("User nicht gefunden.")
@@ -57,6 +57,18 @@ class AdminAction:
         if not target:
             raise KeyError("User nicht gefunden.")
         await self.user_store.deactivate_user(user_id)
+
+    async def hard_delete_user(self, user_id: int, admin_uid: int) -> None:
+        """Permanently delete user and all data (GDPR Art. 17).
+
+        Raises ValueError if deleting self, KeyError if user not found.
+        """
+        if admin_uid == user_id:
+            raise ValueError("Eigenen Account kann man nicht löschen.")
+        target = await self.user_store.get_by_id(user_id)
+        if not target:
+            raise KeyError("User nicht gefunden.")
+        await self.user_store.hard_delete_user(user_id)
 
     async def list_users(self) -> list[dict]:
         """List all users for admin page."""
