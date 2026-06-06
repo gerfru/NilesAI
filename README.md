@@ -137,7 +137,7 @@ The LLM can invoke these tools during conversations:
 | `send_signal`           | Send Signal message (by name or number)  |
 | `get_signal_messages`   | Read Signal chat history (last 30 days)  |
 | `mcp__fetch__fetch_url` | Fetch and extract text from a web page   |
-| `mcp__searxng__search`  | Web search via SearXNG (when enabled)    |
+| `mcp__searxng__web_search` | Web search via SearXNG (when enabled) |
 | `search_notion`         | Semantic search over Notion knowledge base |
 | `mcp__weather__*`       | Weather data (current + forecast)        |
 

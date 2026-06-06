@@ -706,7 +706,7 @@ Fetches a web page and extracts the main text content (strips navigation, ads, f
 - Max response size: 5 MB
 - Max redirects: 5
 
-### mcp__searxng__search
+### mcp__searxng__web_search
 
 Web search via SearXNG meta search engine. Only available when `FEATURE_SEARCH=true`.
 
