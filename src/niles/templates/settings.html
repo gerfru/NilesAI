@@ -199,43 +199,7 @@
 
 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-semibold mb-1 text-zinc-900 dark:text-white">Kalenderquellen</h3>
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">ICS-Abonnements (nur lesen), CalDAV-Kalender (lesen + schreiben) und Google Kalender (via OAuth). Termine erscheinen in der Kalendersuche.</p>
-
-    {% if calendar_error is defined and calendar_error %}
-    <p class="text-sm text-red-500 dark:text-red-400 py-2 mb-2">{{ calendar_error }}</p>
-    {% endif %}
-
-    {% if google_configured is defined and google_configured %}
-    <div class="flex items-center gap-3 mb-4">
-        {% if google_connected is defined and google_connected %}
-        <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg">
-            <svg class="w-[18px] h-[18px] shrink-0" width="18" height="18" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            Google Kalender verbunden
-        </span>
-        <button hx-post="/ui/api/calendar/google/disconnect"
-                hx-confirm="Google Kalender wirklich trennen?"
-                class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-white dark:bg-zinc-700 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
-            Trennen
-        </button>
-        {% else %}
-        <a href="/ui/api/calendar/google/connect"
-           class="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-600 shadow-sm no-underline transition-colors">
-            <svg class="w-[18px] h-[18px] shrink-0" width="18" height="18" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            Google Kalender verbinden
-        </a>
-        {% endif %}
-    </div>
-    {% endif %}
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">ICS-Abonnements (nur lesen) und CalDAV-Kalender (lesen + schreiben). Termine erscheinen in der Kalendersuche.</p>
 
     <div class="mb-4" id="calendar-add-form">
         <div class="flex flex-col sm:flex-row gap-2 mb-2">
@@ -293,6 +257,23 @@
             Quellen werden geladen...
         </div>
     </div>
+
+    <details class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+        <summary class="cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-300">
+            Wo finde ich die Kalender-URL?
+        </summary>
+        <div class="mt-2 space-y-1.5 pl-4">
+            <p><strong>Google Kalender:</strong> Einstellungen &rarr; Kalender waehlen &rarr;
+               "Geheime Adresse im iCal-Format" kopieren (ICS, nur lesen)</p>
+            <p><strong>Outlook / Office 365:</strong> Einstellungen &rarr; Kalender &rarr;
+               Freigegebene Kalender &rarr; ICS-Link kopieren (nur lesen)</p>
+            <p><strong>Apple iCloud:</strong> Kalender-App &rarr; Kalender teilen &rarr;
+               Oeffentlicher Kalender &rarr; URL kopieren. Fuer CalDAV:
+               caldav.icloud.com mit App-spezifischem Passwort</p>
+            <p><strong>Nextcloud:</strong> Kalender-App &rarr; &#x22EF; neben dem Kalender &rarr;
+               "Link kopieren" (CalDAV, lesen + schreiben)</p>
+        </div>
+    </details>
 </div>
 
 {# === Kontakte === #}

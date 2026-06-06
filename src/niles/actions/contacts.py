@@ -5,9 +5,6 @@ import re
 
 import asyncpg
 
-from ..config import Settings, apply_overrides
-from ..settings_store import SettingsStore
-
 logger = logging.getLogger(__name__)
 
 
@@ -40,82 +37,79 @@ class ContactsAction:
         self,
         pool: asyncpg.Pool,
         *,
-        settings_store: SettingsStore | None = None,
-        carddav_sync=None,
+        carddav_manager=None,
     ):
         self.pool = pool
-        self.settings_store = settings_store
-        self.carddav_sync = carddav_sync
+        self.carddav_manager = carddav_manager
 
-    async def get_sync_status(self) -> dict:
-        """Return contact count and last sync timestamp."""
-        row = await self.pool.fetchrow(
-            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
-        )
+    async def get_sync_status(self, user_id: int | None = None) -> dict:
+        """Return contact count and last sync timestamp, optionally per user."""
+        if user_id is not None:
+            row = await self.pool.fetchrow(
+                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync "
+                "FROM contacts WHERE user_id = $1",
+                user_id,
+            )
+        else:
+            row = await self.pool.fetchrow(
+                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
+            )
         return dict(row) if row else {"cnt": 0, "last_sync": None}
 
-    async def clear_all(self) -> None:
-        """Remove all contacts (disconnect cleanup)."""
-        await self.pool.execute("DELETE FROM contacts")
-        logger.info("All contacts cleared")
+    async def clear_all(self, user_id: int | None = None) -> None:
+        """Remove contacts, optionally scoped to a user."""
+        if user_id is not None:
+            await self.pool.execute("DELETE FROM contacts WHERE user_id = $1", user_id)
+            logger.info("Contacts cleared for user %d", user_id)
+        else:
+            await self.pool.execute("DELETE FROM contacts")
+            logger.info("All contacts cleared")
 
     async def connect(
         self,
         url: str,
         user: str,
         password: str,
-        current_settings: Settings,
-    ) -> Settings:
-        """Test CardDAV connection, persist credentials, return updated Settings.
+        user_id: int | None = None,
+    ) -> dict:
+        """Test CardDAV connection, create source, trigger initial sync.
 
-        Raises ConnectionError on test failure.
-        Requires settings_store and carddav_sync to be set at construction time.
+        Returns the created source dict.
+        Raises ConnectionError on test failure, ValueError on invalid input.
         """
-        if self.settings_store is None:
+        if self.carddav_manager is None:
             raise RuntimeError(
-                "ContactsAction requires settings_store for connect/disconnect"
-            )
-        if self.carddav_sync is None:
-            raise RuntimeError(
-                "ContactsAction requires carddav_sync for connect/disconnect"
+                "ContactsAction requires carddav_manager for connect/disconnect"
             )
         url, user = url.strip(), user.strip()
 
-        new_settings = apply_overrides(
-            current_settings,
-            {"carddav_url": url, "carddav_user": user, "carddav_password": password},
-        )
-        self.carddav_sync.update_config(new_settings)
-
-        ok, message = await self.carddav_sync.test_connection()
+        ok, message = await self.carddav_manager.test_connection(url, user, password)
         if not ok:
-            self.carddav_sync.update_config(current_settings)
             raise ConnectionError(message)
 
-        await self.settings_store.set("carddav_url", url)
-        await self.settings_store.set("carddav_user", user)
-        await self.settings_store.set("carddav_password", password)
-        return new_settings
-
-    async def disconnect(self, current_settings: Settings) -> Settings:
-        """Remove CardDAV credentials, clear contacts, return updated Settings."""
-        if self.settings_store is None:
-            raise RuntimeError(
-                "ContactsAction requires settings_store for connect/disconnect"
-            )
-        for key in ("carddav_url", "carddav_user", "carddav_password"):
-            await self.settings_store.delete(key)
-
-        new_settings = apply_overrides(
-            current_settings,
-            {"carddav_url": "", "carddav_user": "", "carddav_password": ""},
+        source = await self.carddav_manager.add_source(
+            url, user, password, user_id=user_id
         )
-        if self.carddav_sync:
-            self.carddav_sync.update_config(new_settings)
-        await self.clear_all()
-        return new_settings
 
-    async def find_by_name(self, name: str) -> dict | None:
+        # Run initial sync for the new source
+        try:
+            await self.carddav_manager.sync_source(source["id"], user_id=user_id)
+        except Exception:
+            logger.exception("Initial CardDAV sync failed for source %d", source["id"])
+
+        return source
+
+    async def disconnect(self, source_id: int, user_id: int | None = None) -> bool:
+        """Remove a CardDAV source (contacts are CASCADE-deleted)."""
+        if self.carddav_manager is None:
+            raise RuntimeError(
+                "ContactsAction requires carddav_manager for connect/disconnect"
+            )
+        return await self.carddav_manager.remove_source(source_id, user_id=user_id)
+
+    async def find_by_name(
+        self, name: str, *, user_id: int | None = None
+    ) -> dict | None:
         """
         Search contact by name (case-insensitive, partial match).
 
@@ -134,8 +128,8 @@ class ContactsAction:
         words = name.split()
         if len(words) > 1:
             # Multi-word search: each word must appear in at least one name field
-            word_conditions = []
-            params = []
+            word_conditions: list[str] = []
+            params: list[str | int] = []
             for i, word in enumerate(words):
                 p = f"${i + 1}"
                 word_conditions.append(
@@ -149,11 +143,19 @@ class ContactsAction:
             name_param = f"${len(params) + 1}"
             params.append(name)
 
+            # Optional user_id filter
+            if user_id is not None:
+                uid_param = f"${len(params) + 1}"
+                params.append(user_id)
+                user_filter = f" AND user_id = {uid_param}"
+            else:
+                user_filter = ""
+
             query = f"""
                 SELECT id, full_name, first_name, last_name,
                        phone_primary, phone_mobile, phone_work, email
                 FROM contacts
-                WHERE {where_clause}
+                WHERE {where_clause}{user_filter}
                 ORDER BY
                     CASE
                         WHEN LOWER(full_name) = LOWER({name_param}) THEN 1
@@ -167,26 +169,50 @@ class ContactsAction:
             row = await self.pool.fetchrow(query, *params)
         else:
             # Single-word search: original logic
-            row = await self.pool.fetchrow(
-                """
-                SELECT id, full_name, first_name, last_name,
-                       phone_primary, phone_mobile, phone_work, email
-                FROM contacts
-                WHERE full_name ILIKE '%' || $1 || '%'
-                   OR first_name ILIKE '%' || $1 || '%'
-                   OR last_name ILIKE '%' || $1 || '%'
-                ORDER BY
-                    CASE
-                        WHEN LOWER(full_name) = LOWER($1) THEN 1
-                        WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                        WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                        ELSE 4
-                    END,
-                    full_name ASC
-                LIMIT 1
-                """,
-                name,
-            )
+            if user_id is not None:
+                row = await self.pool.fetchrow(
+                    """
+                    SELECT id, full_name, first_name, last_name,
+                           phone_primary, phone_mobile, phone_work, email
+                    FROM contacts
+                    WHERE (full_name ILIKE '%' || $1 || '%'
+                       OR first_name ILIKE '%' || $1 || '%'
+                       OR last_name ILIKE '%' || $1 || '%')
+                       AND user_id = $2
+                    ORDER BY
+                        CASE
+                            WHEN LOWER(full_name) = LOWER($1) THEN 1
+                            WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
+                            WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
+                            ELSE 4
+                        END,
+                        full_name ASC
+                    LIMIT 1
+                    """,
+                    name,
+                    user_id,
+                )
+            else:
+                row = await self.pool.fetchrow(
+                    """
+                    SELECT id, full_name, first_name, last_name,
+                           phone_primary, phone_mobile, phone_work, email
+                    FROM contacts
+                    WHERE full_name ILIKE '%' || $1 || '%'
+                       OR first_name ILIKE '%' || $1 || '%'
+                       OR last_name ILIKE '%' || $1 || '%'
+                    ORDER BY
+                        CASE
+                            WHEN LOWER(full_name) = LOWER($1) THEN 1
+                            WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
+                            WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
+                            ELSE 4
+                        END,
+                        full_name ASC
+                    LIMIT 1
+                    """,
+                    name,
+                )
 
         if not row:
             return None

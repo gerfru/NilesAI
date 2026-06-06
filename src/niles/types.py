@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from niles.settings_store import SettingsStore
     from niles.signal_store import SignalMessageStore
     from niles.sync.caldav import CalDAVSync
-    from niles.sync.carddav import CardDAVSync
+    from niles.sync.carddav_manager import CardDAVSourceManager
     from niles.sync.manager import CalendarSourceManager
     from niles.user_store import UserStore
     from niles.actions.notion import NotionRetriever
@@ -46,7 +46,7 @@ class AppState(Protocol):
     caldav: CalDAVSync | None
     calendar_manager: CalendarSourceManager
     wa_store: WhatsAppSessionStore
-    carddav_sync: CardDAVSync
+    carddav_manager: CardDAVSourceManager
     vikunja_store: VikunjaCredentialStore
     vikunja_provisioner: VikunjaProvisioner | None
     briefing_generator: BriefingGenerator
