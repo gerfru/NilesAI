@@ -51,13 +51,11 @@ from .sources.web import router as web_router
 from .user_store import UserStore
 from .signal_store import SignalMessageStore
 from .sources.signal import signal_listener
-from .google_token_store import GoogleTokenStore
-from .mcp.user_pool import UserMCPPool
 from .vikunja_store import VikunjaCredentialStore
 from .whatsapp_store import WhatsAppSessionStore
 from .sources.whatsapp import router as whatsapp_router
 from .sync.caldav import CalDAVSync
-from .sync.carddav import CardDAVSync
+from .sync.carddav_manager import CardDAVSourceManager
 from .sync.manager import CalendarSourceManager
 
 logger = logging.getLogger(__name__)
@@ -213,8 +211,11 @@ async def lifespan(app: FastAPI):
     # Weather action (location search + persistence)
     weather_action = WeatherAction(settings_store, http_client=http_clients.geocoding)
 
-    # CardDAV Sync
-    carddav_sync = CardDAVSync(pool, settings, client=http_clients.general)
+    # CardDAV Source Manager (per-user CardDAV contact sources)
+    carddav_manager = CardDAVSourceManager(
+        pool, encryptor=encryptor, client=http_clients.general
+    )
+    await carddav_manager.initialize()
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
     caldav_sync = None
@@ -244,9 +245,11 @@ async def lifespan(app: FastAPI):
 
     scheduler = AsyncIOScheduler()
 
-    if settings.carddav_url:
+    # CardDAV daily sync (all sources)
+    carddav_sources = await carddav_manager.get_sources()
+    if carddav_sources:
         scheduler.add_job(
-            carddav_sync.sync_contacts,
+            carddav_manager.sync_all,
             "cron",
             hour=3,
             minute=0,
@@ -254,8 +257,11 @@ async def lifespan(app: FastAPI):
             max_instances=1,
             misfire_grace_time=300,
         )
-        asyncio.create_task(carddav_sync.sync_contacts())
-        logger.info("CardDAV sync scheduled (daily at 03:00)")
+        asyncio.create_task(carddav_manager.sync_all())
+        logger.info(
+            "CardDAV sync scheduled (daily at 03:00), %d source(s)",
+            len(carddav_sources),
+        )
 
     calendar = None
     if settings.caldav_url or calendar_sources:
@@ -342,23 +348,8 @@ async def lifespan(app: FastAPI):
     mcp_manager = MCPManager()
     await mcp_manager.start_all()
 
-    # Per-user Google MCP pool (gws instances per user)
-    google_token_store = GoogleTokenStore(pool, encryptor=encryptor)
-    user_mcp_pool = None
-    if settings.google_client_id and settings.google_client_secret:
-        user_mcp_pool = UserMCPPool(
-            token_store=google_token_store,
-            google_client_id=settings.google_client_id,
-            google_client_secret=settings.google_client_secret,
-            google_client=http_clients.google_oauth,
-        )
-        await user_mcp_pool.start()
-        logger.info("Per-user Google MCP pool initialized")
-
     # Actions
-    contacts = ContactsAction(
-        pool, settings_store=settings_store, carddav_sync=carddav_sync
-    )
+    contacts = ContactsAction(pool, carddav_manager=carddav_manager)
     vikunja_setup = VikunjaSetupAction(
         vikunja_store,
         http_client=http_clients.general,
@@ -402,7 +393,6 @@ async def lifespan(app: FastAPI):
         signal=signal_action,
         signal_store=signal_store,
         http_client=http_clients.general,
-        user_mcp_pool=user_mcp_pool,
     )
 
     # Notion RAG sync + embeddings + retrieval
@@ -489,7 +479,7 @@ async def lifespan(app: FastAPI):
     app.state.caldav = caldav_sync
     app.state.calendar_manager = calendar_manager
     app.state.wa_store = wa_store
-    app.state.carddav_sync = carddav_sync
+    app.state.carddav_manager = carddav_manager
     app.state.vikunja_store = vikunja_store
     app.state.vikunja_setup_action = vikunja_setup
     app.state.wa_setup_action = wa_setup_action
@@ -500,8 +490,6 @@ async def lifespan(app: FastAPI):
     app.state.signal_store = signal_store
     app.state.signal_setup_action = signal_setup_action
     app.state.http_clients = http_clients
-    app.state.google_token_store = google_token_store
-    app.state.user_mcp_pool = user_mcp_pool
     app.state.notion_store = notion_store
     app.state.notion_sync = notion_sync
     app.state.notion_embedder = notion_embedder
@@ -553,8 +541,6 @@ async def lifespan(app: FastAPI):
         await ollama_embedder.close()
     if notion_summarizer:
         await notion_summarizer.close()
-    if user_mcp_pool:
-        await user_mcp_pool.stop()
     await mcp_manager.stop_all()
     scheduler.shutdown(wait=False)
     await http_clients.close_all()

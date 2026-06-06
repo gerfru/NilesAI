@@ -90,7 +90,6 @@ def _make_ctx():
     ctx.mcp = None
     ctx.signal = None
     ctx.notion_retriever = None
-    ctx.user_mcp_pool = None
     return ctx
 
 

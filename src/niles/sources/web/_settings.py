@@ -10,7 +10,6 @@ from openai import AsyncOpenAI
 from ._core import (
     _USER_EDITABLE_SETTINGS,
     _ensure_csrf_cookie,
-    _google_configured,
     _require_admin,
     _require_admin_page,
     _require_auth_and_csrf,
@@ -31,18 +30,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
         return auth_error
     assert user is not None
 
-    # Map error codes to user-visible messages
-    error_msg = ""
-    if error == "calendar_connect_failed":
-        error_msg = "Google Kalender-Verbindung fehlgeschlagen. Bitte erneut versuchen."
-
     safe = _safe_settings_dict(request.app.state.settings)
-
-    # Check if user has connected Google Calendar
-    google_connected = False
-    token_store = getattr(request.app.state, "google_token_store", None)
-    if token_store:
-        google_connected = await token_store.has_tokens(user["uid"])
 
     response = templates.TemplateResponse(
         request,
@@ -52,9 +40,6 @@ async def settings_page(request: Request, error: str = Query(default="")):
             **safe.get("weather", {}),
             "active_page": "settings",
             "user": user,
-            "google_configured": _google_configured(request),
-            "google_connected": google_connected,
-            "calendar_error": error_msg,
             "signal_api_url": bool(request.app.state.settings.signal_api_url),
             "vikunja_url": request.app.state.settings.vikunja_public_url or "",
         },
@@ -132,11 +117,6 @@ async def update_setting(request: Request, key: str, value: str = Form(...)):
         caldav = getattr(request.app.state, "caldav", None)
         if caldav:
             caldav.config = new_settings
-        # Hot-reload CardDAV credentials when they change
-        if key.startswith("carddav_"):
-            carddav_sync = getattr(request.app.state, "carddav_sync", None)
-            if carddav_sync:
-                carddav_sync.update_config(new_settings)
         # Hot-reload LLM settings on the running agent
         agent = request.app.state.agent
         if agent is not None:
