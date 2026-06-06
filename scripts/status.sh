@@ -50,19 +50,39 @@ if RESPONSE=$(curl -sk https://whatsapp.home.lab/ 2>&1); then
     if echo "$RESPONSE" | grep -q "Welcome to the Evolution API"; then
         echo "  Running on https://whatsapp.home.lab"
 
-        # Check WhatsApp instance status
+        # Check WhatsApp instance status (instance names are dynamic: niles-wa-{user_id})
         echo ""
-        echo "  WhatsApp Instance:"
-        if INSTANCE=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://whatsapp.home.lab/instance/connectionState/niles-whatsapp 2>&1); then
-            if echo "$INSTANCE" | grep -q '"state":"open"'; then
-                echo "    Connected"
-            elif echo "$INSTANCE" | grep -q '"state":"connecting"'; then
-                echo "    Connecting (scan QR code)"
+        echo "  WhatsApp Instances:"
+        if INSTANCES=$(curl -sk -H "apikey: ${EVOLUTION_API_KEY}" https://whatsapp.home.lab/instance/fetchInstances 2>&1); then
+            INSTANCE_COUNT=$(echo "$INSTANCES" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if not data:
+        print('NONE')
+    else:
+        for inst in data:
+            name = inst.get('name', '?')
+            status = inst.get('connectionStatus', 'unknown')
+            profile = inst.get('profileName', '')
+            label = f'{name}: {status}'
+            if profile:
+                label += f' ({profile})'
+            print(label)
+except Exception:
+    print('ERROR')
+" 2>&1)
+            if [ "$INSTANCE_COUNT" = "NONE" ]; then
+                echo "    No instances created"
+            elif [ "$INSTANCE_COUNT" = "ERROR" ]; then
+                echo "    Could not parse response"
             else
-                echo "    Disconnected"
+                echo "$INSTANCE_COUNT" | while read -r line; do
+                    echo "    $line"
+                done
             fi
         else
-            echo "    Not created yet"
+            echo "    API not reachable"
         fi
     else
         echo "  Not responding correctly"
@@ -83,7 +103,7 @@ fi
 # Check Signal API
 echo ""
 echo "Signal API:"
-FEATURE_SIGNAL=$(grep -s '^FEATURE_SIGNAL=' .env | cut -d= -f2-)
+FEATURE_SIGNAL=$(grep -s '^FEATURE_SIGNAL=' .env | cut -d= -f2- || true)
 if [ "${FEATURE_SIGNAL:-}" = "true" ]; then
     if RESPONSE=$(curl -s http://localhost:8080/v1/about 2>&1); then
         echo "  Running"

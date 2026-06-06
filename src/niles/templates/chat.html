@@ -47,9 +47,13 @@
         </div>
         {% endif %}
         {% if not messages and not has_more %}
-        <div class="chat-empty flex items-center justify-center h-full text-zinc-400 italic">
-            {% if readonly %}
-                Noch keine WhatsApp-Interaktionen.
+        <div class="chat-empty flex items-center justify-center h-full text-zinc-400 italic text-center px-4">
+            {% if readonly and channel == "whatsapp" %}
+                Noch keine WhatsApp-Nachrichten.<br>
+                <span class="text-xs">Schreibe dir auf WhatsApp eine Nachricht mit
+                <strong class="not-italic">Hey Niles, ...</strong> um Niles zu nutzen.</span>
+            {% elif readonly %}
+                Noch keine Interaktionen.
             {% else %}
                 Starte eine Unterhaltung...
             {% endif %}

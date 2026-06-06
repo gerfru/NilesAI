@@ -57,8 +57,6 @@ closed-source distribution.
 | tenacity | Apache-2.0 | [github.com/jd/tenacity](https://github.com/jd/tenacity) |
 | openai | Apache-2.0 | [github.com/openai/openai-python](https://github.com/openai/openai-python) |
 | mcp | MIT | [github.com/modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
-| fastmcp | Apache-2.0 | [gofastmcp.com](https://gofastmcp.com) |
-| searxng-simple-mcp | MIT | [pypi.org/project/searxng-simple-mcp](https://pypi.org/project/searxng-simple-mcp/) |
 | pydantic-settings | MIT | [github.com/pydantic/pydantic-settings](https://github.com/pydantic/pydantic-settings) |
 | Jinja2 | BSD | [github.com/pallets/jinja](https://github.com/pallets/jinja) |
 | structlog | MIT / Apache-2.0 | [github.com/hynek/structlog](https://github.com/hynek/structlog) |
