@@ -6,7 +6,7 @@ services:
   # PostgreSQL for Evolution API
   evolution_postgres:
     container_name: niles_evolution_postgres
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
     restart: unless-stopped
     # Postgres port: loopback only, random port by default (not discoverable).
     # For debugging, set in .env: POSTGRES_HOST_PORT=5432
