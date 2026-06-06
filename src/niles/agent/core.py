@@ -14,7 +14,6 @@ from ..actions.signal import SignalAction
 from ..actions.whatsapp import WhatsAppAction
 from ..config import Settings
 from ..mcp.client import MCPManager
-from ..mcp.user_pool import UserMCPPool
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
@@ -417,7 +416,6 @@ class NilesAgent:
         signal: SignalAction | None = None,
         signal_store: SignalMessageStore | None = None,
         http_client: httpx.AsyncClient | None = None,
-        user_mcp_pool: UserMCPPool | None = None,
     ):
         self.notion_retriever: object | None = None
         self.llm = AsyncOpenAI(
@@ -440,7 +438,6 @@ class NilesAgent:
             signal=signal,
             signal_store=signal_store,
             http_client=http_client,
-            user_mcp_pool=user_mcp_pool,
         )
 
     def __getattr__(self, name: str):
@@ -922,7 +919,6 @@ class NilesAgent:
             vikunja_store=self.vikunja_store,
             wa_store=self.wa_store,
             mcp=self.mcp,
-            user_mcp_pool=getattr(self._ctx, "user_mcp_pool", None),
             user_id=user_id,
             resolve_contact_phone=self._resolve_contact_phone,
             resolve_wa_instance=self._resolve_wa_instance,

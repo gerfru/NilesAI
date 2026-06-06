@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from ..actions.signal import SignalAction
     from ..actions.whatsapp import WhatsAppAction
     from ..mcp.client import MCPManager
-    from ..mcp.user_pool import UserMCPPool
     from ..signal_store import SignalMessageStore
     from ..sync.manager import CalendarSourceManager
     from ..vikunja_store import VikunjaCredentialStore
@@ -58,7 +57,6 @@ class ContextBuilder:
         signal: "SignalAction | None" = None,
         signal_store: "SignalMessageStore | None" = None,
         http_client: "httpx.AsyncClient | None" = None,
-        user_mcp_pool: "UserMCPPool | None" = None,
     ):
         self.config = config
         self.contacts = contacts
@@ -74,7 +72,6 @@ class ContextBuilder:
         self.signal = signal
         self.signal_store = signal_store
         self._http_client = http_client
-        self.user_mcp_pool = user_mcp_pool
         self.notion_retriever: object | None = None
 
         # Cached calendar source names per user (refreshed every 5 minutes)
@@ -397,17 +394,6 @@ class ContextBuilder:
                     "MCP tools added: %s",
                     [t["function"]["name"] for t in mcp_tools],
                 )
-        # Per-user gws tools (Google Calendar via gws MCP)
-        if self.user_mcp_pool and uid is not None:
-            gws_tools = await self.user_mcp_pool.get_openai_tools(uid)
-            if gws_tools:
-                all_tools.extend(gws_tools)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(
-                        "gws tools added for user %d: %s",
-                        uid,
-                        [t["function"]["name"] for t in gws_tools],
-                    )
         return chat_id, messages, all_tools
 
     # Backward-compatible aliases — tests and older code use underscore-prefixed names.

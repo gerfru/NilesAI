@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from niles.config import Settings
 from niles.sync.carddav import CardDAVSync
 
 
@@ -61,24 +60,17 @@ END:VCARD"""
 
 
 @pytest.fixture
-def config():
-    return Settings(
-        postgres_password="test",
-        evolution_api_key="test",
-        carddav_url="https://dav.example.com/carddav/32",
-        carddav_user="testuser",
-        carddav_password="testpass",
-    )
-
-
-@pytest.fixture
 def pool():
     return AsyncMock()
 
 
 @pytest.fixture
-def sync(pool, config):
-    return CardDAVSync(pool, config)
+def sync(pool):
+    return CardDAVSync(
+        pool,
+        carddav_url="https://dav.example.com/carddav/32",
+        auth=("testuser", "testpass"),
+    )
 
 
 class TestPropfind:
@@ -191,7 +183,7 @@ class TestUpsertContact:
 
         # fetchval for RETURNING id
         sql = pool.fetchval.call_args[0][0]
-        assert "ON CONFLICT (cardav_uid) DO UPDATE" in sql
+        assert "ON CONFLICT (cardav_uid, COALESCE(user_id, -1)) DO UPDATE" in sql
         assert "RETURNING id" in sql
         args = pool.fetchval.call_args[0][1:]
         assert "Test User" in args

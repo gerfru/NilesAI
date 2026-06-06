@@ -1,4 +1,4 @@
-"""CardDAV contact sync from mailbox.org to PostgreSQL."""
+"""CardDAV contact sync to PostgreSQL."""
 
 import logging
 import re
@@ -7,8 +7,6 @@ import asyncpg
 import httpx
 
 from niles.http_retry import retry_http
-
-from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,24 +30,22 @@ class CardDAVSync:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        config: Settings,
+        *,
+        carddav_url: str,
+        auth: tuple[str, str],
+        user_id: int | None = None,
+        source_id: int | None = None,
         client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
-        self.carddav_url = config.carddav_url
-        self.auth = (config.carddav_user, config.carddav_password)
+        self.carddav_url = carddav_url
+        self.auth = auth
+        self.user_id = user_id
+        self.source_id = source_id
         # Base URL for fetching individual vCards (scheme + host)
-        match = re.match(r"https?://[^/]+", config.carddav_url)
+        match = re.match(r"https?://[^/]+", carddav_url)
         self._base_url = match.group(0) if match else ""
         self._client = client or httpx.AsyncClient(timeout=30)
-
-    def update_config(self, config: Settings) -> None:
-        """Hot-reload credentials from updated settings."""
-        self.carddav_url = config.carddav_url
-        self.auth = (config.carddav_user, config.carddav_password)
-        match = re.match(r"https?://[^/]+", config.carddav_url)
-        self._base_url = match.group(0) if match else ""
-        logger.info("CardDAV credentials updated via settings UI")
 
     async def test_connection(self) -> tuple[bool, str]:
         """Test CardDAV connection with current credentials. Returns (ok, message)."""
@@ -212,7 +208,7 @@ class CardDAVSync:
         return contact
 
     async def _upsert_contact(self, contact: dict) -> None:
-        """Insert or update a contact by cardav_uid, then sync phones."""
+        """Insert or update a contact by cardav_uid (scoped to user), then sync phones."""
         phones = contact["phones"]
 
         # Keep legacy columns populated for backward compat (first of each type)
@@ -225,9 +221,10 @@ class CardDAVSync:
             INSERT INTO contacts (
                 full_name, first_name, last_name,
                 phone_primary, phone_mobile, phone_work,
-                email, cardav_uid, cardav_url, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (cardav_uid) DO UPDATE SET
+                email, cardav_uid, cardav_url,
+                user_id, source_id, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+            ON CONFLICT (cardav_uid, COALESCE(user_id, -1)) DO UPDATE SET
                 full_name = EXCLUDED.full_name,
                 first_name = EXCLUDED.first_name,
                 last_name = EXCLUDED.last_name,
@@ -236,6 +233,7 @@ class CardDAVSync:
                 phone_work = EXCLUDED.phone_work,
                 email = EXCLUDED.email,
                 cardav_url = EXCLUDED.cardav_url,
+                source_id = EXCLUDED.source_id,
                 updated_at = NOW()
             RETURNING id
             """,
@@ -248,6 +246,8 @@ class CardDAVSync:
             contact["email"],
             contact["cardav_uid"],
             contact["cardav_url"],
+            self.user_id,
+            self.source_id,
         )
 
         # Sync phones: delete old, insert current
