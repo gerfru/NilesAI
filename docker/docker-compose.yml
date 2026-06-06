@@ -83,7 +83,7 @@ services:
 
   # Vikunja (Todo/Task Management)
   vikunja:
-    image: vikunja/vikunja@sha256:1a6868f70ee0e5a8b144946aadbf6cc45fa27fbd058de6edf07e170d197e7447  # 1.1.0
+    image: vikunja/vikunja@sha256:9e664c859f30c605c454aeb8712494ec20550a8e5220cb2d509e49a85d3effd4  # 1.1.0
     container_name: vikunja
     # Root required: upstream vikunja image writes to /app/vikunja/files as root;
     # non-root user causes permission errors on the named volume.
