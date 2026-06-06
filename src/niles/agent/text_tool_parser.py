@@ -88,9 +88,71 @@ def parse_json_tool_call(
 
     # Format: {"name": "tool", "parameters": {...}}
     name = obj.get("name")
-    if name and name in known_tools:
+    if not name:
+        return None
+
+    if name in known_tools:
         params = obj.get("parameters") or obj.get("arguments") or {}
         return {"name": name, "arguments": json.dumps(params, ensure_ascii=False)}
+
+    # Fuzzy match for MCP tools: LLMs often hallucinate slightly wrong names
+    # (e.g. "mcp__searxng__search" instead of "mcp__searxng__web_search").
+    # If there is exactly one known tool from the same MCP server, use it.
+    if name.startswith("mcp__"):
+        parts = name.split("__", 2)
+        if len(parts) >= 2:
+            prefix = f"mcp__{parts[1]}__"
+            candidates = [t for t in known_tools if t.startswith(prefix)]
+            if len(candidates) == 1:
+                params = obj.get("parameters") or obj.get("arguments") or {}
+                return {
+                    "name": candidates[0],
+                    "arguments": json.dumps(params, ensure_ascii=False),
+                }
+
+    return None
+
+
+def is_rejected_tool_call(text: str) -> str | None:
+    """Check if *text* looks like a tool call for an unavailable tool.
+
+    Called **after** ``try_parse_text_tool_call`` returned ``None`` to
+    distinguish "not a tool call at all" from "tool call for a filtered
+    tool".  Returns the tool name when the text is structurally a tool
+    call (JSON with ``name`` + ``parameters``/``arguments`` keys), or
+    ``None`` otherwise.
+    """
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.strip()
+
+    if not cleaned.startswith("{"):
+        brace_pos = cleaned.find("{")
+        if brace_pos == -1:
+            return None
+        cleaned = cleaned[brace_pos:]
+
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        try:
+            from json_repair import repair_json
+
+            obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]
+        except Exception:
+            return None
+
+    if not isinstance(obj, dict):
+        return None
+
+    name = obj.get("name")
+    if not name or not isinstance(name, str):
+        return None
+
+    # Must have parameters or arguments to look like a tool call
+    if obj.get("parameters") is not None or obj.get("arguments") is not None:
+        return name
 
     return None
 
