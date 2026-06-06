@@ -240,11 +240,21 @@ def _user_chat_id(user: dict) -> str:
     return f"web-user-{user['uid']}"
 
 
-async def _maybe_provision_vikunja(request: Request, user_id: int, email: str) -> None:
-    """Auto-provision Vikunja account after login (no-op if not configured)."""
+async def _maybe_provision_vikunja(
+    request: Request, user_id: int, email: str, *, password: str | None = None
+) -> None:
+    """Auto-provision Vikunja account after login (no-op if not configured).
+
+    When *password* is provided (password login), syncs it to Vikunja so the
+    user can log into Vikunja with the same credentials.  Without password
+    (Google OAuth), falls back to HMAC-derived internal password.
+    """
     provisioner = request.app.state.vikunja_provisioner
     if provisioner:
-        await provisioner.ensure_provisioned(user_id, email)
+        if password:
+            await provisioner.sync_password(user_id, email, password)
+        else:
+            await provisioner.ensure_provisioned(user_id, email)
 
 
 async def _resolve_channel(

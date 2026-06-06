@@ -169,9 +169,6 @@ async def lifespan(app: FastAPI):
     user_store = UserStore(pool)
     await user_store.initialize()
 
-    # Admin action (user CRUD with password hashing)
-    admin_action = AdminAction(user_store)
-
     # WhatsApp session store (per-user Evolution API instances)
     wa_store = WhatsAppSessionStore(pool)
 
@@ -189,6 +186,13 @@ async def lifespan(app: FastAPI):
             store=vikunja_store,
         )
         logger.info("Vikunja auto-provisioning enabled (%s)", settings.vikunja_api_url)
+
+    # Admin action (user CRUD with password hashing + optional Vikunja sync)
+    admin_action = AdminAction(
+        user_store,
+        vikunja_provisioner=vikunja_provisioner,
+        vikunja_store=vikunja_store,
+    )
 
     # Settings store (runtime overrides from DB)
     settings_store = SettingsStore(pool, encryptor=encryptor)
