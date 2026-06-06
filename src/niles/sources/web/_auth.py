@@ -130,7 +130,9 @@ async def login_submit(
     # Update last_login
     await user_store.update_last_login(user["id"])
 
-    await _maybe_provision_vikunja(request, user["id"], user["email"])
+    await _maybe_provision_vikunja(
+        request, user["id"], user["email"], password=password
+    )
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)

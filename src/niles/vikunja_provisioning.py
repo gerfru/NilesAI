@@ -149,6 +149,111 @@ class VikunjaProvisioner:
             logger.exception("Vikunja login failed for %s", username)
             return None
 
+    async def sync_password(
+        self, user_id: int, email: str, plaintext_password: str
+    ) -> bool:
+        """Sync the user's Niles password to their Vikunja account.
+
+        - No credentials yet → provision with HMAC, then change to plaintext
+        - Credentials exist, already synced → no-op
+        - Credentials exist, not synced → HMAC login, change to plaintext
+
+        Returns True on success. Never raises.
+        """
+        if user_id in self._in_flight:
+            return False
+
+        self._in_flight.add(user_id)
+        try:
+            return await self._sync_password(user_id, email, plaintext_password)
+        except Exception:
+            logger.exception("Vikunja password sync failed for user_id=%d", user_id)
+            return False
+        finally:
+            self._in_flight.discard(user_id)
+
+    async def _sync_password(
+        self, user_id: int, email: str, plaintext_password: str
+    ) -> bool:
+        """Internal password sync logic."""
+        creds = await self.store.get_credentials(user_id)
+        username = self._derive_username(user_id, email)
+        hmac_password = self._derive_password(user_id, email)
+
+        if not creds or not creds.get("api_token"):
+            # Not yet provisioned: register with HMAC, get token, then change pw
+            provisioned = await self._provision(user_id, email)
+            if not provisioned:
+                return False
+            # Now change from HMAC to user's password
+            async with httpx.AsyncClient(
+                base_url=self.api_url, timeout=_TIMEOUT
+            ) as client:
+                jwt = await self._login(client, username, hmac_password)
+                if jwt and await self._change_password(
+                    client, jwt, hmac_password, plaintext_password
+                ):
+                    await self.store.set_password_synced(user_id, True)
+                    return True
+            # Provisioning worked but password change failed — still usable
+            return False
+
+        if creds.get("password_synced"):
+            # Already synced, nothing to do
+            return True
+
+        # Credentials exist but password not synced: change HMAC → plaintext
+        async with httpx.AsyncClient(base_url=self.api_url, timeout=_TIMEOUT) as client:
+            jwt = await self._login(client, username, hmac_password)
+            if not jwt:
+                # HMAC login failed — maybe already synced from a previous attempt?
+                jwt = await self._login(client, username, plaintext_password)
+                if jwt:
+                    await self.store.set_password_synced(user_id, True)
+                    return True
+                logger.warning(
+                    "Vikunja password sync: cannot login for user_id=%d", user_id
+                )
+                return False
+
+            if await self._change_password(
+                client, jwt, hmac_password, plaintext_password
+            ):
+                await self.store.set_password_synced(user_id, True)
+                return True
+
+        return False
+
+    async def _change_password(
+        self,
+        client: httpx.AsyncClient,
+        jwt: str,
+        old_password: str,
+        new_password: str,
+    ) -> bool:
+        """POST /user/password to change the Vikunja password."""
+        try:
+            resp = await client.post(
+                "/user/password",
+                headers={"Authorization": f"Bearer {jwt}"},
+                json={
+                    "old_password": old_password,
+                    "new_password": new_password,
+                },
+            )
+            if resp.status_code == 200:
+                logger.info("Vikunja password synced successfully")
+                return True
+            logger.warning(
+                "Vikunja password change status %d: %s",
+                resp.status_code,
+                resp.text[:200],
+            )
+            return False
+        except Exception:
+            logger.exception("Vikunja password change request failed")
+            return False
+
     async def _create_api_token(
         self, client: httpx.AsyncClient, jwt: str
     ) -> str | None:
@@ -166,7 +271,7 @@ class VikunjaProvisioner:
                     "expires_at": expires,
                 },
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 token = resp.json().get("token")
                 if token:
                     return token
