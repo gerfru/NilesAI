@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from niles.agent.core import MAX_TOOL_ROUNDS, NilesAgent
 from niles.config import Settings
@@ -343,6 +343,33 @@ class TestTextToolCallParsing:
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is None
 
+    # --- Fuzzy matching for MCP tools ---
+
+    def test_mcp_fuzzy_match_corrects_wrong_name(self):
+        """LLM hallucinates mcp__searxng__search → corrected to mcp__searxng__web_search."""
+        tools_with_mcp = frozenset([*self._TOOLS, "mcp__searxng__web_search"])
+        text = '{"name":"mcp__searxng__search","parameters":{"query":"Graz"}}'
+        result = NilesAgent._try_parse_text_tool_call(text, tools_with_mcp)
+        assert result is not None
+        assert result["name"] == "mcp__searxng__web_search"
+        args = json.loads(result["arguments"])
+        assert args["query"] == "Graz"
+
+    def test_mcp_fuzzy_match_skips_when_multiple_candidates(self):
+        """Fuzzy match does NOT guess when multiple tools share the same server prefix."""
+        tools_with_two = frozenset(
+            [*self._TOOLS, "mcp__myserver__tool_a", "mcp__myserver__tool_b"]
+        )
+        text = '{"name":"mcp__myserver__wrong","parameters":{"x":1}}'
+        result = NilesAgent._try_parse_text_tool_call(text, tools_with_two)
+        assert result is None
+
+    def test_mcp_fuzzy_match_no_candidates(self):
+        """Fuzzy match returns None when no tools share the MCP server prefix."""
+        text = '{"name":"mcp__unknown__tool","parameters":{"x":1}}'
+        result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
+        assert result is None
+
     def test_malformed_parameters_brace_repaired(self):
         """llama3.1 merges key and brace: 'parameters{' → repaired to 'parameters':{."""
         tools_with_mcp = frozenset([*self._TOOLS, "mcp__searxng__web_search"])
@@ -432,6 +459,57 @@ class TestTextToolCallParsing:
         assert result is None
 
 
+class TestIsRejectedToolCall:
+    """Tests for is_rejected_tool_call (filtered/unavailable tool detection)."""
+
+    def test_search_tool_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '{"name": "mcp__searxng__search", "parameters": {"q": "Graz"}}'
+        assert is_rejected_tool_call(text) == "mcp__searxng__search"
+
+    def test_fetch_tool_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '{"name": "mcp__fetch__fetch_url", "parameters": {"url": "https://example.com"}}'
+        assert is_rejected_tool_call(text) == "mcp__fetch__fetch_url"
+
+    def test_tool_with_arguments_key_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '{"name": "some_tool", "arguments": {"key": "val"}}'
+        assert is_rejected_tool_call(text) == "some_tool"
+
+    def test_regular_json_not_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '{"some": "random json"}'
+        assert is_rejected_tool_call(text) is None
+
+    def test_regular_text_not_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = "Ich habe die Aufgabe erstellt."
+        assert is_rejected_tool_call(text) is None
+
+    def test_json_with_name_but_no_params_not_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '{"name": "some_tool"}'
+        assert is_rejected_tool_call(text) is None
+
+    def test_code_fenced_tool_call_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        text = '```json\n{"name": "mcp__searxng__search", "parameters": {"q": "test"}}\n```'
+        assert is_rejected_tool_call(text) == "mcp__searxng__search"
+
+    def test_empty_string_not_detected(self):
+        from niles.agent.text_tool_parser import is_rejected_tool_call
+
+        assert is_rejected_tool_call("") is None
+
+
 class TestTextToolCallStreamIntegration:
     """Integration test: text-based tool call in streaming pipeline."""
 
@@ -514,6 +592,93 @@ class TestTextToolCallStreamIntegration:
         assert len(chunk_events) == 1
         assert '{"some": "random json"}' in chunk_events[0]["text"]
         assert events[-1] == {"type": "done"}
+
+    async def test_stream_rejected_tool_call_suppressed(self):
+        """JSON for a filtered (unavailable) tool must NOT be shown as raw text."""
+        agent = _make_agent()
+
+        chunks = [
+            _make_delta(
+                content='{"name": "mcp__searxng__search", "parameters": {"q": "Graz"}}'
+            ),
+            _make_delta(finish_reason="stop"),
+        ]
+        agent.llm = AsyncMock()
+        agent.llm.chat.completions.create = AsyncMock(return_value=_aiter(chunks))
+
+        event = {"type": "web", "from": "test-chat", "content": "Suche nach Graz"}
+        events = await _collect(agent.process_event_stream(event))
+
+        chunk_texts = [e.get("text", "") for e in events if e.get("type") == "chunk"]
+        # Raw JSON must NOT appear
+        for text in chunk_texts:
+            assert "mcp__searxng__search" not in text
+            assert '"name"' not in text
+        # Should show a user-friendly message instead
+        assert any("Recherche-Modus" in t for t in chunk_texts)
+        assert events[-1] == {"type": "done"}
+
+    async def test_stream_forces_search_tool_in_recherche_mode(self):
+        """When web_search=True and search tool available, tool_choice forces it."""
+        agent = _make_agent()
+
+        # Simulate MCP with searxng tool (get_openai_tools is sync)
+        mcp_mock = Mock()
+        mcp_mock.get_openai_tools.return_value = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "mcp__searxng__web_search",
+                    "description": "Search",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]
+        mcp_mock.is_mcp_tool.return_value = True
+        mcp_mock.call_tool = AsyncMock(
+            return_value="Graz ist eine Stadt in der Steiermark."
+        )
+        agent._ctx.mcp = mcp_mock
+
+        # First call: LLM forced to call search tool (returns tool_calls)
+        first_tc_delta = _make_tool_call_delta(
+            0,
+            tc_id="call_1",
+            name="mcp__searxng__web_search",
+            arguments='{"query":"Graz"}',
+        )
+        first_chunks = [
+            _make_delta(tool_calls=[first_tc_delta]),
+            _make_delta(finish_reason="tool_calls"),
+        ]
+        # Second call: LLM generates response from search results
+        second_chunks = [
+            _make_delta(content="Graz ist die Landeshauptstadt."),
+            _make_delta(finish_reason="stop"),
+        ]
+        create_mock = AsyncMock(
+            side_effect=[_aiter(first_chunks), _aiter(second_chunks)]
+        )
+        agent.llm = AsyncMock()
+        agent.llm.chat.completions.create = create_mock
+
+        event = {
+            "type": "web",
+            "from": "test-chat",
+            "content": "Erzähl mir über Graz",
+            "metadata": {"web_search": True},
+        }
+        await _collect(agent.process_event_stream(event))
+
+        # First call should use forced tool_choice
+        first_call = create_mock.call_args_list[0]
+        assert first_call.kwargs["tool_choice"] == {
+            "type": "function",
+            "function": {"name": "mcp__searxng__web_search"},
+        }
+        # Second call should use "auto"
+        second_call = create_mock.call_args_list[1]
+        assert second_call.kwargs["tool_choice"] == "auto"
 
 
 class TestFindEventGuard:

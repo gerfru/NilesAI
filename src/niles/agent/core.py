@@ -25,6 +25,7 @@ from ..whatsapp_store import WhatsAppSessionStore
 from .context import ContextBuilder
 from .prompts import load_system_prompt
 from .text_tool_parser import (
+    is_rejected_tool_call,
     synthetic_tool_call,
     try_parse_text_tool_call,
 )
@@ -506,14 +507,28 @@ class NilesAgent:
         chat_id, messages, all_tools = await self._prepare_messages(event)
         _temperature = 0.3 if not all_tools else 0.7
 
-        for _ in range(MAX_TOOL_ROUNDS):
+        # Force search tool on first round when Recherche-Modus is active
+        _web_search = event.get("metadata", {}).get("web_search", False)
+        _search_tool = "mcp__searxng__web_search"
+        _tool_names = [t["function"]["name"] for t in all_tools]
+        _force_search = _web_search and _search_tool in _tool_names
+
+        for _round in range(MAX_TOOL_ROUNDS):
+            if _force_search and _round == 0:
+                _tool_choice: object = {
+                    "type": "function",
+                    "function": {"name": _search_tool},
+                }
+            else:
+                _tool_choice = "auto" if all_tools else None
+
             try:
                 _llm_start = time.monotonic()
                 stream = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools or None,
-                    tool_choice="auto" if all_tools else None,
+                    tool_choice=_tool_choice,
                     temperature=_temperature,
                     stream=True,
                     stream_options={"include_usage": True},
@@ -607,6 +622,17 @@ class NilesAgent:
                 else:
                     # Flush buffered content that turned out not to be a tool call
                     if _buffering and full_content:
+                        rejected_name = is_rejected_tool_call(full_content)
+                        if rejected_name:
+                            logger.info(
+                                "Suppressed rejected tool call: %s",
+                                rejected_name,
+                            )
+                            full_content = (
+                                "Ich kann diese Anfrage mit den aktuell "
+                                "verfügbaren Funktionen nicht beantworten. "
+                                "Bitte aktiviere den Recherche-Modus."
+                            )
                         yield {"type": "chunk", "text": full_content}
                     if full_content:
                         await self.history.add_message(
@@ -727,15 +753,30 @@ class NilesAgent:
         chat_id, messages, all_tools = await self._prepare_messages(event)
         _temperature = 0.3 if not all_tools else 0.7
 
+        # Force search tool on first round when Recherche-Modus is active
+        _web_search = event.get("metadata", {}).get("web_search", False)
+        _search_tool = "mcp__searxng__web_search"
+        _force_search = _web_search and any(
+            t["function"]["name"] == _search_tool for t in all_tools
+        )
+
         # Tool-call loop: LLM may request multiple rounds of tool calls
-        for _ in range(MAX_TOOL_ROUNDS):
+        for _round in range(MAX_TOOL_ROUNDS):
+            if _force_search and _round == 0:
+                _tool_choice: object = {
+                    "type": "function",
+                    "function": {"name": _search_tool},
+                }
+            else:
+                _tool_choice = "auto" if all_tools else None
+
             try:
                 _llm_start = time.monotonic()
                 response = await self.llm.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools or None,
-                    tool_choice="auto" if all_tools else None,
+                    tool_choice=_tool_choice,
                     temperature=_temperature,
                 )
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
@@ -797,6 +838,20 @@ class NilesAgent:
                         }
                     )
                     continue  # Next LLM round to generate natural language response
+
+                # Suppress raw JSON for unavailable tools
+                if content:
+                    rejected_name = is_rejected_tool_call(content)
+                    if rejected_name:
+                        logger.info(
+                            "Suppressed rejected tool call: %s",
+                            rejected_name,
+                        )
+                        content = (
+                            "Ich kann diese Anfrage mit den aktuell "
+                            "verfügbaren Funktionen nicht beantworten. "
+                            "Bitte aktiviere den Recherche-Modus."
+                        )
 
                 if not content:
                     logger.warning(
