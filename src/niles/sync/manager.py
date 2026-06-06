@@ -44,9 +44,6 @@ class CalendarSourceManager:
     - Auto-migration of .env CalDAV config on first startup
     - Sync orchestration across all enabled sources
     - Event creation on writable sources
-
-    Note: Google Calendar is handled via gws MCP server (per-user),
-    not through this manager. See mcp/user_pool.py.
     """
 
     def __init__(
