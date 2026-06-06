@@ -23,7 +23,7 @@ class VikunjaCredentialStore:
     async def get_credentials(self, user_id: int) -> dict | None:
         """Get Vikunja credentials for a user (decrypted)."""
         row = await self.pool.fetchrow(
-            "SELECT user_id, api_token, api_url "
+            "SELECT user_id, api_token, api_url, password_synced "
             "FROM vikunja_credentials WHERE user_id = $1",
             user_id,
         )
@@ -52,6 +52,14 @@ class VikunjaCredentialStore:
             user_id,
             enc_token,
             api_url,
+        )
+
+    async def set_password_synced(self, user_id: int, synced: bool) -> None:
+        """Update the password_synced flag for a user."""
+        await self.pool.execute(
+            "UPDATE vikunja_credentials SET password_synced = $1 WHERE user_id = $2",
+            synced,
+            user_id,
         )
 
     async def delete_credentials(self, user_id: int) -> None:

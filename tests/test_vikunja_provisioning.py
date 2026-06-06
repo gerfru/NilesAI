@@ -173,6 +173,140 @@ class TestLogin:
         assert result is None
 
 
+class TestChangePassword:
+    @pytest.mark.asyncio
+    async def test_success(self, provisioner):
+        """200 returns True."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        client = AsyncMock()
+        client.post.return_value = mock_resp
+
+        result = await provisioner._change_password(
+            client, "jwt-123", "old-pw", "new-pw"
+        )
+        assert result is True
+        client.post.assert_called_once_with(
+            "/user/password",
+            headers={"Authorization": "Bearer jwt-123"},
+            json={"old_password": "old-pw", "new_password": "new-pw"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_failure(self, provisioner):
+        """Non-200 returns False."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.text = "Bad request"
+        client = AsyncMock()
+        client.post.return_value = mock_resp
+
+        result = await provisioner._change_password(
+            client, "jwt-123", "old-pw", "new-pw"
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_connection_error(self, provisioner):
+        """Network error returns False."""
+        client = AsyncMock()
+        client.post.side_effect = ConnectionError("unreachable")
+
+        result = await provisioner._change_password(
+            client, "jwt-123", "old-pw", "new-pw"
+        )
+        assert result is False
+
+
+class TestSyncPassword:
+    @pytest.mark.asyncio
+    async def test_already_synced_noop(self, provisioner, store):
+        """If password_synced=True, return True without any API calls."""
+        store.get_credentials.return_value = {
+            "api_token": "tk_existing",
+            "password_synced": True,
+        }
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is True
+        store.set_password_synced.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_not_provisioned_full_flow(self, provisioner, store):
+        """No credentials → provision + change password."""
+        store.get_credentials.return_value = None
+        provisioner._provision = AsyncMock(return_value=True)
+        provisioner._login = AsyncMock(return_value="jwt-new")
+        provisioner._change_password = AsyncMock(return_value=True)
+
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is True
+        provisioner._provision.assert_called_once_with(1, "user@example.com")
+        store.set_password_synced.assert_called_once_with(1, True)
+
+    @pytest.mark.asyncio
+    async def test_not_provisioned_provision_fails(self, provisioner, store):
+        """Provision fails → return False."""
+        store.get_credentials.return_value = None
+        provisioner._provision = AsyncMock(return_value=False)
+
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_credentials_exist_not_synced(self, provisioner, store):
+        """Credentials exist, not synced → HMAC login + change password."""
+        store.get_credentials.return_value = {
+            "api_token": "tk_existing",
+            "password_synced": False,
+        }
+        provisioner._login = AsyncMock(return_value="jwt-hmac")
+        provisioner._change_password = AsyncMock(return_value=True)
+
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is True
+        store.set_password_synced.assert_called_once_with(1, True)
+
+    @pytest.mark.asyncio
+    async def test_hmac_login_fails_tries_plaintext(self, provisioner, store):
+        """HMAC login fails, plaintext login succeeds → mark synced."""
+        store.get_credentials.return_value = {
+            "api_token": "tk_existing",
+            "password_synced": False,
+        }
+        # First call (HMAC) returns None, second call (plaintext) returns JWT
+        provisioner._login = AsyncMock(side_effect=[None, "jwt-plain"])
+
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is True
+        store.set_password_synced.assert_called_once_with(1, True)
+
+    @pytest.mark.asyncio
+    async def test_both_logins_fail(self, provisioner, store):
+        """Both HMAC and plaintext login fail → return False."""
+        store.get_credentials.return_value = {
+            "api_token": "tk_existing",
+            "password_synced": False,
+        }
+        provisioner._login = AsyncMock(return_value=None)
+
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_in_flight_guard(self, provisioner, store):
+        """Concurrent sync for the same user is skipped."""
+        provisioner._in_flight.add(1)
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_exception_returns_false(self, provisioner, store):
+        """Unexpected exception returns False, never raises."""
+        store.get_credentials.side_effect = RuntimeError("DB down")
+        result = await provisioner.sync_password(1, "user@example.com", "user-pw-123")
+        assert result is False
+
+
 class TestCreateApiToken:
     @pytest.mark.asyncio
     async def test_success(self, provisioner):

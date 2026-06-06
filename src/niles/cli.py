@@ -21,6 +21,7 @@ Usage:
 import argparse
 import asyncio
 import getpass
+import logging
 import sys
 
 import asyncpg
@@ -28,6 +29,9 @@ from argon2 import PasswordHasher
 
 from .config import Settings
 from .user_store import UserStore
+from .vikunja_store import VikunjaCredentialStore
+
+logger = logging.getLogger(__name__)
 
 ph = PasswordHasher()
 
@@ -45,6 +49,32 @@ async def _get_pool():
     )
 
 
+async def _vikunja_sync_password(
+    pool: asyncpg.Pool, user_id: int, email: str, password: str
+) -> None:
+    """Best-effort sync of plaintext password to Vikunja account."""
+    settings = Settings()
+    if not settings.vikunja_api_url:
+        return
+    try:
+        from .vikunja_provisioning import VikunjaProvisioner
+
+        vikunja_store = VikunjaCredentialStore(pool)
+        provisioner = VikunjaProvisioner(
+            api_url=settings.vikunja_api_url,
+            session_secret=settings.session_secret,
+            store=vikunja_store,
+        )
+        ok = await provisioner.sync_password(user_id, email, password)
+        if ok:
+            print("Vikunja password synced.")
+        else:
+            print("Warning: Vikunja password sync failed (will retry on next login).")
+    except Exception:
+        logger.warning("Vikunja password sync failed for %s", email, exc_info=True)
+        print("Warning: Vikunja password sync failed (will retry on next login).")
+
+
 async def _reset_password(email: str, password: str) -> None:
     pool = await _get_pool()
     try:
@@ -60,6 +90,15 @@ async def _reset_password(email: str, password: str) -> None:
         updated = await store.update_password(user["id"], hashed)
         if updated:
             print(f"Password reset for {email} (id={user['id']})")
+            # Mark Vikunja password as out-of-sync (will re-sync on next login)
+            settings = Settings()
+            if settings.vikunja_api_url:
+                try:
+                    vikunja_store = VikunjaCredentialStore(pool)
+                    await vikunja_store.set_password_synced(user["id"], False)
+                    print("Vikunja password marked for re-sync on next login.")
+                except Exception:
+                    logger.warning("Failed to mark Vikunja password as unsynced")
         else:
             print(f"Error: Could not update password for '{email}'")
             sys.exit(1)
@@ -85,6 +124,9 @@ async def _create_user(email: str, name: str, password: str) -> None:
         user = await store.create_password_user(email, name, hashed)
         admin_str = " (admin)" if user.get("is_admin") else ""
         print(f"User created: {user['email']} (id={user['id']}){admin_str}")
+
+        # Best-effort Vikunja password sync
+        await _vikunja_sync_password(pool, user["id"], email, password)
     finally:
         await pool.close()
 
