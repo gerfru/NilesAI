@@ -9,6 +9,7 @@ from fastapi import Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from ...metrics import ACTIVE_SSE
+from ..triggers import is_niles_trigger, strip_trigger
 from ._core import (
     _CHAT_PAGE_SIZE,
     _ensure_csrf_cookie,
@@ -22,6 +23,56 @@ from ._core import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _fetch_wa_history(
+    whatsapp_action,
+    phone: str,
+    instance: str,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[dict], bool]:
+    """Fetch WhatsApp self-chat history from Evolution API.
+
+    Returns (messages, has_more) in the same format as
+    ``ConversationHistory.get_recent()``.
+
+    Role detection uses the Niles trigger phrases: messages starting with
+    "Hey Niles" etc. are attributed to the user; everything else (replies,
+    briefings) is shown as assistant messages.
+    """
+    jid = f"{phone}@s.whatsapp.net"
+    raw = await whatsapp_action.fetch_messages(jid, instance=instance)
+
+    # Convert to UI format (raw is sorted oldest-first)
+    all_msgs: list[dict] = []
+    for msg in raw:
+        text = msg.get("text", "")
+        if not text:
+            continue
+
+        if is_niles_trigger(text):
+            role = "user"
+            content = strip_trigger(text) or text
+        else:
+            role = "assistant"
+            content = text
+
+        ts = msg.get("timestamp", 0)
+        timestamp = (
+            datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
+        )
+        all_msgs.append({"role": role, "content": content, "timestamp": timestamp})
+
+    # Pagination: slice from the end (most recent) like get_recent()
+    total = len(all_msgs)
+    if offset >= total:
+        return [], False
+    end = total - offset
+    start = max(end - limit, 0)
+    page = all_msgs[start:end]
+    has_more = start > 0
+    return page, has_more
 
 
 @router.get("/chat", response_class=HTMLResponse)
@@ -47,9 +98,20 @@ async def chat_page(
     chat_id, readonly = await _resolve_channel(
         user, channel, wa_store, wa_session, signal_phone=signal_phone
     )
-    history = request.app.state.history
-    messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE)
-    has_more = len(messages) == _CHAT_PAGE_SIZE
+
+    # WhatsApp: fetch from Evolution API (source of truth for WA messages)
+    if channel == "whatsapp" and wa_session and wa_session.get("phone_number"):
+        whatsapp_action = request.app.state.whatsapp_action
+        messages, has_more = await _fetch_wa_history(
+            whatsapp_action,
+            wa_session["phone_number"],
+            wa_session["instance_name"],
+            limit=_CHAT_PAGE_SIZE,
+        )
+    else:
+        history = request.app.state.history
+        messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE)
+        has_more = len(messages) == _CHAT_PAGE_SIZE
 
     # Determine available channels (WhatsApp only if connected with phone)
     available_channels = [("web", "Web-Chat")]
@@ -98,10 +160,28 @@ async def chat_history(
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
     wa_store = getattr(request.app.state, "wa_store", None)
-    chat_id, _readonly = await _resolve_channel(user, channel, wa_store)
-    history = request.app.state.history
-    messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE, offset=offset)
-    has_more = len(messages) == _CHAT_PAGE_SIZE
+
+    # WhatsApp: fetch from Evolution API with pagination
+    if channel == "whatsapp" and wa_store:
+        wa_session = await wa_store.get_session(user["uid"])
+        if wa_session and wa_session.get("phone_number"):
+            whatsapp_action = request.app.state.whatsapp_action
+            messages, has_more = await _fetch_wa_history(
+                whatsapp_action,
+                wa_session["phone_number"],
+                wa_session["instance_name"],
+                limit=_CHAT_PAGE_SIZE,
+                offset=offset,
+            )
+        else:
+            messages, has_more = [], False
+    else:
+        chat_id, _readonly = await _resolve_channel(user, channel, wa_store)
+        history = request.app.state.history
+        messages = await history.get_recent(
+            chat_id, limit=_CHAT_PAGE_SIZE, offset=offset
+        )
+        has_more = len(messages) == _CHAT_PAGE_SIZE
     return templates.TemplateResponse(
         request,
         "fragments/history.html",
