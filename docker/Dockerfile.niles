@@ -1,5 +1,5 @@
 # --- Stage 1: Builder ---
-FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203 AS builder
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
 
 WORKDIR /build
 
@@ -27,7 +27,7 @@ assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
        -o src/niles/static/css/style.css
 
 # --- Stage 1b: Download gws (Google Workspace CLI) ---
-FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203 AS gws-downloader
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS gws-downloader
 
 ARG TARGETARCH=amd64
 ARG GWS_VERSION=0.4.4
@@ -51,7 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /tmp/gws*
 
 # --- Stage 2: Runtime ---
-FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
 
 WORKDIR /app
 
