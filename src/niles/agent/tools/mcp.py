@@ -22,19 +22,4 @@ async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
             logger.error("MCP tool call failed [%s]: %s", name, e)
             return {"error": f"MCP tool error: {e}"}
 
-    # Per-user gws MCP tools (Google Calendar via gws)
-    if ctx.user_mcp_pool and ctx.user_mcp_pool.is_gws_tool(name):
-        if ctx.user_id is None:
-            return {
-                "error": "Google nicht verbunden. Bitte in den Einstellungen verbinden."
-            }
-        try:
-            result_text = await ctx.user_mcp_pool.call_tool(ctx.user_id, name, args)
-            if len(result_text) > MAX_MCP_RESULT_SIZE:
-                result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
-            return {"result": result_text}
-        except Exception as e:
-            logger.error("gws tool call failed [%s] user=%s: %s", name, ctx.user_id, e)
-            return {"error": "Google Workspace Fehler. Bitte erneut versuchen."}
-
     return {"error": f"Unknown tool: {name}"}
