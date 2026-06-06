@@ -95,6 +95,7 @@ services:
       - "no-new-privileges:true"
     tmpfs:
       - /tmp
+      - /.cache
     environment:
       VIKUNJA_DATABASE_TYPE: postgres
       VIKUNJA_DATABASE_HOST: evolution_postgres
