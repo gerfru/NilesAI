@@ -62,6 +62,19 @@ class TestVikunjaCredentialStore:
         args = store.pool.execute.call_args[0]
         assert args[3] == ""  # api_url defaults to empty
 
+    async def test_set_password_synced(self, store):
+        await store.set_password_synced(5, True)
+        store.pool.execute.assert_called_once()
+        args = store.pool.execute.call_args[0]
+        assert "password_synced" in args[0]
+        assert args[1] is True
+        assert args[2] == 5
+
+    async def test_set_password_unsynced(self, store):
+        await store.set_password_synced(5, False)
+        args = store.pool.execute.call_args[0]
+        assert args[1] is False
+
     async def test_delete_credentials(self, store):
         await store.delete_credentials(5)
         store.pool.execute.assert_called_once()

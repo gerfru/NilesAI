@@ -34,6 +34,49 @@ class TestCreateUser:
         assert call_args[0][2] != "securepass123"  # hashed
 
     @pytest.mark.asyncio
+    async def test_success_with_vikunja_sync(self):
+        user_store = AsyncMock()
+        user_store.get_by_email.return_value = None
+        user_store.create_password_user.return_value = {
+            "id": 42,
+            "email": "new@example.com",
+            "display_name": "New User",
+            "is_admin": False,
+        }
+        vikunja = AsyncMock()
+        vikunja.sync_password.return_value = True
+        action = AdminAction(user_store, vikunja_provisioner=vikunja)
+
+        result = await action.create_user(
+            "new@example.com", "New User", "securepass123"
+        )
+
+        assert result["id"] == 42
+        vikunja.sync_password.assert_called_once_with(
+            42, "new@example.com", "securepass123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_vikunja_sync_failure_does_not_block(self):
+        """Vikunja sync failure doesn't prevent user creation."""
+        user_store = AsyncMock()
+        user_store.get_by_email.return_value = None
+        user_store.create_password_user.return_value = {
+            "id": 42,
+            "email": "new@example.com",
+            "display_name": "New User",
+            "is_admin": False,
+        }
+        vikunja = AsyncMock()
+        vikunja.sync_password.side_effect = RuntimeError("Vikunja down")
+        action = AdminAction(user_store, vikunja_provisioner=vikunja)
+
+        result = await action.create_user(
+            "new@example.com", "New User", "securepass123"
+        )
+        assert result["id"] == 42  # User still created
+
+    @pytest.mark.asyncio
     async def test_empty_fields_raises(self):
         action = AdminAction(AsyncMock())
 
@@ -76,6 +119,31 @@ class TestResetPassword:
         call_args = user_store.update_password.call_args
         assert call_args[0][0] == 1
         assert call_args[0][1] != "newpassword123"  # hashed
+
+    @pytest.mark.asyncio
+    async def test_reset_marks_vikunja_unsynced(self):
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {"id": 1, "email": "test@test.com"}
+        vikunja_store = AsyncMock()
+        action = AdminAction(user_store, vikunja_store=vikunja_store)
+
+        await action.reset_password(1, "newpassword123")
+
+        user_store.update_password.assert_called_once()
+        vikunja_store.set_password_synced.assert_called_once_with(1, False)
+
+    @pytest.mark.asyncio
+    async def test_vikunja_unsync_failure_does_not_block(self):
+        """Vikunja store failure doesn't prevent password reset."""
+        user_store = AsyncMock()
+        user_store.get_by_id.return_value = {"id": 1, "email": "test@test.com"}
+        vikunja_store = AsyncMock()
+        vikunja_store.set_password_synced.side_effect = RuntimeError("DB error")
+        action = AdminAction(user_store, vikunja_store=vikunja_store)
+
+        # Should not raise
+        await action.reset_password(1, "newpassword123")
+        user_store.update_password.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_short_password_raises(self):
