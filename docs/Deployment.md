@@ -548,8 +548,8 @@ The start script automatically detects `FEATURE_SEARCH=true` and activates the S
 #### How It Works
 
 - SearXNG runs in the Docker network (port 8080, not externally exposed)
-- The MCP server `searxng-simple-mcp` runs as a stdio process inside `niles_core`
-- The agent uses the `mcp__searxng__search` tool when the user asks to research something
+- The MCP server `niles.mcp.search` runs as a stdio process inside `niles_core`
+- The agent uses the `mcp__searxng__web_search` tool when the user asks to research something
 - Results include title, URL, and snippet
 
 #### Verification
@@ -586,7 +586,7 @@ The Web Fetch MCP server extracts clean text from web pages. It is **always acti
 
 When both search and fetch are active, the agent can perform deep research:
 
-1. Search with `mcp__searxng__search` for a topic
+1. Search with `mcp__searxng__web_search` for a topic
 2. Read 1-2 relevant results with `mcp__fetch__fetch_url`
 3. Summarize findings with source URLs
 

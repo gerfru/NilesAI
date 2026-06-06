@@ -339,7 +339,7 @@ class ContextBuilder:
                 system_prompt += (
                     "\n\n## Recherche-Modus AKTIV\n"
                     "Der Benutzer hat den Recherche-Modus aktiviert. "
-                    "Priorisiere die Web-Suche (`mcp__searxng__search`) und "
+                    "Priorisiere die Web-Suche (`mcp__searxng__web_search`) und "
                     "Fetch-Tools (`mcp__fetch__fetch_url`) um die Anfrage "
                     "zu beantworten. Lokale Tools (find_contact, find_event, "
                     "list_tasks) nur verwenden, wenn die Anfrage eindeutig "
