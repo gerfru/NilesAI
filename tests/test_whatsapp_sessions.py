@@ -382,7 +382,7 @@ class TestAgentPerUserInstance:
             instance="niles-wa-5",
         )
 
-    async def test_send_without_session_uses_global(self):
+    async def test_send_without_session_returns_confirm(self):
         from niles.agent.core import NilesAgent
 
         wa_store_mock = AsyncMock()
@@ -407,15 +407,12 @@ class TestAgentPerUserInstance:
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-99")
 
-        assert result == {"status": "sent", "to": "436601234567"}
-        whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567",
-            text="Hi",
-            instance=None,
-        )
+        # No session → can't determine own phone → confirmation required
+        assert "confirm" in result
+        whatsapp_mock.send_message.assert_not_called()
 
-    async def test_send_without_wa_store_uses_global(self):
-        """Agent without wa_store (backwards compat) uses global instance."""
+    async def test_send_without_wa_store_returns_confirm(self):
+        """Agent without wa_store (backwards compat) returns confirmation."""
         from niles.agent.core import NilesAgent
 
         whatsapp_mock = AsyncMock()
@@ -436,12 +433,9 @@ class TestAgentPerUserInstance:
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
-        assert result == {"status": "sent", "to": "436601234567"}
-        whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567",
-            text="Hi",
-            instance=None,
-        )
+        # No wa_store → can't determine own phone → confirmation required
+        assert "confirm" in result
+        whatsapp_mock.send_message.assert_not_called()
 
 
 class TestAgentGetWhatsAppMessages:

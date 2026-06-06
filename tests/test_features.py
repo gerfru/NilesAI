@@ -79,7 +79,7 @@ class TestSendWhatsAppOthersFlag:
         assert "deaktiviert" in result["error"]
         agent.whatsapp.send_message.assert_not_called()
 
-    async def test_send_to_others_enabled_sends(self, enabled_config):
+    async def test_send_to_others_enabled_returns_confirm(self, enabled_config):
         from niles.agent.core import NilesAgent
 
         whatsapp_mock = AsyncMock()
@@ -100,8 +100,10 @@ class TestSendWhatsAppOthersFlag:
 
         result = await agent._execute_tool_call(tool_call)
 
-        assert result == {"status": "sent", "to": "436601234567"}
-        whatsapp_mock.send_message.assert_called_once()
+        # Now returns confirmation prompt instead of sending directly
+        assert "confirm" in result
+        assert "436601234567" in result["confirm"]
+        whatsapp_mock.send_message.assert_not_called()
 
     async def test_send_to_self_always_allowed(self, disabled_config):
         """Sending to own number is allowed even when send_others is disabled."""
