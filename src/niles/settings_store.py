@@ -5,16 +5,24 @@ This is acceptable for the small payloads involved; switch to an async
 JSON library only if profiling shows a bottleneck.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import asyncpg
 
+if TYPE_CHECKING:
+    from .crypto import FieldEncryptor
+
 logger = logging.getLogger(__name__)
+
+# Keys whose values are encrypted at rest when CREDENTIAL_ENCRYPTION_KEY is set.
+_ENCRYPTED_KEYS = {"notion_token", "carddav_password"}
 
 # Settings that can be changed at runtime via the Settings UI.
 # CardDAV credentials are included here (analogous to calendar_sources.auth_password
@@ -74,16 +82,20 @@ def _validate_key(key: str) -> None:
 class SettingsStore:
     """Persist runtime setting overrides in PostgreSQL."""
 
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, *, encryptor: FieldEncryptor | None = None):
         self.pool = pool
+        self._enc = encryptor
 
     async def get_all(self) -> dict[str, Any]:
-        """Load all persisted overrides."""
+        """Load all persisted overrides (decrypting sensitive keys)."""
         rows = await self.pool.fetch("SELECT key, value FROM settings_overrides")
         result = {}
         for row in rows:
             try:
-                result[row["key"]] = json.loads(row["value"])
+                val = json.loads(row["value"])
+                if self._enc and row["key"] in _ENCRYPTED_KEYS and isinstance(val, str):
+                    val = self._enc.decrypt(val)
+                result[row["key"]] = val
             except (json.JSONDecodeError, TypeError):
                 logger.warning("Corrupted settings override: %s", row["key"])
         return result
@@ -150,6 +162,10 @@ class SettingsStore:
                     f"Invalid longitude: {lon} (must be between -180 and 180)"
                 )
 
+        store_value = value
+        if self._enc and key in _ENCRYPTED_KEYS and isinstance(store_value, str):
+            store_value = self._enc.encrypt(store_value)
+
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -160,7 +176,7 @@ class SettingsStore:
                     SET value = $2::jsonb, updated_at = NOW()
                     """,
                     key,
-                    json.dumps(value, ensure_ascii=False),
+                    json.dumps(store_value, ensure_ascii=False),
                 )
 
     async def delete(self, key: str) -> None:

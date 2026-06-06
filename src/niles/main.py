@@ -41,6 +41,7 @@ from .actions.weather import WeatherAction
 from .actions.whatsapp import WhatsAppAction
 from .agent.core import NilesAgent
 from .config import Settings, apply_overrides
+from .crypto import FieldEncryptor
 from .mcp.client import MCPManager
 from .memory.history import ConversationHistory
 from .memory.store import MemoryStore
@@ -108,6 +109,19 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Set NILES_API_KEY in .env for a stable key.")
 
+    # Startup security warnings
+    if not os.environ.get("SESSION_SECRET"):
+        logger.warning(
+            "SESSION_SECRET not set — auto-generated (sessions won't survive restarts). "
+            "Set SESSION_SECRET in .env for persistent sessions."
+        )
+    if not settings.base_url and settings.google_client_id:
+        logger.warning(
+            "BASE_URL not set but Google OAuth is configured — "
+            "OAuth redirect URI will be derived from request headers (less secure). "
+            "Set BASE_URL in .env for a stable redirect URI."
+        )
+
     # Database connection pool
     pool = await asyncpg.create_pool(
         host=settings.postgres_host,
@@ -135,6 +149,18 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
     logger.info("Database schema version: %s", alembic_version)
 
+    # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
+    encryptor: FieldEncryptor | None = None
+    if settings.credential_encryption_key:
+        encryptor = FieldEncryptor(settings.credential_encryption_key)
+        logger.info("Credential encryption enabled")
+    else:
+        logger.warning(
+            "CREDENTIAL_ENCRYPTION_KEY not set — credentials stored in plaintext. "
+            'Generate with: python -c "from niles.crypto import FieldEncryptor; '
+            'print(FieldEncryptor.generate_key())"'
+        )
+
     # Memory & History
     memory = MemoryStore(pool)
     history = ConversationHistory(pool)
@@ -150,7 +176,7 @@ async def lifespan(app: FastAPI):
     wa_store = WhatsAppSessionStore(pool)
 
     # Vikunja credential store (per-user API tokens)
-    vikunja_store = VikunjaCredentialStore(pool)
+    vikunja_store = VikunjaCredentialStore(pool, encryptor=encryptor)
 
     # Vikunja auto-provisioning (register + token on first login)
     vikunja_provisioner = None
@@ -165,7 +191,7 @@ async def lifespan(app: FastAPI):
         logger.info("Vikunja auto-provisioning enabled (%s)", settings.vikunja_api_url)
 
     # Settings store (runtime overrides from DB)
-    settings_store = SettingsStore(pool)
+    settings_store = SettingsStore(pool, encryptor=encryptor)
     overrides = await settings_store.get_all()
     if overrides:
         settings = apply_overrides(settings, overrides)
@@ -203,6 +229,7 @@ async def lifespan(app: FastAPI):
         pool,
         settings,
         client=http_clients.general,
+        encryptor=encryptor,
     )
     await calendar_manager.initialize()
     calendar_sources = await calendar_manager.get_sources()
@@ -312,7 +339,7 @@ async def lifespan(app: FastAPI):
     await mcp_manager.start_all()
 
     # Per-user Google MCP pool (gws instances per user)
-    google_token_store = GoogleTokenStore(pool)
+    google_token_store = GoogleTokenStore(pool, encryptor=encryptor)
     user_mcp_pool = None
     if settings.google_client_id and settings.google_client_secret:
         user_mcp_pool = UserMCPPool(
@@ -587,6 +614,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=()"
         )

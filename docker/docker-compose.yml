@@ -26,6 +26,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Evolution API (WhatsApp)
   evolution_api:
@@ -65,6 +70,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    labels:
+      - "monitoring=true"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       evolution_postgres:
         condition: service_healthy
@@ -75,7 +87,14 @@ services:
     container_name: vikunja
     # Root required: upstream vikunja image writes to /app/vikunja/files as root;
     # non-root user causes permission errors on the named volume.
+    # Mitigated: read_only + no-new-privileges reduce root attack surface.
+    # TODO: Track upstream for non-root support (vikunja/vikunja#2205)
     user: "0:0"
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp
     environment:
       VIKUNJA_DATABASE_TYPE: postgres
       VIKUNJA_DATABASE_HOST: evolution_postgres
@@ -95,6 +114,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       evolution_postgres:
         condition: service_healthy
@@ -122,6 +146,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # SearXNG (Privacy-focused meta search engine) — activate via --profile search
   searxng:
@@ -140,6 +169,11 @@ services:
       - niles_network
     profiles:
       - search
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Niles AI Core
   niles_core:
@@ -185,6 +219,7 @@ services:
       - FEATURE_NOTION=${FEATURE_NOTION:-false}
       - NOTION_TOKEN=${NOTION_TOKEN:-}
       - NOTION_SYNC_INTERVAL=${NOTION_SYNC_INTERVAL:-30}
+      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}
     volumes:
       - ../config:/app/config:ro
     networks:
@@ -196,6 +231,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    labels:
+      - "monitoring=true"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       evolution_postgres:
         condition: service_healthy

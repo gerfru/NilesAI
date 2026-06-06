@@ -43,7 +43,7 @@ templates = _NilesTemplates(directory=str(_TEMPLATES_DIR))
 
 SESSION_COOKIE_NAME = "niles_session"
 CSRF_COOKIE_NAME = "niles_csrf"
-COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
+COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
 
 _CHAT_PAGE_SIZE = 20
 

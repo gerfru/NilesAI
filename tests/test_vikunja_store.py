@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from niles.config import Settings
+from niles.crypto import FieldEncryptor
 
 
 VALID_TOKEN = "test-api-key"
@@ -66,6 +67,47 @@ class TestVikunjaCredentialStore:
         store.pool.execute.assert_called_once()
         sql = store.pool.execute.call_args[0][0]
         assert "DELETE FROM vikunja_credentials" in sql
+
+
+class TestVikunjaCredentialStoreEncryption:
+    """Test that VikunjaCredentialStore encrypts/decrypts api_token."""
+
+    @pytest.fixture
+    def enc(self):
+        return FieldEncryptor(FieldEncryptor.generate_key())
+
+    @pytest.fixture
+    def store(self, enc):
+        from niles.vikunja_store import VikunjaCredentialStore
+
+        pool = AsyncMock()
+        return VikunjaCredentialStore(pool, encryptor=enc)
+
+    async def test_upsert_encrypts_token(self, store, enc):
+        await store.upsert_credentials(5, "tok-secret", "http://vikunja:3456/api/v1")
+        args = store.pool.execute.call_args[0]
+        # args[2] = enc_token
+        assert args[2].startswith("v1:")
+        assert enc.decrypt(args[2]) == "tok-secret"
+
+    async def test_get_decrypts_token(self, store, enc):
+        store.pool.fetchrow.return_value = {
+            "user_id": 5,
+            "api_token": enc.encrypt("tok-secret"),
+            "api_url": "http://vikunja:3456/api/v1",
+        }
+        result = await store.get_credentials(5)
+        assert result["api_token"] == "tok-secret"
+
+    async def test_get_decrypts_legacy_plaintext(self, store):
+        """Pre-encryption plaintext tokens are returned as-is."""
+        store.pool.fetchrow.return_value = {
+            "user_id": 5,
+            "api_token": "legacy-plaintext-token",
+            "api_url": "",
+        }
+        result = await store.get_credentials(5)
+        assert result["api_token"] == "legacy-plaintext-token"
 
 
 class TestAgentPerUserVikunja:
