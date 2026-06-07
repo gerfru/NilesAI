@@ -141,7 +141,7 @@ async def signal_disconnect(request: Request):
         sig_task.cancel()
         try:
             await sig_task
-        except (asyncio.CancelledError, Exception):  # noqa: S110
+        except asyncio.CancelledError, Exception:  # noqa: S110
             pass
     request.app.state.signal_task = None
 

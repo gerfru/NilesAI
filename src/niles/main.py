@@ -70,7 +70,7 @@ def _parse_briefing_time(time_str: str) -> tuple[int, int]:
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             raise ValueError
         return hour, minute
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         logger.warning("Ungültige Briefing-Zeit '%s', verwende 07:30", time_str)
         return 7, 30
 
