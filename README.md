@@ -52,7 +52,7 @@ Browser / curl / WhatsApp
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop, Ollama (native on host), Python >= 3.11
+**Prerequisites:** Docker Desktop, Ollama (native on host), Python >= 3.14
 
 ```bash
 # 1. Clone and configure
@@ -102,7 +102,7 @@ docs/                          Technical Documentation
 
 | Component      | Technology                                  |
 | -------------- | ------------------------------------------- |
-| Backend        | FastAPI (Python 3.12)                       |
+| Backend        | FastAPI (Python 3.14)                       |
 | Web UI         | Jinja2 + htmx + Tailwind CSS + SSE         |
 | LLM            | Ollama (local, llama3.1:8b)                 |
 | Embeddings     | nomic-embed-text-v2-moe (Ollama)            |

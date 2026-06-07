@@ -92,7 +92,7 @@ class ContextBuilder:
         if chat_id.startswith("web-user-"):
             try:
                 return int(chat_id.split("-", 2)[2])
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 return None
         if chat_id.startswith("wa-self-") and self.wa_store:
             phone = chat_id.split("-", 2)[2]

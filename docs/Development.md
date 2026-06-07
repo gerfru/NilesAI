@@ -12,7 +12,7 @@ Additionally for development:
 
 | Software | Version | Purpose |
 | -------- | ------- | ------- |
-| Python | >= 3.11 | Runtime + Tests |
+| Python | >= 3.14 | Runtime + Tests |
 | Tailwind CSS CLI | v3.4.17 | CSS Build (standalone binary, no Node.js) |
 | TruffleHog | >= 3.88 | Secret scanning (pre-commit hook, `brew install trufflehog`) |
 
