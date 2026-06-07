@@ -126,7 +126,7 @@ async def db_pool():
             max_size=5,
             timeout=5,
         )
-    except (OSError, asyncpg.PostgresError, asyncio.TimeoutError):
+    except OSError, asyncpg.PostgresError, asyncio.TimeoutError:
         pytest.skip(f"PostgreSQL not reachable at {POSTGRES_HOST}:{POSTGRES_PORT}")
         return
 

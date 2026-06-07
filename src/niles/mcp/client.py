@@ -220,7 +220,7 @@ def _coerce_arguments(arguments: dict) -> dict:
             if isinstance(parsed, (list, dict, int, float, bool)) or parsed is None:
                 result[key] = parsed
                 continue
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             pass
         # Python-style list literal: "['general', 'history']" → try with
         # double quotes so json.loads can handle it.
@@ -228,7 +228,7 @@ def _coerce_arguments(arguments: dict) -> dict:
             try:
                 result[key] = json.loads(value.replace("'", '"'))
                 continue
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 pass
         result[key] = value
     return result

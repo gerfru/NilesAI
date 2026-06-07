@@ -43,7 +43,7 @@ async def ollama_available():
         try:
             resp = await client.get(f"{ollama_url}/api/tags")
             resp.raise_for_status()
-        except (httpx.ConnectError, httpx.HTTPError):
+        except httpx.ConnectError, httpx.HTTPError:
             pytest.skip(f"Ollama not reachable at {ollama_url}")
 
 

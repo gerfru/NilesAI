@@ -240,7 +240,7 @@ class CardDAVSourceManager:
         if auth_password and not auth_password.startswith("v1:"):
             try:
                 auth_password = json.loads(auth_password)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 pass
 
         # Re-encrypt with FieldEncryptor if available
