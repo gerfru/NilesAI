@@ -128,15 +128,11 @@ def _parse_exdate_line(line: str) -> list[datetime]:
             if is_date:
                 dt = datetime.strptime(val, "%Y%m%d").replace(tzinfo=timezone.utc)
             elif val.endswith("Z"):
-                dt = datetime.strptime(val, "%Y%m%dT%H%M%SZ").replace(
-                    tzinfo=timezone.utc
-                )
+                dt = datetime.strptime(val, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
             elif tzid:
                 dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(tzinfo=tzid)
             else:
-                dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(
-                    tzinfo=timezone.utc
-                )
+                dt = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
             results.append(dt)
         except ValueError:
             logger.warning("Failed to parse EXDATE value: %s", val)
@@ -286,9 +282,7 @@ def expand_recurring_event(
     if event["all_day"]:
         exdate_dates = {d.date() for d in exdates}
     else:
-        exdate_dates = {
-            d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates
-        }
+        exdate_dates = {d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates}
 
     # Generate occurrences within window
     occurrences = rule.between(window_start, window_end, inc=True)

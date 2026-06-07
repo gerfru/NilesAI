@@ -246,9 +246,7 @@ class BriefingGenerator:
             t_min = self._daily_value(daily, "temperature_2m_min", i)
             t_max = self._daily_value(daily, "temperature_2m_max", i)
             precip = self._daily_value(daily, "precipitation_sum", i, default=0)
-            prob = self._daily_value(
-                daily, "precipitation_probability_max", i, default=0
-            )
+            prob = self._daily_value(daily, "precipitation_probability_max", i, default=0)
 
             desc = _WEATHER_CODES.get(code, f"Unbekannt ({code})")
             detail = f"  {day_label}: {desc}, {t_min}–{t_max}°C"
@@ -394,9 +392,7 @@ class BriefingGenerator:
         week_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         # Mo-Fr = 5 days (work week)
         week_end = week_start + timedelta(days=4, hours=23, minutes=59, seconds=59)
-        date_range = (
-            f"{week_start.strftime('%d.%m.')} – {week_end.strftime('%d.%m.%Y')}"
-        )
+        date_range = f"{week_start.strftime('%d.%m.')} – {week_end.strftime('%d.%m.%Y')}"
 
         events = await self._get_events_for_range(week_start, week_end, user_id=user_id)
         tasks = await self._get_open_tasks(user_id)
@@ -440,9 +436,7 @@ class BriefingGenerator:
             for t in tasks:
                 if "due_date" in t:
                     try:
-                        due = datetime.fromisoformat(
-                            t["due_date"].replace("Z", "+00:00")
-                        )
+                        due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                         if week_start <= due <= week_end:
                             tasks_this_week.append(t)
                     except (ValueError, TypeError):

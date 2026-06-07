@@ -235,9 +235,7 @@ class TestCSPReport:
         async def page():
             return {"ok": True}
 
-        test_app.add_api_route(
-            "/csp-report", csp_report, methods=["POST"], status_code=204
-        )
+        test_app.add_api_route("/csp-report", csp_report, methods=["POST"], status_code=204)
         return test_app
 
     def test_csp_header_contains_report_uri(self, csp_app):
@@ -253,9 +251,7 @@ class TestCSPReport:
         from niles.main import csp_report
 
         test_app = FastAPI()
-        test_app.add_api_route(
-            "/csp-report", csp_report, methods=["POST"], status_code=204
-        )
+        test_app.add_api_route("/csp-report", csp_report, methods=["POST"], status_code=204)
         return test_app
 
     def test_csp_report_valid_payload(self, report_app):

@@ -38,11 +38,7 @@ async def handle_send_signal(args: dict, chat_id: str, ctx: ToolContext) -> dict
 
     if is_self:
         result = await ctx.signal.send_message(to=resolved_number, text=text)
-        return (
-            {"status": "sent", "to": resolved_number}
-            if "error" not in result
-            else result
-        )
+        return {"status": "sent", "to": resolved_number} if "error" not in result else result
 
     # Store pending confirmation and ask user
     display_to = to if to != resolved_number else resolved_number
@@ -55,18 +51,13 @@ async def handle_send_signal(args: dict, chat_id: str, ctx: ToolContext) -> dict
     preview = text[:200] + ("..." if len(text) > 200 else "")
     return {
         "confirm": (
-            f"Soll ich diese Signal-Nachricht senden?\n"
-            f"An: {display_to}\n"
-            f"Text: {preview}\n\n"
-            f"Antworte mit ja oder nein."
+            f"Soll ich diese Signal-Nachricht senden?\nAn: {display_to}\nText: {preview}\n\nAntworte mit ja oder nein."
         )
     }
 
 
 @register_tool("get_signal_messages")
-async def handle_get_signal_messages(
-    args: dict, chat_id: str, ctx: ToolContext
-) -> dict:
+async def handle_get_signal_messages(args: dict, chat_id: str, ctx: ToolContext) -> dict:
     contact_arg = args.get("contact", "").strip()
     if not contact_arg:
         return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
@@ -86,11 +77,7 @@ async def handle_get_signal_messages(
         }
 
     # Determine display name for the contact
-    contact_name = (
-        contact_arg
-        if not contact_arg.replace("+", "").replace(" ", "").isdigit()
-        else phone
-    )
+    contact_name = contact_arg if not contact_arg.replace("+", "").replace(" ", "").isdigit() else phone
 
     return format_message_transcript(
         messages=messages,

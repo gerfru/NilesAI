@@ -31,9 +31,7 @@ def _get_config() -> tuple[str, int, str]:
     """
     url = os.environ.get("SEARXNG_URL", "")
     if not url:
-        raise ValueError(
-            "SEARXNG_URL nicht konfiguriert. SearXNG-Instanz-URL muss gesetzt sein."
-        )
+        raise ValueError("SEARXNG_URL nicht konfiguriert. SearXNG-Instanz-URL muss gesetzt sein.")
     count = int(os.environ.get("SEARXNG_RESULT_COUNT", str(_DEFAULT_RESULT_COUNT)))
     lang = os.environ.get("SEARXNG_LANGUAGE", _DEFAULT_LANGUAGE)
     return url.rstrip("/"), count, lang

@@ -12,16 +12,11 @@ logger = logging.getLogger(__name__)
 
 # PROPFIND body to list vCard resources
 _PROPFIND_BODY = (
-    '<?xml version="1.0" encoding="utf-8"?>'
-    '<D:propfind xmlns:D="DAV:">'
-    "<D:prop><D:displayname/></D:prop>"
-    "</D:propfind>"
+    '<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>'
 )
 
 # Namespace-agnostic regex for href elements containing .vcf paths
-_HREF_REGEX = re.compile(
-    r"<(?:[dD]:)?href[^>]*>\s*([^<]*\.vcf)\s*</(?:[dD]:)?href>", re.IGNORECASE
-)
+_HREF_REGEX = re.compile(r"<(?:[dD]:)?href[^>]*>\s*([^<]*\.vcf)\s*</(?:[dD]:)?href>", re.IGNORECASE)
 
 
 class CardDAVSync:
@@ -201,9 +196,7 @@ class CardDAVSync:
 
         # Build full_name from parts if missing
         if not contact["full_name"]:
-            contact["full_name"] = (
-                f"{contact['first_name']} {contact['last_name']}".strip()
-            )
+            contact["full_name"] = f"{contact['first_name']} {contact['last_name']}".strip()
 
         return contact
 

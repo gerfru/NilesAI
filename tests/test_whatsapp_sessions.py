@@ -296,9 +296,7 @@ class TestWebhookIncoming:
         from niles.sources.whatsapp import whatsapp_webhook
 
         mock_app.state.agent.process_event.return_value = "Antwort"
-        mock_app.state.whatsapp_action.send_message.return_value = {
-            "key": {"id": "REPLY_LID"}
-        }
+        mock_app.state.whatsapp_action.send_message.return_value = {"key": {"id": "REPLY_LID"}}
 
         request = AsyncMock()
         request.app = mock_app

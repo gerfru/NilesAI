@@ -43,9 +43,7 @@ class WhatsAppSetupAction:
         if not session:
             return ctx
 
-        state = await self.whatsapp_action.get_connection_state(
-            session["instance_name"]
-        )
+        state = await self.whatsapp_action.get_connection_state(session["instance_name"])
 
         if state == "open":
             phone = session.get("phone_number")
@@ -55,9 +53,7 @@ class WhatsAppSetupAction:
                 )
                 if owner_jid and "@" in owner_jid:
                     phone = owner_jid.split("@")[0]
-                await self.wa_store.update_status(
-                    user_id, "connected", phone_number=phone
-                )
+                await self.wa_store.update_status(user_id, "connected", phone_number=phone)
             ctx["wa_status"] = "connected"
             ctx["wa_phone"] = phone or ""
         elif session["status"] == "connecting":
@@ -82,10 +78,7 @@ class WhatsAppSetupAction:
         instance_name = f"niles-wa-{user_id}"
         # Evolution API requires the token as a query parameter for webhook
         # authentication — header-based auth is not supported.
-        webhook_url = (
-            f"{self.webhook_base_url.rstrip('/')}/webhook/whatsapp"
-            f"?token={self.evolution_api_key}"
-        )
+        webhook_url = f"{self.webhook_base_url.rstrip('/')}/webhook/whatsapp?token={self.evolution_api_key}"
 
         result = await self.whatsapp_action.create_instance(instance_name, webhook_url)
 

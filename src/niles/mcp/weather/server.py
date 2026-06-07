@@ -86,10 +86,7 @@ def _get_config() -> tuple[str, str, str]:
     lon = os.environ.get("WEATHER_LONGITUDE", "")
     tz = os.environ.get("WEATHER_TIMEZONE", "Europe/Vienna")
     if not lat or not lon:
-        raise ValueError(
-            "Standort nicht konfiguriert. "
-            "Bitte Breitengrad und Laengengrad in den Einstellungen angeben."
-        )
+        raise ValueError("Standort nicht konfiguriert. Bitte Breitengrad und Laengengrad in den Einstellungen angeben.")
     return lat, lon, tz
 
 

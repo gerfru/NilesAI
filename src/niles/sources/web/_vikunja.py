@@ -26,10 +26,7 @@ async def vikunja_status(request: Request):
 
     vikunja_setup = getattr(request.app.state, "vikunja_setup_action", None)
     if not vikunja_setup:
-        return HTMLResponse(
-            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
-            "Vikunja nicht verfuegbar.</p>"
-        )
+        return HTMLResponse('<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">Vikunja nicht verfuegbar.</p>')
 
     ctx = await vikunja_setup.get_status(user["uid"])
     return templates.TemplateResponse(
@@ -78,8 +75,7 @@ async def vikunja_connect(
     except asyncpg.ForeignKeyViolationError:
         logger.warning("FK violation: user_id=%s not in users table", user["uid"])
         response = HTMLResponse(
-            '<p class="text-sm text-red-500">'
-            "Sitzung ungueltig &ndash; bitte erneut einloggen.</p>",
+            '<p class="text-sm text-red-500">Sitzung ungueltig &ndash; bitte erneut einloggen.</p>',
             status_code=401,
             headers={"HX-Redirect": "/ui/login"},
         )

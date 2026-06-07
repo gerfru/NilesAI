@@ -16,8 +16,7 @@ class WhatsAppSessionStore:
     async def get_session(self, user_id: int) -> dict | None:
         """Get WhatsApp session for a user."""
         row = await self.pool.fetchrow(
-            "SELECT user_id, instance_name, phone_number, status "
-            "FROM whatsapp_sessions WHERE user_id = $1",
+            "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE user_id = $1",
             user_id,
         )
         if row:
@@ -27,8 +26,7 @@ class WhatsAppSessionStore:
     async def get_by_instance(self, instance_name: str) -> dict | None:
         """Look up session by Evolution API instance name (for webhook routing)."""
         row = await self.pool.fetchrow(
-            "SELECT user_id, instance_name, phone_number, status "
-            "FROM whatsapp_sessions WHERE instance_name = $1",
+            "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE instance_name = $1",
             instance_name,
         )
         if row:
@@ -38,8 +36,7 @@ class WhatsAppSessionStore:
     async def get_by_phone(self, phone_number: str) -> dict | None:
         """Look up session by phone number (for self-chat user resolution)."""
         row = await self.pool.fetchrow(
-            "SELECT user_id, instance_name, phone_number, status "
-            "FROM whatsapp_sessions WHERE phone_number = $1",
+            "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE phone_number = $1",
             phone_number,
         )
         if row:
@@ -76,22 +73,18 @@ class WhatsAppSessionStore:
         """Update session status (and optionally phone number)."""
         if phone_number is not None:
             await self.pool.execute(
-                "UPDATE whatsapp_sessions SET status = $2, phone_number = $3, "
-                "updated_at = NOW() WHERE user_id = $1",
+                "UPDATE whatsapp_sessions SET status = $2, phone_number = $3, updated_at = NOW() WHERE user_id = $1",
                 user_id,
                 status,
                 phone_number,
             )
         else:
             await self.pool.execute(
-                "UPDATE whatsapp_sessions SET status = $2, "
-                "updated_at = NOW() WHERE user_id = $1",
+                "UPDATE whatsapp_sessions SET status = $2, updated_at = NOW() WHERE user_id = $1",
                 user_id,
                 status,
             )
 
     async def delete_session(self, user_id: int) -> None:
         """Remove a WhatsApp session."""
-        await self.pool.execute(
-            "DELETE FROM whatsapp_sessions WHERE user_id = $1", user_id
-        )
+        await self.pool.execute("DELETE FROM whatsapp_sessions WHERE user_id = $1", user_id)

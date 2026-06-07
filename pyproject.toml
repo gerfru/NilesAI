@@ -100,6 +100,29 @@ markers = [
     "llm_judge: requires Ollama + Claude API key, slow (deselect with -m 'not llm_judge')",
 ]
 
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "S"]
+ignore = ["E501"]  # Line length handled by ruff format
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately use assert, hardcoded credentials, verify=False, and try-except-pass
+"tests/**/*.py" = ["S101", "S105", "S106", "S110", "S501"]
+# Web route handlers use assert for type narrowing after auth checks
+"src/niles/sources/web/_admin.py" = ["S101"]
+"src/niles/sources/web/_chat.py" = ["S101"]
+"src/niles/sources/web/_contacts.py" = ["S101"]
+"src/niles/sources/web/_core.py" = ["S101"]
+"src/niles/sources/web/_settings.py" = ["S101"]
+"src/niles/sources/web/_vikunja.py" = ["S101"]
+"src/niles/sources/web/_whatsapp.py" = ["S101"]
+# CalDAV: XML parsing from authenticated internal CalDAV servers (not untrusted)
+"src/niles/sync/caldav.py" = ["S314"]
+# Dynamic SQL uses parameterized queries (where_clause built from internal logic, not user input)
+"src/niles/actions/contacts.py" = ["S608"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = false

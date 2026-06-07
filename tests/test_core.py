@@ -197,12 +197,8 @@ class TestProcessEventStream:
         events = await _collect(agent.process_event_stream(event))
 
         # Should have status event for recall, then text chunks, then done
-        assert any(
-            e.get("type") == "status" and "recall" in e.get("text", "") for e in events
-        )
-        assert any(
-            e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events
-        )
+        assert any(e.get("type") == "status" and "recall" in e.get("text", "") for e in events)
+        assert any(e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events)
         assert events[-1] == {"type": "done"}
 
         # LLM called twice (tool round + final response)
@@ -223,9 +219,7 @@ class TestProcessEventStream:
             return _aiter(
                 [
                     _make_delta(
-                        tool_calls=[
-                            _make_tool_call_delta(0, tc_id="call_x", name="recall")
-                        ],
+                        tool_calls=[_make_tool_call_delta(0, tc_id="call_x", name="recall")],
                     ),
                     _make_delta(
                         tool_calls=[_make_tool_call_delta(0, arguments='{"key": "x"}')],
@@ -235,9 +229,7 @@ class TestProcessEventStream:
             )
 
         agent.llm = AsyncMock()
-        agent.llm.chat.completions.create = AsyncMock(
-            side_effect=[make_tool_stream() for _ in range(MAX_TOOL_ROUNDS)]
-        )
+        agent.llm.chat.completions.create = AsyncMock(side_effect=[make_tool_stream() for _ in range(MAX_TOOL_ROUNDS)])
         agent.memory.get = AsyncMock(return_value="val")
 
         event = {"type": "web", "from": "test-chat", "content": "loop"}
@@ -327,9 +319,7 @@ class TestTextToolCallParsing:
 
     def test_mcp_tool_recognized_when_in_known_tools(self):
         """MCP tools like mcp__searxng__web_search are recognized when passed in known_tools."""
-        tools_with_mcp = frozenset(
-            [*self._TOOLS, "mcp__searxng__web_search", "mcp__fetch__fetch_url"]
-        )
+        tools_with_mcp = frozenset([*self._TOOLS, "mcp__searxng__web_search", "mcp__fetch__fetch_url"])
         text = '{"type":"function","name":"mcp__searxng__web_search","parameters":{"query":"Geschichte Wien"}}'
         result = NilesAgent._try_parse_text_tool_call(text, tools_with_mcp)
         assert result is not None
@@ -357,9 +347,7 @@ class TestTextToolCallParsing:
 
     def test_mcp_fuzzy_match_skips_when_multiple_candidates(self):
         """Fuzzy match does NOT guess when multiple tools share the same server prefix."""
-        tools_with_two = frozenset(
-            [*self._TOOLS, "mcp__myserver__tool_a", "mcp__myserver__tool_b"]
-        )
+        tools_with_two = frozenset([*self._TOOLS, "mcp__myserver__tool_a", "mcp__myserver__tool_b"])
         text = '{"name":"mcp__myserver__wrong","parameters":{"x":1}}'
         result = NilesAgent._try_parse_text_tool_call(text, tools_with_two)
         assert result is None
@@ -538,18 +526,12 @@ class TestTextToolCallStreamIntegration:
         events = await _collect(agent.process_event_stream(event))
 
         # JSON should NOT appear as a chunk (buffered, not streamed)
-        json_chunks_found = [
-            e for e in events if e.get("type") == "chunk" and "{" in e.get("text", "")
-        ]
+        json_chunks_found = [e for e in events if e.get("type") == "chunk" and "{" in e.get("text", "")]
         assert len(json_chunks_found) == 0
 
         # Should have status event, natural language chunk, done
-        assert any(
-            e.get("type") == "status" and "recall" in e.get("text", "") for e in events
-        )
-        assert any(
-            e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events
-        )
+        assert any(e.get("type") == "status" and "recall" in e.get("text", "") for e in events)
+        assert any(e.get("type") == "chunk" and "bar" in e.get("text", "") for e in events)
         assert events[-1] == {"type": "done"}
 
         # LLM called twice
@@ -598,9 +580,7 @@ class TestTextToolCallStreamIntegration:
         agent = _make_agent()
 
         chunks = [
-            _make_delta(
-                content='{"name": "mcp__searxng__search", "parameters": {"q": "Graz"}}'
-            ),
+            _make_delta(content='{"name": "mcp__searxng__search", "parameters": {"q": "Graz"}}'),
             _make_delta(finish_reason="stop"),
         ]
         agent.llm = AsyncMock()
@@ -635,9 +615,7 @@ class TestTextToolCallStreamIntegration:
             }
         ]
         mcp_mock.is_mcp_tool.return_value = True
-        mcp_mock.call_tool = AsyncMock(
-            return_value="Graz ist eine Stadt in der Steiermark."
-        )
+        mcp_mock.call_tool = AsyncMock(return_value="Graz ist eine Stadt in der Steiermark.")
         agent._ctx.mcp = mcp_mock
 
         # First call: LLM forced to call search tool (returns tool_calls)
@@ -656,9 +634,7 @@ class TestTextToolCallStreamIntegration:
             _make_delta(content="Graz ist die Landeshauptstadt."),
             _make_delta(finish_reason="stop"),
         ]
-        create_mock = AsyncMock(
-            side_effect=[_aiter(first_chunks), _aiter(second_chunks)]
-        )
+        create_mock = AsyncMock(side_effect=[_aiter(first_chunks), _aiter(second_chunks)])
         agent.llm = AsyncMock()
         agent.llm.chat.completions.create = create_mock
 
@@ -719,9 +695,7 @@ class TestFindEventGuard:
         agent, cal = self._make_agent_with_calendar()
         cal.find_by_query = AsyncMock(return_value=[{"summary": "Mama Geburtstag"}])
 
-        tc = self._make_tool_call(
-            {"query": "Mama", "calendar": "Geburtstage", "date_from": "2026-03-01"}
-        )
+        tc = self._make_tool_call({"query": "Mama", "calendar": "Geburtstage", "date_from": "2026-03-01"})
         result = await agent._execute_tool_call(tc)
 
         cal.find_by_query.assert_called_once_with(
