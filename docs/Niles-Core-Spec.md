@@ -1310,7 +1310,7 @@ See `.env.example` for complete documentation.
 ### 7.1 Dockerfile (`docker/Dockerfile.niles`)
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /app
 
 # Install uv for fast dependency management
@@ -1359,7 +1359,7 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 **Key design decisions:**
 
-- `python:3.12-slim` contains neither `curl` nor `wget`. Tailwind CLI is downloaded via Python `urllib.request.urlretrieve` with SHA256 verification.
+- `python:3.14-slim` contains neither `curl` nor `wget`. Tailwind CLI is downloaded via Python `urllib.request.urlretrieve` with SHA256 verification.
 - Dependencies are installed before copying source code (`COPY pyproject.toml` → `uv pip install` → `COPY src/`). This keeps the dependency layer cached when only source code changes.
 - `entrypoint.sh` runs Alembic migrations (`python -m niles.migrate`) before starting uvicorn. This ensures the database schema is always up to date on container start.
 
@@ -1407,7 +1407,7 @@ All containers on bridge network `niles_network` (internal) + `proxy` (external,
 
 | Component | Technology | Version |
 | --------- | ---------- | ------- |
-| Runtime | Python | >= 3.11 |
+| Runtime | Python | >= 3.14 |
 | Web Framework | FastAPI | >= 0.129.0 |
 | ASGI Server | uvicorn | >= 0.41.0 |
 | HTTP Client | httpx | >= 0.28.1 |

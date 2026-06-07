@@ -9,8 +9,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Check prerequisites
-if ! command -v python3 &>/dev/null; then
-    echo "Error: python3 not found. Please install Python 3.11+."
+PYTHON="${PYTHON:-python3.14}"
+if ! command -v "$PYTHON" &>/dev/null; then
+    echo "Error: $PYTHON not found. Please install Python 3.14+."
     exit 1
 fi
 
@@ -26,7 +27,7 @@ echo ""
 # Check if .venv exists
 if [ ! -d .venv ]; then
     echo "Creating virtual environment..."
-    python3 -m venv .venv
+    "$PYTHON" -m venv .venv
     echo ""
 fi
 
@@ -36,7 +37,8 @@ source .venv/bin/activate
 # Check if dependencies are installed
 if ! python -c "import niles" 2>/dev/null; then
     echo "Installing dependencies..."
-    pip install -e ".[dev]" --quiet
+    python -m pip install --upgrade pip --quiet
+    python -m pip install -e ".[dev]" --quiet
     echo ""
 fi
 

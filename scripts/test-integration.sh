@@ -56,13 +56,14 @@ fi
 # Activate venv (needed before Python-based token fetch)
 if [ ! -d .venv ]; then
     echo "Creating virtual environment..."
-    python3 -m venv .venv
+    "${PYTHON:-python3.14}" -m venv .venv
 fi
 source .venv/bin/activate
 
 if ! python -c "import pytest" 2>/dev/null; then
     echo "Installing dependencies..."
-    pip install -e ".[dev]" --quiet
+    python -m pip install --upgrade pip --quiet
+    python -m pip install -e ".[dev]" --quiet
 fi
 
 # Auto-fetch Vikunja API token from DB if not already set.
