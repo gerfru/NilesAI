@@ -75,11 +75,11 @@ jobs:
           uv export --frozen --no-hashes -o /tmp/req.txt
           pip-audit -r /tmp/req.txt --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw --ignore-vuln PYSEC-2026-196
       - name: bandit
-        # B101 (assert) and B608 (SQL f-string) are handled by ruff S-rules
-        # with targeted per-file-ignores in pyproject.toml
+        # These rules are handled by ruff S-rules with targeted per-file-ignores
+        # and noqa comments (bandit doesn't support ruff's # noqa: SXXX syntax)
         run: |
           pip install bandit==1.8.3
-          bandit -r src/niles/ -q --skip B101,B608
+          bandit -r src/niles/ -q --skip B101,B105,B314,B324,B405,B608
       - name: semgrep
         run: |
           pip install semgrep==1.164.0
