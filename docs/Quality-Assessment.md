@@ -310,7 +310,7 @@ concerns (templates, cookies, redirects, scheduler jobs).
 
 - Multi-stage (3 stages): Builder (compiles Tailwind + installs deps),
   gws-downloader (fetches gws binary with SHA256 verification), runtime
-- Base image pinned with SHA256 digest: `python:3.12-slim@sha256:...`
+- Base image pinned with SHA256 digest: `python:3.14-slim@sha256:...`
 - Non-root user: `useradd --uid 1000 niles`, `USER niles`
 - HEALTHCHECK: `curl -f http://localhost:8000/health` (30s interval, 5s
   timeout, 15s start period, 3 retries)
