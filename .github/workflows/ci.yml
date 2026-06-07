@@ -64,7 +64,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Install uv + audit tools
         run: pip install pip-audit==2.8.0 uv==0.7.8
       - name: pip-audit
@@ -103,10 +103,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
 
