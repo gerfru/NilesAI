@@ -3,7 +3,7 @@ name = "niles-core"
 version = "0.1.0"
 description = "Local AI Butler"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 
 dependencies = [
     # Web Framework
@@ -124,7 +124,7 @@ ignore = ["E501"]  # Line length handled by ruff format
 "src/niles/actions/contacts.py" = ["S608"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
