@@ -20,9 +20,7 @@ class TestCreateUser:
         }
         action = AdminAction(user_store)
 
-        result = await action.create_user(
-            "  New@Example.com  ", "  New User  ", "securepass123"
-        )
+        result = await action.create_user("  New@Example.com  ", "  New User  ", "securepass123")
 
         assert result["id"] == 42
         # Email normalized to lowercase + stripped
@@ -47,14 +45,10 @@ class TestCreateUser:
         vikunja.sync_password.return_value = True
         action = AdminAction(user_store, vikunja_provisioner=vikunja)
 
-        result = await action.create_user(
-            "new@example.com", "New User", "securepass123"
-        )
+        result = await action.create_user("new@example.com", "New User", "securepass123")
 
         assert result["id"] == 42
-        vikunja.sync_password.assert_called_once_with(
-            42, "new@example.com", "securepass123"
-        )
+        vikunja.sync_password.assert_called_once_with(42, "new@example.com", "securepass123")
 
     @pytest.mark.asyncio
     async def test_vikunja_sync_failure_does_not_block(self):
@@ -71,9 +65,7 @@ class TestCreateUser:
         vikunja.sync_password.side_effect = RuntimeError("Vikunja down")
         action = AdminAction(user_store, vikunja_provisioner=vikunja)
 
-        result = await action.create_user(
-            "new@example.com", "New User", "securepass123"
-        )
+        result = await action.create_user("new@example.com", "New User", "securepass123")
         assert result["id"] == 42  # User still created
 
     @pytest.mark.asyncio

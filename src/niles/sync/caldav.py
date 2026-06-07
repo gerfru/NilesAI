@@ -19,10 +19,7 @@ logger = logging.getLogger(__name__)
 
 # PROPFIND body to list iCalendar resources
 _PROPFIND_BODY = (
-    '<?xml version="1.0" encoding="utf-8"?>'
-    '<D:propfind xmlns:D="DAV:">'
-    "<D:prop><D:displayname/></D:prop>"
-    "</D:propfind>"
+    '<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>'
 )
 
 # XML namespaces used in CalDAV responses
@@ -108,8 +105,7 @@ async def cleanup_recurring_occurrences(
 
     if source_id is not None:
         result = await pool.execute(
-            "DELETE FROM events WHERE source_id = $1 AND "
-            "(caldav_uid = $2 OR caldav_uid LIKE $3 ESCAPE '\\')",
+            "DELETE FROM events WHERE source_id = $1 AND (caldav_uid = $2 OR caldav_uid LIKE $3 ESCAPE '\\')",
             source_id,
             master_uid,
             like_pattern,
@@ -251,9 +247,7 @@ class CalDAVSync:
         )
         response.raise_for_status()
         if len(response.content) > _MAX_RESPONSE_BYTES:
-            raise ValueError(
-                f"CalDAV REPORT response too large: {len(response.content)} bytes"
-            )
+            raise ValueError(f"CalDAV REPORT response too large: {len(response.content)} bytes")
 
         xml_text = response.text
         results: list[tuple[str, str]] = []
@@ -278,11 +272,7 @@ class CalDAVSync:
             return []
 
         root = ET.fromstring(xml_text)
-        hrefs = [
-            (el.text or "").strip()
-            for el in root.findall(".//D:response/D:href", _NS)
-            if el.text
-        ]
+        hrefs = [(el.text or "").strip() for el in root.findall(".//D:response/D:href", _NS) if el.text]
 
         # Direct calendar URL? (has .ics files directly)
         if any(h.endswith(".ics") for h in hrefs):
@@ -290,11 +280,7 @@ class CalDAVSync:
 
         # Discover sub-collections (hrefs ending with /)
         root_path = self.caldav_url.replace(self._base_url, "").rstrip("/") + "/"
-        collections = [
-            h
-            for h in hrefs
-            if h.endswith("/") and h != root_path and "schedule-" not in h
-        ]
+        collections = [h for h in hrefs if h.endswith("/") and h != root_path and "schedule-" not in h]
 
         allowed = self.allowed_collections()
         if allowed:
@@ -321,10 +307,7 @@ class CalDAVSync:
         Results are cached for 60 seconds to avoid repeated PROPFIND requests.
         """
         now = time.monotonic()
-        if (
-            self._collections_cache is not None
-            and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL
-        ):
+        if self._collections_cache is not None and (now - self._collections_cache_time) < _DISCOVERY_CACHE_TTL:
             return self._collections_cache
 
         xml_text = await self._propfind_request(self.caldav_url)
@@ -374,9 +357,7 @@ class CalDAVSync:
         )
         response.raise_for_status()
         if len(response.content) > _MAX_RESPONSE_BYTES:
-            raise ValueError(
-                f"CalDAV PROPFIND response too large: {len(response.content)} bytes"
-            )
+            raise ValueError(f"CalDAV PROPFIND response too large: {len(response.content)} bytes")
 
         xml = response.text
         if not xml or len(xml) < 100:

@@ -290,9 +290,7 @@ class NotionRetriever:
             if pid not in seen:
                 seen[pid] = {0: 0, 1: 0}
 
-            max_per_level = (
-                _MAX_SUMMARIES_PER_PAGE if level == 0 else _MAX_DETAILS_PER_PAGE
-            )
+            max_per_level = _MAX_SUMMARIES_PER_PAGE if level == 0 else _MAX_DETAILS_PER_PAGE
             if seen[pid][level] >= max_per_level:
                 continue
             seen[pid][level] += 1

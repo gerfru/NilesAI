@@ -56,9 +56,7 @@ class TestFindContactPipeline:
                         }
                     ]
                 },
-                {
-                    "content": "Ich konnte keinen Kontakt mit dem Namen 'Nobody Nowhere' finden."
-                },
+                {"content": "Ich konnte keinen Kontakt mit dem Namen 'Nobody Nowhere' finden."},
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
@@ -86,9 +84,7 @@ class TestMemoryPipeline:
                         }
                     ]
                 },
-                {
-                    "content": "Ich habe mir gemerkt, dass du gegen Nüsse allergisch bist."
-                },
+                {"content": "Ich habe mir gemerkt, dass du gegen Nüsse allergisch bist."},
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
@@ -109,11 +105,7 @@ class TestMemoryPipeline:
 
         fake = FakeLLM(
             [
-                {
-                    "tool_calls": [
-                        {"name": "recall", "arguments": {"key": "lieblingsfarbe"}}
-                    ]
-                },
+                {"tool_calls": [{"name": "recall", "arguments": {"key": "lieblingsfarbe"}}]},
                 {"content": "Deine Lieblingsfarbe ist blau."},
             ]
         )
@@ -127,11 +119,7 @@ class TestMemoryPipeline:
         """recall for nonexistent key → tool returns null → LLM handles."""
         fake = FakeLLM(
             [
-                {
-                    "tool_calls": [
-                        {"name": "recall", "arguments": {"key": "nonexistent_xyz"}}
-                    ]
-                },
+                {"tool_calls": [{"name": "recall", "arguments": {"key": "nonexistent_xyz"}}]},
                 {"content": "Dazu habe ich leider keine Information gespeichert."},
             ]
         )
@@ -151,11 +139,7 @@ class TestCalendarPipeline:
         """find_event tool → real DB query returns seeded events."""
         fake = FakeLLM(
             [
-                {
-                    "tool_calls": [
-                        {"name": "find_event", "arguments": {"query": "Meeting"}}
-                    ]
-                },
+                {"tool_calls": [{"name": "find_event", "arguments": {"query": "Meeting"}}]},
                 {"content": "Du hast ein Team Meeting geplant."},
             ]
         )
@@ -370,18 +354,12 @@ class TestNotionPipeline:
         """search_notion → tool handler invoked (no Ollama → returns error)."""
         fake = FakeLLM(
             [
-                {
-                    "tool_calls": [
-                        {"name": "search_notion", "arguments": {"query": "Projektplan"}}
-                    ]
-                },
+                {"tool_calls": [{"name": "search_notion", "arguments": {"query": "Projektplan"}}]},
                 {"content": "In der Wissensdatenbank habe ich nichts dazu gefunden."},
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        events = await collect_events(
-            agent, "Was steht im Notion über den Projektplan?"
-        )
+        events = await collect_events(agent, "Was steht im Notion über den Projektplan?")
 
         status_events = [e for e in events if e["type"] == "status"]
         assert any("search_notion" in e["text"] for e in status_events)
@@ -421,9 +399,7 @@ class TestMultiToolPipeline:
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        events = await collect_events(
-            agent, "Schreib Max Mustermann auf WhatsApp: Hallo Max!"
-        )
+        events = await collect_events(agent, "Schreib Max Mustermann auf WhatsApp: Hallo Max!")
 
         status_events = [e for e in events if e["type"] == "status"]
         tool_names = [e["text"] for e in status_events]

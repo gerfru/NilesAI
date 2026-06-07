@@ -1,16 +1,26 @@
-# .pre-commit-config.yaml
 repos:
-  # --- Secret Scanning ---
-  - repo: https://github.com/trufflesecurity/trufflehog
-    rev: v3.88.0  # Check latest version: https://github.com/trufflesecurity/trufflehog/releases
+  # --- Secret Scanning (gitleaks) ---
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
     hooks:
-      - id: trufflehog
-        name: TruffleHog Secret Scan
-        entry: trufflehog git file://. --since-commit HEAD --results=verified,unknown --fail
-        language: system
-        stages: [pre-commit]
+      - id: gitleaks
 
-  # --- PII / IP Address Scanning ---
+  # --- General Hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  # --- PII / IP Address Scanning (Niles-specific) ---
   - repo: local
     hooks:
       - id: check-pii
@@ -20,15 +30,34 @@ repos:
         stages: [pre-commit]
         pass_filenames: false
 
+  # --- SAST (bandit) ---
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: [-r, src/niles/]
+        pass_filenames: false
+        files: ^src/niles/
+
   # --- Python Linting ---
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6  # Check latest version: https://github.com/astral-sh/ruff-pre-commit/releases
+    rev: v0.9.6
     hooks:
       - id: ruff
-        name: Ruff Lint
         args: [--fix]
       - id: ruff-format
-        name: Ruff Format
+
+  # --- SAST (semgrep) ---
+  - repo: local
+    hooks:
+      - id: semgrep
+        name: semgrep
+        entry: semgrep
+        language: python
+        additional_dependencies: [semgrep==1.164.0]
+        args: [scan, src/niles/, --config, p/python, --config, p/owasp-top-ten, --error]
+        pass_filenames: false
+        files: ^src/niles/.*\.py$
 
   # --- Static Type Checking ---
   - repo: local

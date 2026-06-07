@@ -18,9 +18,7 @@ class WhatsAppAction:
     def __init__(self, config: Settings, client: httpx.AsyncClient | None = None):
         self.base_url = config.evolution_api_url
         self.instance = config.evolution_instance
-        self._client = client or httpx.AsyncClient(
-            headers={"apikey": config.evolution_api_key}, timeout=30
-        )
+        self._client = client or httpx.AsyncClient(headers={"apikey": config.evolution_api_key}, timeout=30)
 
     async def send_message(
         self,

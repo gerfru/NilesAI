@@ -21,27 +21,19 @@ def format_message_transcript(
     local_tz = ZoneInfo(timezone_str)
     lines = []
     for msg in messages:
-        ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc).astimezone(
-            local_tz
-        )
+        ts = datetime.fromtimestamp(msg["timestamp"], tz=timezone.utc).astimezone(local_tz)
         who = "Du" if msg["from_me"] else contact_name
         lines.append(f"[{ts:%d.%m. %H:%M}] {who}: {msg['text']}")
 
     transcript = "\n".join(lines)
 
-    first_dt = datetime.fromtimestamp(
-        messages[0]["timestamp"], tz=timezone.utc
-    ).astimezone(local_tz)
-    last_dt = datetime.fromtimestamp(
-        messages[-1]["timestamp"], tz=timezone.utc
-    ).astimezone(local_tz)
+    first_dt = datetime.fromtimestamp(messages[0]["timestamp"], tz=timezone.utc).astimezone(local_tz)
+    last_dt = datetime.fromtimestamp(messages[-1]["timestamp"], tz=timezone.utc).astimezone(local_tz)
 
     if first_dt.date() == last_dt.date():
         date_range = first_dt.strftime("%d.%m.%Y")
     else:
-        date_range = (
-            f"{first_dt.strftime('%d.%m.%Y')} \u2013 {last_dt.strftime('%d.%m.%Y')}"
-        )
+        date_range = f"{first_dt.strftime('%d.%m.%Y')} \u2013 {last_dt.strftime('%d.%m.%Y')}"
 
     return {
         "chat_with": contact_name,
