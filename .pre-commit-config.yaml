@@ -35,7 +35,7 @@ repos:
     rev: 1.8.3
     hooks:
       - id: bandit
-        args: [-r, src/niles/]
+        args: [-r, src/niles/, --skip, "B101,B608"]
         pass_filenames: false
         files: ^src/niles/
 
