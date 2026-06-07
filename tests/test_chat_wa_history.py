@@ -30,14 +30,10 @@ def wa_action():
 class TestFetchWaHistory:
     @pytest.mark.asyncio
     async def test_empty_messages(self, wa_action):
-        messages, has_more = await _fetch_wa_history(
-            wa_action, "436601234567", "niles-wa-1"
-        )
+        messages, has_more = await _fetch_wa_history(wa_action, "436601234567", "niles-wa-1")
         assert messages == []
         assert has_more is False
-        wa_action.fetch_messages.assert_awaited_once_with(
-            "436601234567@s.whatsapp.net", instance="niles-wa-1"
-        )
+        wa_action.fetch_messages.assert_awaited_once_with("436601234567@s.whatsapp.net", instance="niles-wa-1")
 
     @pytest.mark.asyncio
     async def test_trigger_message_is_user_role(self, wa_action):
@@ -69,9 +65,7 @@ class TestFetchWaHistory:
             _make_raw_msg("Niles, Termin morgen?", ts=1002),
             _make_raw_msg("Morgen hast du keine Termine.", ts=1003),
         ]
-        messages, _ = await _fetch_wa_history(
-            wa_action, "436601234567", "inst", limit=20
-        )
+        messages, _ = await _fetch_wa_history(wa_action, "436601234567", "inst", limit=20)
 
         assert len(messages) == 4
         assert messages[0]["role"] == "user"
@@ -112,12 +106,8 @@ class TestFetchWaHistory:
     @pytest.mark.asyncio
     async def test_pagination_first_page(self, wa_action):
         # 5 messages, page size 2 → first page = last 2
-        wa_action.fetch_messages.return_value = [
-            _make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)
-        ]
-        messages, has_more = await _fetch_wa_history(
-            wa_action, "436601234567", "inst", limit=2, offset=0
-        )
+        wa_action.fetch_messages.return_value = [_make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)]
+        messages, has_more = await _fetch_wa_history(wa_action, "436601234567", "inst", limit=2, offset=0)
 
         assert len(messages) == 2
         assert has_more is True
@@ -127,12 +117,8 @@ class TestFetchWaHistory:
 
     @pytest.mark.asyncio
     async def test_pagination_second_page(self, wa_action):
-        wa_action.fetch_messages.return_value = [
-            _make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)
-        ]
-        messages, has_more = await _fetch_wa_history(
-            wa_action, "436601234567", "inst", limit=2, offset=2
-        )
+        wa_action.fetch_messages.return_value = [_make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)]
+        messages, has_more = await _fetch_wa_history(wa_action, "436601234567", "inst", limit=2, offset=2)
 
         assert len(messages) == 2
         assert has_more is True
@@ -141,12 +127,8 @@ class TestFetchWaHistory:
 
     @pytest.mark.asyncio
     async def test_pagination_last_page(self, wa_action):
-        wa_action.fetch_messages.return_value = [
-            _make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)
-        ]
-        messages, has_more = await _fetch_wa_history(
-            wa_action, "436601234567", "inst", limit=2, offset=4
-        )
+        wa_action.fetch_messages.return_value = [_make_raw_msg(f"msg-{i}", ts=1000 + i) for i in range(5)]
+        messages, has_more = await _fetch_wa_history(wa_action, "436601234567", "inst", limit=2, offset=4)
 
         assert len(messages) == 1
         assert has_more is False
@@ -157,9 +139,7 @@ class TestFetchWaHistory:
         wa_action.fetch_messages.return_value = [
             _make_raw_msg("msg", ts=1000),
         ]
-        messages, has_more = await _fetch_wa_history(
-            wa_action, "436601234567", "inst", limit=20, offset=5
-        )
+        messages, has_more = await _fetch_wa_history(wa_action, "436601234567", "inst", limit=20, offset=5)
 
         assert messages == []
         assert has_more is False
@@ -193,6 +173,4 @@ class TestFetchWaHistory:
         """Phone number should be formatted as JID for Evolution API."""
         await _fetch_wa_history(wa_action, "4366012345678", "niles-wa-1")
 
-        wa_action.fetch_messages.assert_awaited_once_with(
-            "4366012345678@s.whatsapp.net", instance="niles-wa-1"
-        )
+        wa_action.fetch_messages.assert_awaited_once_with("4366012345678@s.whatsapp.net", instance="niles-wa-1")

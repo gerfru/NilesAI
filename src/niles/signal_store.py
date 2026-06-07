@@ -29,8 +29,7 @@ class SignalMessageStore:
     ) -> None:
         """Store a single message."""
         await self.pool.execute(
-            "INSERT INTO signal_messages (phone, text, from_me, timestamp, chat_id) "
-            "VALUES ($1, $2, $3, NOW(), $4)",
+            "INSERT INTO signal_messages (phone, text, from_me, timestamp, chat_id) VALUES ($1, $2, $3, NOW(), $4)",
             phone,
             text,
             from_me,

@@ -53,9 +53,7 @@ class TestMCPToolToOpenAI:
         assert result["type"] == "function"
         assert result["function"]["name"] == "mcp__test__search"
         assert result["function"]["description"] == "A test tool"
-        assert (
-            result["function"]["parameters"]["properties"]["query"]["type"] == "string"
-        )
+        assert result["function"]["parameters"]["properties"]["query"]["type"] == "string"
 
     def test_handles_none_description(self):
         mock_tool = MagicMock()
@@ -180,9 +178,7 @@ class TestCoerceArguments:
         assert _coerce_arguments({"time_range": "null"}) == {"time_range": None}
 
     def test_plain_string_unchanged(self):
-        assert _coerce_arguments({"query": "Geschichte Graz"}) == {
-            "query": "Geschichte Graz"
-        }
+        assert _coerce_arguments({"query": "Geschichte Graz"}) == {"query": "Geschichte Graz"}
 
     def test_mixed_types(self):
         """Real-world example from llama3.1 searxng call."""
@@ -217,9 +213,7 @@ class TestMCPManagerConfig:
 
     def test_load_config_with_servers(self, tmp_path):
         config = tmp_path / "mcp.yaml"
-        config.write_text(
-            "servers:\n  myserver:\n    command: echo\n    args: [hello]\n"
-        )
+        config.write_text("servers:\n  myserver:\n    command: echo\n    args: [hello]\n")
 
         manager = MCPManager(config_path=config)
         servers = manager._load_config()
@@ -254,11 +248,7 @@ class TestMCPManagerConfig:
         """Server with enabled: '${FLAG}' where FLAG=true is kept."""
         monkeypatch.setenv("MY_FLAG", "true")
         config = tmp_path / "mcp.yaml"
-        config.write_text(
-            "servers:\n"
-            "  myserver:\n    command: echo\n    args: [hi]\n"
-            "    enabled: '${MY_FLAG}'\n"
-        )
+        config.write_text("servers:\n  myserver:\n    command: echo\n    args: [hi]\n    enabled: '${MY_FLAG}'\n")
         manager = MCPManager(config_path=config)
         servers = manager._load_config()
         assert "myserver" in servers
@@ -275,11 +265,7 @@ class TestMCPManagerConfig:
         """The 'enabled' key is removed from the config dict (pop, not get)."""
         monkeypatch.setenv("MY_FLAG", "true")
         config = tmp_path / "mcp.yaml"
-        config.write_text(
-            "servers:\n"
-            "  s:\n    command: echo\n    args: []\n"
-            "    enabled: '${MY_FLAG}'\n"
-        )
+        config.write_text("servers:\n  s:\n    command: echo\n    args: []\n    enabled: '${MY_FLAG}'\n")
         manager = MCPManager(config_path=config)
         servers = manager._load_config()
         assert "enabled" not in servers["s"]
@@ -345,9 +331,7 @@ class TestMCPManagerCallTool:
         result = await manager.call_tool("mcp__myserver__mytool", {"key": "value"})
 
         assert result == "result text"
-        mock_session.call_tool.assert_called_once_with(
-            name="mytool", arguments={"key": "value"}
-        )
+        mock_session.call_tool.assert_called_once_with(name="mytool", arguments={"key": "value"})
 
     async def test_call_tool_error(self):
         manager = MCPManager()

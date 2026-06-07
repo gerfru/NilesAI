@@ -30,9 +30,7 @@ async def test_retry_on_500():
     fake_request = httpx.Request("GET", "http://test")
     fake_response = httpx.Response(500, request=fake_request)
     responses = [
-        httpx.HTTPStatusError(
-            "Server Error", request=fake_request, response=fake_response
-        ),
+        httpx.HTTPStatusError("Server Error", request=fake_request, response=fake_response),
         "ok",
     ]
     result = await _dummy_request(responses)
@@ -44,9 +42,7 @@ async def test_no_retry_on_400():
     """Does NOT retry on HTTP 400 (client error)."""
     fake_request = httpx.Request("GET", "http://test")
     fake_response = httpx.Response(400, request=fake_request)
-    err = httpx.HTTPStatusError(
-        "Bad Request", request=fake_request, response=fake_response
-    )
+    err = httpx.HTTPStatusError("Bad Request", request=fake_request, response=fake_response)
     responses = [err, "should not reach"]
     with pytest.raises(httpx.HTTPStatusError, match="Bad Request"):
         await _dummy_request(responses)
@@ -58,9 +54,7 @@ async def test_no_retry_on_401():
     """Does NOT retry on HTTP 401 (auth error)."""
     fake_request = httpx.Request("GET", "http://test")
     fake_response = httpx.Response(401, request=fake_request)
-    err = httpx.HTTPStatusError(
-        "Unauthorized", request=fake_request, response=fake_response
-    )
+    err = httpx.HTTPStatusError("Unauthorized", request=fake_request, response=fake_response)
     responses = [err]
     with pytest.raises(httpx.HTTPStatusError, match="Unauthorized"):
         await _dummy_request(responses)

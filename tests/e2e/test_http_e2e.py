@@ -43,9 +43,7 @@ def _create_test_app(agent, pool) -> FastAPI:
     app.state.settings_store = AsyncMock()
     # user_store.get_by_id returns a test user row
     user_store = AsyncMock()
-    user_store.get_by_id = AsyncMock(
-        return_value={"id": 1, "email": "test@test.com", "is_admin": True}
-    )
+    user_store.get_by_id = AsyncMock(return_value={"id": 1, "email": "test@test.com", "is_admin": True})
     app.state.user_store = user_store
     app.state.wa_store = None
     app.state.vikunja_provisioner = None
@@ -128,9 +126,7 @@ class TestAuthFlow:
         agent = make_e2e_agent(pool_in_tx, fake)
         app = _create_test_app(agent, pool_in_tx)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/ui/api/chat/stream",
                 data={"message": "Hallo"},
@@ -153,9 +149,7 @@ class TestSSEStreaming:
         agent = make_e2e_agent(pool_in_tx, fake)
         app = _create_test_app(agent, pool_in_tx)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/ui/api/chat/stream",
                 data={"message": "Test"},
@@ -176,9 +170,7 @@ class TestSSEStreaming:
         agent = make_e2e_agent(pool_in_tx, fake)
         app = _create_test_app(agent, pool_in_tx)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/ui/api/chat/stream",
                 data={"message": "Test"},
@@ -207,9 +199,7 @@ class TestSSEStreaming:
         agent = make_e2e_agent(pool_in_tx, fake)
         app = _create_test_app(agent, pool_in_tx)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/ui/api/chat/stream",
                 data={"message": "Nummer von Max?"},
@@ -236,9 +226,7 @@ class TestInputValidation:
         agent = make_e2e_agent(pool_in_tx, fake)
         app = _create_test_app(agent, pool_in_tx)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/ui/api/chat/stream",
                 data={"message": "x" * 2001},

@@ -134,9 +134,7 @@ class TestListTasks:
     async def test_filter_by_project(self, action):
         """Filter tasks by project name."""
         # First call: list tasks, second call: find project
-        action._client.get = AsyncMock(
-            side_effect=[_resp(SAMPLE_TASKS), _resp(SAMPLE_PROJECTS)]
-        )
+        action._client.get = AsyncMock(side_effect=[_resp(SAMPLE_TASKS), _resp(SAMPLE_PROJECTS)])
         result = await action.list_tasks(project="Arbeit")
 
         assert len(result) == 1
@@ -144,9 +142,7 @@ class TestListTasks:
 
     async def test_filter_by_unknown_project(self, action):
         """Unknown project returns empty list."""
-        action._client.get = AsyncMock(
-            side_effect=[_resp(SAMPLE_TASKS), _resp(SAMPLE_PROJECTS)]
-        )
+        action._client.get = AsyncMock(side_effect=[_resp(SAMPLE_TASKS), _resp(SAMPLE_PROJECTS)])
         result = await action.list_tasks(project="Nonexistent")
         assert result == []
 

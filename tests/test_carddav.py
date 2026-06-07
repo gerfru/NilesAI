@@ -192,9 +192,7 @@ class TestUpsertContact:
         # DELETE old phones + INSERT for each phone
         execute_calls = pool.execute.call_args_list
         assert any("DELETE FROM contact_phones" in c[0][0] for c in execute_calls)
-        insert_calls = [
-            c for c in execute_calls if "INSERT INTO contact_phones" in c[0][0]
-        ]
+        insert_calls = [c for c in execute_calls if "INSERT INTO contact_phones" in c[0][0]]
         assert len(insert_calls) == 2
 
 

@@ -139,9 +139,7 @@ class TestGetSyncCollections:
         """When URL is root, discover sub-collections."""
         root_sync = _make_root_sync(pool)
 
-        with patch.object(
-            root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML
-        ):
+        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
             urls = await root_sync._get_sync_collections()
 
         assert len(urls) == 2
@@ -153,9 +151,7 @@ class TestGetSyncCollections:
         """When caldav_calendars is set, only matching collections are returned."""
         root_sync = _make_root_sync(pool, caldav_calendars="/caldav/Y2FsOi8vMC8zMQ/")
 
-        with patch.object(
-            root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML
-        ):
+        with patch.object(root_sync, "_propfind_request", return_value=SAMPLE_PROPFIND_ROOT_XML):
             urls = await root_sync._get_sync_collections()
 
         assert len(urls) == 1
@@ -286,9 +282,7 @@ class TestSyncEvents:
         mock_upsert.assert_called_once()
 
     async def test_sync_returns_zero_on_discovery_failure(self, sync):
-        with patch.object(
-            sync, "_get_sync_collections", side_effect=Exception("Network")
-        ):
+        with patch.object(sync, "_get_sync_collections", side_effect=Exception("Network")):
             count = await sync.sync_events()
 
         assert count == 0

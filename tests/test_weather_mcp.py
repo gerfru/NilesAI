@@ -117,9 +117,7 @@ class TestGetCurrentWeather:
 
         with (
             patch.dict(os.environ, env, clear=True),
-            patch(
-                "niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client
-            ),
+            patch("niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client),
         ):
             result = await get_current_weather()
 
@@ -146,17 +144,13 @@ class TestGetCurrentWeather:
         }
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with (
             patch.dict(os.environ, env, clear=True),
-            patch(
-                "niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client
-            ),
+            patch("niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client),
         ):
             result = await get_current_weather()
 
@@ -203,9 +197,7 @@ class TestGetForecast:
 
         with (
             patch.dict(os.environ, env, clear=True),
-            patch(
-                "niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client
-            ),
+            patch("niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client),
         ):
             result = await get_forecast(days=3)
 
@@ -249,9 +241,7 @@ class TestGetForecast:
 
         with (
             patch.dict(os.environ, env, clear=True),
-            patch(
-                "niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client
-            ),
+            patch("niles.mcp.weather.server.httpx.AsyncClient", return_value=mock_client),
         ):
             # days=10 should be clamped to 7
             result = await get_forecast(days=10)

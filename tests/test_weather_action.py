@@ -60,9 +60,7 @@ class TestSetLocation:
         action = WeatherAction(store, http_client=AsyncMock())
         settings = make_test_settings()
 
-        new_settings = await action.set_location(
-            " 48.2082 ", " 16.3738 ", " Wien ", settings
-        )
+        new_settings = await action.set_location(" 48.2082 ", " 16.3738 ", " Wien ", settings)
 
         assert store.set.call_count == 3
         store.set.assert_any_call("weather_latitude", "48.2082")

@@ -64,10 +64,7 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 def _is_secure_context(request: Request) -> bool:
     """Detect whether the request arrived over HTTPS (directly or via reverse proxy)."""
-    return (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto") == "https"
-    )
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
 
 
 def _get_serializer(request: Request) -> URLSafeTimedSerializer:
@@ -240,9 +237,7 @@ def _user_chat_id(user: dict) -> str:
     return f"web-user-{user['uid']}"
 
 
-async def _maybe_provision_vikunja(
-    request: Request, user_id: int, email: str, *, password: str | None = None
-) -> None:
+async def _maybe_provision_vikunja(request: Request, user_id: int, email: str, *, password: str | None = None) -> None:
     """Auto-provision Vikunja account after login (no-op if not configured).
 
     When *password* is provided (password login), syncs it to Vikunja so the
@@ -274,9 +269,7 @@ async def _resolve_channel(
         if session is None and wa_store:
             session = await wa_store.get_session(user["uid"])
         if session and session.get("phone_number"):
-            chat_id = (
-                f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
-            )
+            chat_id = f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
             return chat_id, True
     if channel == "signal" and signal_phone:
         phone_digits = signal_phone.lstrip("+").replace(" ", "")
@@ -301,7 +294,7 @@ def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> 
         "x-forwarded-host",
         request.headers.get("host", "localhost"),
     )
-    return f"{scheme}://{host}{path}"
+    return f"{scheme}://{host}{path}"  # nosemgrep: directly-returned-format-string
 
 
 def _safe_settings_dict(settings) -> dict:
@@ -320,9 +313,7 @@ def _safe_settings_dict(settings) -> dict:
         "evolution_api_key": "********",
         "caldav_url (Legacy)": settings.caldav_url,
         "caldav_user (Legacy)": settings.caldav_user,
-        "caldav_password (Legacy)": "********"
-        if settings.caldav_password
-        else "(not set)",
+        "caldav_password (Legacy)": "********" if settings.caldav_password else "(not set)",
     }
 
     briefing = {
@@ -340,12 +331,8 @@ def _safe_settings_dict(settings) -> dict:
     }
 
     return {
-        "feature_whatsapp_send_others": getattr(
-            settings, "feature_whatsapp_send_others", False
-        ),
-        "feature_signal_send_others": getattr(
-            settings, "feature_signal_send_others", False
-        ),
+        "feature_whatsapp_send_others": getattr(settings, "feature_whatsapp_send_others", False),
+        "feature_signal_send_others": getattr(settings, "feature_signal_send_others", False),
         "text_settings": text_settings,
         "general": {"timezone": settings.timezone, "log_level": settings.log_level},
         "infra": infra,

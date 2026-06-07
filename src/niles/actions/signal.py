@@ -86,8 +86,7 @@ class SignalAction:
             response = await self._client.delete(url, timeout=30)
             if response.status_code == 404:
                 logger.info(
-                    "Signal account %s: DELETE returned 404 "
-                    "(normal for linked devices)",
+                    "Signal account %s: DELETE returned 404 (normal for linked devices)",
                     number,
                 )
                 return True
