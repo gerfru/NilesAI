@@ -7,10 +7,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_PROMPT = (
-    "Du bist Niles, ein persönlicher AI-Assistent. "
-    "Antworte auf Deutsch, kurz und prägnant."
-)
+_DEFAULT_PROMPT = "Du bist Niles, ein persönlicher AI-Assistent. Antworte auf Deutsch, kurz und prägnant."
 
 
 def load_system_prompt(path: str | None = None) -> str:
@@ -76,10 +73,7 @@ def build_system_prompt(
 
     if memories:
         memory_lines = [f"- {e['key']}: {e['value']}" for e in memories]
-        prompt += (
-            "\n\n## Dein Gedächtnis\n"
-            "Folgende Dinge hast du dir gemerkt:\n" + "\n".join(memory_lines)
-        )
+        prompt += "\n\n## Dein Gedächtnis\nFolgende Dinge hast du dir gemerkt:\n" + "\n".join(memory_lines)
 
     return prompt
 

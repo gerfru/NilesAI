@@ -55,9 +55,7 @@ class ConversationHistory:
 
     async def clear(self, chat_id: str) -> int:
         """Clear all history for a chat. Returns number of deleted messages."""
-        result = await self.pool.execute(
-            "DELETE FROM conversations WHERE chat_id = $1", chat_id
-        )
+        result = await self.pool.execute("DELETE FROM conversations WHERE chat_id = $1", chat_id)
         # Result is like "DELETE 5"
         count = int(result.split()[-1])
         return count

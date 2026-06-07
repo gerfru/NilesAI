@@ -31,9 +31,7 @@ class TestSearchNotionTool:
         ]
         ctx = _ctx(retriever)
 
-        result = await handle_search_notion(
-            {"query": "What is Niles?"}, "test-chat", ctx
-        )
+        result = await handle_search_notion({"query": "What is Niles?"}, "test-chat", ctx)
 
         assert len(result["results"]) == 1
         assert result["results"][0]["source"] == "About"
@@ -72,9 +70,7 @@ class TestSearchNotionTool:
         retriever.search.return_value = []
         ctx = _ctx(retriever)
 
-        await handle_search_notion(
-            {"query": "test", "max_results": 50}, "test-chat", ctx
-        )
+        await handle_search_notion({"query": "test", "max_results": 50}, "test-chat", ctx)
 
         retriever.search.assert_called_once_with("test", max_results=10)
 

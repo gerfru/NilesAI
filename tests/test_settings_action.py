@@ -28,9 +28,7 @@ class TestSettingsActionUpdate:
         action = SettingsAction(store, http_client=AsyncMock())
         settings = make_test_settings()
 
-        new_settings = await action.update(
-            "feature_whatsapp_send_others", "true", settings
-        )
+        new_settings = await action.update("feature_whatsapp_send_others", "true", settings)
 
         store.set.assert_called_once_with("feature_whatsapp_send_others", True)
         assert new_settings.feature_whatsapp_send_others is True
@@ -41,9 +39,7 @@ class TestSettingsActionUpdate:
         action = SettingsAction(store, http_client=AsyncMock())
         settings = make_test_settings()
 
-        new_settings = await action.update(
-            "feature_whatsapp_send_others", "false", settings
-        )
+        new_settings = await action.update("feature_whatsapp_send_others", "false", settings)
 
         store.set.assert_called_once_with("feature_whatsapp_send_others", False)
         assert new_settings.feature_whatsapp_send_others is False
@@ -85,9 +81,7 @@ class TestSettingsActionOllamaModels:
         client.get.return_value = response
         action = SettingsAction(AsyncMock(), http_client=client)
 
-        models = await action.list_ollama_models(
-            "http://localhost:11434/v1", "llama3.1:8b"
-        )
+        models = await action.list_ollama_models("http://localhost:11434/v1", "llama3.1:8b")
 
         assert len(models) == 2
         # Sorted alphabetically
@@ -105,9 +99,7 @@ class TestSettingsActionOllamaModels:
         client.get.return_value = response
         action = SettingsAction(AsyncMock(), http_client=client)
 
-        models = await action.list_ollama_models(
-            "http://localhost:11434", "llama3.1:8b"
-        )
+        models = await action.list_ollama_models("http://localhost:11434", "llama3.1:8b")
 
         assert models == []
 

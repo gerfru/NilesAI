@@ -53,9 +53,7 @@ async def handle_find_event(args: dict, chat_id: str, ctx: ToolContext) -> dict:
     )
     if events:
         result: dict = {"events": events, "count": len(events)}
-        result["hinweis"] = (
-            "Nenne NUR diese Termine. Erfinde keine zusätzlichen Termine."
-        )
+        result["hinweis"] = "Nenne NUR diese Termine. Erfinde keine zusätzlichen Termine."
         return result
     return {"error": "Keine Termine gefunden"}
 
@@ -95,11 +93,7 @@ async def handle_create_event(args: dict, chat_id: str, ctx: ToolContext) -> dic
             "expires_at": time.monotonic() + 300,
         }
         return {
-            "confirm": (
-                "Soll ich diesen Termin erstellen?\n"
-                + "\n".join(details)
-                + "\n\nAntworte mit ja oder nein."
-            )
+            "confirm": ("Soll ich diesen Termin erstellen?\n" + "\n".join(details) + "\n\nAntworte mit ja oder nein.")
         }
     except httpx.HTTPError as e:
         logger.error("HTTP error creating event: %s", e)

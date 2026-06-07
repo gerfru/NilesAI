@@ -11,27 +11,10 @@ import asyncpg
 import httpx
 
 from ..crypto import FieldEncryptor
+from ..network import is_private_host
 from ..sync.carddav import CardDAVSync
 
 logger = logging.getLogger(__name__)
-
-
-def _is_private_host(hostname: str) -> bool:
-    """Block private/internal hostnames (SSRF protection)."""
-    hostname = hostname.lower().strip(".")
-    if hostname in ("localhost", ""):
-        return True
-    parts = hostname.split(".")
-    if parts[0] in ("10", "127"):
-        return True
-    if parts[0] == "192" and len(parts) > 1 and parts[1] == "168":
-        return True
-    if parts[0] == "172" and len(parts) > 1:
-        try:
-            return 16 <= int(parts[1]) <= 31
-        except ValueError:
-            pass
-    return False
 
 
 class CardDAVSourceManager:
@@ -75,7 +58,7 @@ class CardDAVSourceManager:
             raise ValueError("Nur HTTPS-URLs sind erlaubt")
         parsed = urlparse(url)
         hostname = parsed.hostname or ""
-        if _is_private_host(hostname):
+        if is_private_host(hostname):
             raise ValueError("Interne Adressen sind nicht erlaubt")
         if len(url) > 2048:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
@@ -85,11 +68,7 @@ class CardDAVSourceManager:
         if not name.strip():
             name = url.split("//", 1)[-1].split("/")[0][:80]
 
-        enc_password = (
-            self._enc.encrypt(auth_password)
-            if self._enc and auth_password
-            else auth_password
-        )
+        enc_password = self._enc.encrypt(auth_password) if self._enc and auth_password else auth_password
         row = await self.pool.fetchrow(
             """
             INSERT INTO carddav_sources
@@ -110,8 +89,7 @@ class CardDAVSourceManager:
     async def remove_source(self, source_id: int, user_id: int | None = None) -> bool:
         """Remove a CardDAV source. Contacts are CASCADE-deleted."""
         result = await self.pool.execute(
-            "DELETE FROM carddav_sources WHERE id = $1"
-            " AND ($2::integer IS NULL OR user_id = $2)",
+            "DELETE FROM carddav_sources WHERE id = $1 AND ($2::integer IS NULL OR user_id = $2)",
             source_id,
             user_id,
         )
@@ -157,9 +135,7 @@ class CardDAVSourceManager:
             )
         return source_count
 
-    async def test_connection(
-        self, url: str, auth_user: str, auth_password: str
-    ) -> tuple[bool, str]:
+    async def test_connection(self, url: str, auth_user: str, auth_password: str) -> tuple[bool, str]:
         """Test a CardDAV connection before saving."""
         sync = CardDAVSync(
             self.pool,
@@ -173,9 +149,7 @@ class CardDAVSourceManager:
 
     async def sync_all(self) -> int:
         """Sync all CardDAV sources. Returns total contacts synced."""
-        sources = await self.pool.fetch(
-            "SELECT id, url, auth_user, auth_password, user_id FROM carddav_sources"
-        )
+        sources = await self.pool.fetch("SELECT id, url, auth_user, auth_password, user_id FROM carddav_sources")
         total = 0
         for src in sources:
             try:
@@ -190,9 +164,7 @@ class CardDAVSourceManager:
         )
         return total
 
-    async def sync_source(
-        self, source_id: int, user_id: int | None = None
-    ) -> int | None:
+    async def sync_source(self, source_id: int, user_id: int | None = None) -> int | None:
         """Sync a single source by ID. Returns contact count or None."""
         row = await self.pool.fetchrow(
             """
@@ -224,8 +196,7 @@ class CardDAVSourceManager:
         try:
             count = await sync.sync_contacts()
             await self.pool.execute(
-                "UPDATE carddav_sources SET last_synced = NOW(), last_error = NULL "
-                "WHERE id = $1",
+                "UPDATE carddav_sources SET last_synced = NOW(), last_error = NULL WHERE id = $1",
                 src["id"],
             )
             return count
@@ -250,9 +221,7 @@ class CardDAVSourceManager:
         if count > 0:
             return
 
-        row = await self.pool.fetchrow(
-            "SELECT value FROM settings_overrides WHERE key = 'carddav_url'"
-        )
+        row = await self.pool.fetchrow("SELECT value FROM settings_overrides WHERE key = 'carddav_url'")
         if not row:
             return
 
@@ -262,12 +231,8 @@ class CardDAVSourceManager:
         if not url:
             return
 
-        user_row = await self.pool.fetchrow(
-            "SELECT value FROM settings_overrides WHERE key = 'carddav_user'"
-        )
-        pass_row = await self.pool.fetchrow(
-            "SELECT value FROM settings_overrides WHERE key = 'carddav_password'"
-        )
+        user_row = await self.pool.fetchrow("SELECT value FROM settings_overrides WHERE key = 'carddav_user'")
+        pass_row = await self.pool.fetchrow("SELECT value FROM settings_overrides WHERE key = 'carddav_password'")
 
         auth_user = json.loads(user_row["value"]) if user_row else ""
         auth_password = pass_row["value"] if pass_row else ""
@@ -279,11 +244,7 @@ class CardDAVSourceManager:
                 pass
 
         # Re-encrypt with FieldEncryptor if available
-        enc_password = (
-            self._enc.encrypt(auth_password)
-            if self._enc and auth_password
-            else auth_password
-        )
+        enc_password = self._enc.encrypt(auth_password) if self._enc and auth_password else auth_password
 
         await self.pool.execute(
             """

@@ -183,9 +183,7 @@ class TestWebAuth:
         _login_attempts.clear()
         with patch("niles.sources.web._auth._ph") as mock_ph:
             mock_ph.verify.return_value = True
-            response = await login_submit(
-                request, email="test@example.com", password="correct"
-            )
+            response = await login_submit(request, email="test@example.com", password="correct")
         assert response.status_code == 303
         assert response.headers["location"] == "/ui/chat"
         _login_attempts.clear()
@@ -207,9 +205,7 @@ class TestWebAuth:
         _login_attempts.clear()
         with patch("niles.sources.web._auth._ph") as mock_ph:
             mock_ph.verify.side_effect = VerifyMismatchError()
-            response = await login_submit(
-                request, email="test@example.com", password="wrong"
-            )
+            response = await login_submit(request, email="test@example.com", password="wrong")
         assert response.status_code == 401
         _login_attempts.clear()
 
@@ -221,9 +217,7 @@ class TestWebAuth:
         request = _make_request(user_store=user_store, client_ip="10.1.0.3")
         _login_attempts.clear()
         with patch("niles.sources.web._auth._ph") as mock_ph:
-            response = await login_submit(
-                request, email="nobody@test.com", password="test"
-            )
+            response = await login_submit(request, email="nobody@test.com", password="test")
         assert response.status_code == 401
         # Dummy hash called for timing defense
         mock_ph.hash.assert_called_once()
@@ -245,9 +239,7 @@ class TestWebAuth:
         request = _make_request(user_store=user_store, client_ip="10.1.0.4")
         _login_attempts.clear()
         with patch("niles.sources.web._auth._ph"):
-            response = await login_submit(
-                request, email="google@example.com", password="test"
-            )
+            response = await login_submit(request, email="google@example.com", password="test")
         assert response.status_code == 401
         _login_attempts.clear()
 
@@ -442,9 +434,7 @@ class TestSettingsEndpoints:
 
         await update_setting(request, key="feature_whatsapp_send_others", value="false")
 
-        settings_action.update.assert_called_once_with(
-            "feature_whatsapp_send_others", "false", settings
-        )
+        settings_action.update.assert_called_once_with("feature_whatsapp_send_others", "false", settings)
         assert request.app.state.settings is updated
 
     async def test_update_text_setting(self):
@@ -461,9 +451,7 @@ class TestSettingsEndpoints:
 
         await update_setting(request, key="llm_model", value="new-model")
 
-        settings_action.update.assert_called_once_with(
-            "llm_model", "new-model", settings
-        )
+        settings_action.update.assert_called_once_with("llm_model", "new-model", settings)
         assert request.app.state.settings is updated
 
     async def test_update_llm_model_propagates_to_agent(self):
@@ -499,9 +487,7 @@ class TestSettingsEndpoints:
         with patch("niles.sources.web._settings.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            await update_setting(
-                request, key="llm_base_url", value="http://localhost:9999/v1"
-            )
+            await update_setting(request, key="llm_base_url", value="http://localhost:9999/v1")
 
         mock_openai.assert_called_once_with(
             base_url="http://localhost:9999/v1",
@@ -511,18 +497,14 @@ class TestSettingsEndpoints:
 
     async def test_update_action_error_returns_toast(self):
         settings_action = AsyncMock()
-        settings_action.update.side_effect = ValueError(
-            "Unbekannte Einstellung: 'postgres_password'"
-        )
+        settings_action.update.side_effect = ValueError("Unbekannte Einstellung: 'postgres_password'")
         request = _make_request(
             cookies=_auth_cookies(),
             headers=_csrf_headers(),
             settings_action=settings_action,
         )
 
-        response = await update_setting(
-            request, key="postgres_password", value="hacked"
-        )
+        response = await update_setting(request, key="postgres_password", value="hacked")
 
         # Should return error toast, not crash
         assert response.status_code == 200  # toast fragment always returns 200
@@ -538,9 +520,7 @@ class TestSettingsEndpoints:
         assert response.status_code == 403
 
     async def test_settings_page_masks_passwords(self):
-        settings = _make_settings(
-            carddav_password="secret123", caldav_password="secret456"
-        )
+        settings = _make_settings(carddav_password="secret123", caldav_password="secret456")
         request = _make_request(
             cookies={SESSION_COOKIE_NAME: _make_session_token()},
             settings=settings,
@@ -687,10 +667,7 @@ class TestChatStreamEndpoint:
         async for chunk in response.body_iterator:
             body += chunk.encode() if isinstance(chunk, str) else chunk
 
-        events = [
-            json.loads(line.removeprefix("data: "))
-            for line in body.decode().strip().split("\n\n")
-        ]
+        events = [json.loads(line.removeprefix("data: ")) for line in body.decode().strip().split("\n\n")]
         # Should contain error message and done event
         assert any("Fehler" in e.get("text", "") for e in events)
         assert events[-1]["type"] == "done"
@@ -776,9 +753,7 @@ class TestAdminEndpoints:
             password="secure1234",
         )
         assert response.status_code == 200
-        admin_action.create_user.assert_awaited_once_with(
-            "new@test.com", "New User", "secure1234"
-        )
+        admin_action.create_user.assert_awaited_once_with("new@test.com", "New User", "secure1234")
 
     async def test_admin_create_user_short_password(self):
         user_store = AsyncMock()
@@ -788,9 +763,7 @@ class TestAdminEndpoints:
             "is_admin": True,
         }
         admin_action = AsyncMock()
-        admin_action.create_user.side_effect = ValueError(
-            "Passwort muss mindestens 12 Zeichen lang sein."
-        )
+        admin_action.create_user.side_effect = ValueError("Passwort muss mindestens 12 Zeichen lang sein.")
         admin_action.list_users.return_value = []
         request = _make_request(
             cookies=_admin_cookies(),
@@ -798,9 +771,7 @@ class TestAdminEndpoints:
             user_store=user_store,
             admin_action=admin_action,
         )
-        response = await admin_create_user(
-            request, email="x@test.com", display_name="X", password="short"
-        )
+        response = await admin_create_user(request, email="x@test.com", display_name="X", password="short")
         assert response.status_code == 400
 
     async def test_admin_create_user_duplicate_email(self):
@@ -813,9 +784,7 @@ class TestAdminEndpoints:
         admin_action = AsyncMock()
         from niles.actions.admin import DuplicateEmailError
 
-        admin_action.create_user.side_effect = DuplicateEmailError(
-            "E-Mail 'dup@test.com' ist bereits vergeben."
-        )
+        admin_action.create_user.side_effect = DuplicateEmailError("E-Mail 'dup@test.com' ist bereits vergeben.")
         admin_action.list_users.return_value = []
         request = _make_request(
             cookies=_admin_cookies(),
@@ -823,9 +792,7 @@ class TestAdminEndpoints:
             user_store=user_store,
             admin_action=admin_action,
         )
-        response = await admin_create_user(
-            request, email="dup@test.com", display_name="Dup", password="secure1234"
-        )
+        response = await admin_create_user(request, email="dup@test.com", display_name="Dup", password="secure1234")
         assert response.status_code == 409
 
     async def test_admin_create_user_rejects_non_admin(self):
@@ -840,9 +807,7 @@ class TestAdminEndpoints:
             headers=_csrf_headers(),
             user_store=user_store,
         )
-        response = await admin_create_user(
-            request, email="x@test.com", display_name="X", password="secure1234"
-        )
+        response = await admin_create_user(request, email="x@test.com", display_name="X", password="secure1234")
         assert response.status_code == 403
 
     async def test_admin_deactivate_user_success(self):
@@ -871,9 +836,7 @@ class TestAdminEndpoints:
             "is_admin": True,
         }
         admin_action = AsyncMock()
-        admin_action.deactivate_user.side_effect = ValueError(
-            "Eigenen Account kann man nicht deaktivieren."
-        )
+        admin_action.deactivate_user.side_effect = ValueError("Eigenen Account kann man nicht deaktivieren.")
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),
@@ -897,9 +860,7 @@ class TestAdminEndpoints:
             user_store=user_store,
             admin_action=admin_action,
         )
-        response = await admin_reset_password(
-            request, user_id=5, password="newpassword123"
-        )
+        response = await admin_reset_password(request, user_id=5, password="newpassword123")
         assert response.status_code == 200
         admin_action.reset_password.assert_awaited_once_with(5, "newpassword123")
 
@@ -911,9 +872,7 @@ class TestAdminEndpoints:
             "is_admin": True,
         }
         admin_action = AsyncMock()
-        admin_action.reset_password.side_effect = ValueError(
-            "Passwort muss mindestens 12 Zeichen lang sein."
-        )
+        admin_action.reset_password.side_effect = ValueError("Passwort muss mindestens 12 Zeichen lang sein.")
         request = _make_request(
             cookies=_admin_cookies(),
             headers=_csrf_headers(),

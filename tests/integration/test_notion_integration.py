@@ -98,8 +98,6 @@ class TestNotionRetriever:
         results = await retriever.search("Xylophon Reparatur Astronauten")
         # Our unique document must appear in the results
         titles = [r["page_title"] for r in results]
-        assert page_title in titles, (
-            f"Expected '{page_title}' in results, got: {titles}"
-        )
+        assert page_title in titles, f"Expected '{page_title}' in results, got: {titles}"
         match = next(r for r in results if r["page_title"] == page_title)
         assert match["similarity"] > 0.1

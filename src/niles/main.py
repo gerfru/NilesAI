@@ -91,9 +91,7 @@ async def lifespan(app: FastAPI):
         for error in exc.errors():
             field = error["loc"][-1] if error["loc"] else "unknown"
             logger.error("  %s: %s", field, error["msg"])
-        logger.error(
-            "Set EVOLUTION_POSTGRES_PASSWORD and EVOLUTION_API_KEY in .env or environment."
-        )
+        logger.error("Set EVOLUTION_POSTGRES_PASSWORD and EVOLUTION_API_KEY in .env or environment.")
         sys.exit(1)
 
     # Reconfigure logging with settings
@@ -101,10 +99,7 @@ async def lifespan(app: FastAPI):
 
     # Warn if API key was auto-generated (do not log the key itself)
     if not os.environ.get("NILES_API_KEY"):
-        logger.info(
-            "NILES_API_KEY auto-generated. Retrieve with: "
-            "docker exec niles_core printenv NILES_API_KEY"
-        )
+        logger.info("NILES_API_KEY auto-generated. Retrieve with: docker exec niles_core printenv NILES_API_KEY")
         logger.info("Set NILES_API_KEY in .env for a stable key.")
 
     # Startup security warnings
@@ -134,9 +129,7 @@ async def lifespan(app: FastAPI):
 
     # Verify schema is managed by Alembic
     try:
-        alembic_version = await pool.fetchval(
-            "SELECT version_num FROM alembic_version LIMIT 1"
-        )
+        alembic_version = await pool.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
     except Exception:
         alembic_version = None
     if alembic_version is None:
@@ -212,9 +205,7 @@ async def lifespan(app: FastAPI):
     weather_action = WeatherAction(settings_store, http_client=http_clients.geocoding)
 
     # CardDAV Source Manager (per-user CardDAV contact sources)
-    carddav_manager = CardDAVSourceManager(
-        pool, encryptor=encryptor, client=http_clients.general
-    )
+    carddav_manager = CardDAVSourceManager(pool, encryptor=encryptor, client=http_clients.general)
     await carddav_manager.initialize()
 
     # CalDAV Sync (only for legacy discover_collections in settings UI)
@@ -373,9 +364,7 @@ async def lifespan(app: FastAPI):
     if settings.signal_api_url:
         signal_action = SignalAction(settings)
         signal_store = SignalMessageStore(pool)
-        signal_setup_action = SignalSetupAction(
-            signal_action, settings_store=settings_store
-        )
+        signal_setup_action = SignalSetupAction(signal_action, settings_store=settings_store)
         logger.info("Signal integration enabled (%s)", settings.signal_phone_number)
 
     # Agent (Vikunja tasks resolved per-user via vikunja_store, no global fallback)
@@ -562,16 +551,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Remove the oldest IP entry when the tracking table is full."""
         if len(self._hits) <= self.MAX_TRACKED_IPS:
             return
-        oldest_ip = min(
-            self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0
-        )
+        oldest_ip = min(self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0)
         del self._hits[oldest_ip]
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and static files
-        if request.url.path in ("/health", "/ready") or request.url.path.startswith(
-            "/static"
-        ):
+        if request.url.path in ("/health", "/ready") or request.url.path.startswith("/static"):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -604,12 +589,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains"
-        )
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=()"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             f"script-src 'nonce-{nonce}' 'strict-dynamic'; "
@@ -631,11 +612,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         incoming = request.headers.get("X-Request-ID", "")
         # Accept only short alphanumeric/dash/underscore IDs to prevent abuse
-        if (
-            incoming
-            and len(incoming) <= 64
-            and incoming.replace("-", "").replace("_", "").isalnum()
-        ):
+        if incoming and len(incoming) <= 64 and incoming.replace("-", "").replace("_", "").isalnum():
             request_id = incoming
         else:
             request_id = generate_request_id()
@@ -675,9 +652,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         endpoint = self._normalize_path(request.url.path)
         with HTTP_DURATION.labels(method=request.method, endpoint=endpoint).time():
             response = await call_next(request)
-        HTTP_REQUESTS.labels(
-            method=request.method, endpoint=endpoint, status=response.status_code
-        ).inc()
+        HTTP_REQUESTS.labels(method=request.method, endpoint=endpoint, status=response.status_code).inc()
         return response
 
 
@@ -694,9 +669,7 @@ async def _api_exception_handler(request: Request, exc: Exception) -> Response:
     else:
         status = 500
         message = "Internal server error"
-        logger.exception(
-            "Unhandled exception on %s %s", request.method, request.url.path
-        )
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
 
     if "text/html" in accept:
         return Response(content=str(message), status_code=status)

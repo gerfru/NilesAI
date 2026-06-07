@@ -97,9 +97,7 @@ async def _stream_tool_calls(tool_calls: list[dict]):
     for idx, tc in enumerate(tool_calls):
         tc_id = f"fake_call_{idx}"
         args_json = (
-            json.dumps(tc["arguments"], ensure_ascii=False)
-            if isinstance(tc["arguments"], dict)
-            else tc["arguments"]
+            json.dumps(tc["arguments"], ensure_ascii=False) if isinstance(tc["arguments"], dict) else tc["arguments"]
         )
         yield _make_chunk(
             tool_calls=[_make_tool_call_delta(idx, tc_id, tc["name"], args_json)],

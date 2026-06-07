@@ -49,17 +49,13 @@ class TestFetchMCP:
         from niles.mcp.fetch.server import fetch_url
 
         result = await fetch_url("http://127.0.0.1:9999")
-        assert (
-            "nicht erlaubt" in result or "Fehler" in result or "error" in result.lower()
-        )
+        assert "nicht erlaubt" in result or "Fehler" in result or "error" in result.lower()
 
     async def test_fetch_blocks_file_scheme(self):
         from niles.mcp.fetch.server import fetch_url
 
         result = await fetch_url("file:///etc/passwd")
-        assert (
-            "nicht erlaubt" in result or "Fehler" in result or "error" in result.lower()
-        )
+        assert "nicht erlaubt" in result or "Fehler" in result or "error" in result.lower()
 
 
 class TestSearXNG:

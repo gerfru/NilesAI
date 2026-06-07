@@ -26,10 +26,7 @@ async def whatsapp_status(request: Request):
 
     wa_setup = getattr(request.app.state, "wa_setup_action", None)
     if not wa_setup:
-        return HTMLResponse(
-            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">'
-            "WhatsApp nicht verfuegbar.</p>"
-        )
+        return HTMLResponse('<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">WhatsApp nicht verfuegbar.</p>')
 
     ctx = await wa_setup.get_status(user["uid"])
     return templates.TemplateResponse(request, "fragments/whatsapp_status.html", ctx)
@@ -45,17 +42,14 @@ async def whatsapp_connect(request: Request):
 
     wa_setup = getattr(request.app.state, "wa_setup_action", None)
     if not wa_setup:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>')
 
     try:
         ctx = await wa_setup.connect(user["uid"])
     except asyncpg.ForeignKeyViolationError:
         logger.warning("FK violation: user_id=%s not in users table", user["uid"])
         response = HTMLResponse(
-            '<p class="text-sm text-red-500">'
-            "Sitzung ungueltig &ndash; bitte erneut einloggen.</p>",
+            '<p class="text-sm text-red-500">Sitzung ungueltig &ndash; bitte erneut einloggen.</p>',
             status_code=401,
             headers={"HX-Redirect": "/ui/login"},
         )
@@ -75,9 +69,7 @@ async def whatsapp_disconnect(request: Request):
 
     wa_setup = getattr(request.app.state, "wa_setup_action", None)
     if not wa_setup:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500">WhatsApp nicht verfuegbar.</p>')
 
     await wa_setup.disconnect(user["uid"])
 

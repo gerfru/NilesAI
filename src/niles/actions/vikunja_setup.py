@@ -60,9 +60,7 @@ class VikunjaSetupAction:
         resp.raise_for_status()
         return len(resp.json())
 
-    async def save_credentials(
-        self, user_id: int, api_token: str, api_url: str = ""
-    ) -> int:
+    async def save_credentials(self, user_id: int, api_token: str, api_url: str = "") -> int:
         """Validate URL, test connection, persist credentials.
 
         Returns project count.
@@ -70,18 +68,14 @@ class VikunjaSetupAction:
         """
         effective_url = api_url.strip() or self.default_api_url
         if not effective_url:
-            raise ValueError(
-                "Keine API-URL. Bitte URL angeben oder global konfigurieren."
-            )
+            raise ValueError("Keine API-URL. Bitte URL angeben oder global konfigurieren.")
 
         self.validate_url(effective_url)
 
         try:
             count = await self.test_connection(effective_url, api_token)
         except Exception as exc:
-            raise ConnectionError(
-                "Verbindung fehlgeschlagen: Token oder URL ungueltig."
-            ) from exc
+            raise ConnectionError("Verbindung fehlgeschlagen: Token oder URL ungueltig.") from exc
 
         await self.vikunja_store.upsert_credentials(
             user_id=user_id,
@@ -119,9 +113,7 @@ class VikunjaSetupAction:
             result["vikunja_connected"] = True
             result["vikunja_project_count"] = count
         except Exception:
-            logger.warning(
-                "Vikunja status check failed for user %s", user_id, exc_info=True
-            )
+            logger.warning("Vikunja status check failed for user %s", user_id, exc_info=True)
             result["vikunja_connected"] = True
             result["vikunja_error"] = "Verbindung zum Vikunja-Server fehlgeschlagen."
 

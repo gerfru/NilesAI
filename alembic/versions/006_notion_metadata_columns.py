@@ -20,14 +20,8 @@ depends_on = None
 
 def upgrade() -> None:
     # 1. Add columns with safe defaults
-    op.execute(
-        "ALTER TABLE notion_embeddings "
-        "ADD COLUMN IF NOT EXISTS page_title TEXT NOT NULL DEFAULT ''"
-    )
-    op.execute(
-        "ALTER TABLE notion_embeddings "
-        "ADD COLUMN IF NOT EXISTS heading_context TEXT NOT NULL DEFAULT ''"
-    )
+    op.execute("ALTER TABLE notion_embeddings ADD COLUMN IF NOT EXISTS page_title TEXT NOT NULL DEFAULT ''")
+    op.execute("ALTER TABLE notion_embeddings ADD COLUMN IF NOT EXISTS heading_context TEXT NOT NULL DEFAULT ''")
 
     # 2. Backfill page_title from notion_pages.title
     op.execute(

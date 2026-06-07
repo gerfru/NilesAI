@@ -23,8 +23,7 @@ def get_database_url() -> str:
     password = os.environ.get("EVOLUTION_POSTGRES_PASSWORD", "")
     if not password:
         raise RuntimeError(
-            "EVOLUTION_POSTGRES_PASSWORD environment variable is not set. "
-            "Set it before running Alembic migrations."
+            "EVOLUTION_POSTGRES_PASSWORD environment variable is not set. Set it before running Alembic migrations."
         )
     host = os.environ.get("POSTGRES_HOST", "evolution_postgres")
     port = os.environ.get("POSTGRES_PORT", "5432")
