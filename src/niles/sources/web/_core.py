@@ -83,7 +83,7 @@ def _get_session_user(request: Request) -> dict | None:
     try:
         serializer = _get_serializer(request)
         return serializer.loads(token, max_age=COOKIE_MAX_AGE)
-    except (BadSignature, SignatureExpired):
+    except BadSignature, SignatureExpired:
         return None
 
 

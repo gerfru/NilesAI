@@ -34,7 +34,7 @@ def build_system_prompt(
     """Build full system prompt with current datetime and memory context."""
     try:
         tz = ZoneInfo(timezone)
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         logger.warning("Invalid timezone '%s', falling back to Europe/Vienna", timezone)
         timezone = "Europe/Vienna"
         tz = ZoneInfo(timezone)
@@ -111,7 +111,7 @@ def build_notion_rag_prompt(
     """
     try:
         tz = ZoneInfo(timezone)
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         tz = ZoneInfo("Europe/Vienna")
     now = datetime.now(tz)
     weekdays_de = [
