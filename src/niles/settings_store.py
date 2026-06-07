@@ -67,8 +67,7 @@ def _validate_key(key: str) -> None:
     """Validate settings key format (lowercase alphanumeric + underscore, max 64 chars)."""
     if not _KEY_PATTERN.match(key):
         raise ValueError(
-            f"Invalid settings key format: '{key}' "
-            "(must be lowercase alphanumeric/underscore, 2-64 chars)"
+            f"Invalid settings key format: '{key}' (must be lowercase alphanumeric/underscore, 2-64 chars)"
         )
 
 
@@ -101,59 +100,41 @@ class SettingsStore:
 
         # Value length guard for string settings
         if isinstance(value, str) and len(value) > 4096:
-            raise ValueError(
-                f"Value for '{key}' exceeds maximum length of 4096 characters"
-            )
+            raise ValueError(f"Value for '{key}' exceeds maximum length of 4096 characters")
 
         # Validate timezone is a valid IANA identifier
         if key == "timezone" and isinstance(value, str):
             try:
                 ZoneInfo(value)
             except (KeyError, ValueError) as exc:
-                raise ValueError(
-                    f"Invalid timezone: '{value}' is not a valid IANA timezone"
-                ) from exc
+                raise ValueError(f"Invalid timezone: '{value}' is not a valid IANA timezone") from exc
 
         # Validate briefing time format (HH:MM, 00:00–23:59)
-        if key in ("briefing_daily_time", "briefing_weekly_time") and isinstance(
-            value, str
-        ):
+        if key in ("briefing_daily_time", "briefing_weekly_time") and isinstance(value, str):
             if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", value):
-                raise ValueError(
-                    f"Invalid time format: '{value}' (expected HH:MM, 00:00–23:59)"
-                )
+                raise ValueError(f"Invalid time format: '{value}' (expected HH:MM, 00:00–23:59)")
 
         # Validate weather coordinates
         if key == "weather_latitude" and isinstance(value, str) and value:
             try:
                 lat = float(value)
             except ValueError:
-                raise ValueError(
-                    f"Invalid latitude: '{value}' (must be a number)"
-                ) from None
+                raise ValueError(f"Invalid latitude: '{value}' (must be a number)") from None
             if not -90 <= lat <= 90:
-                raise ValueError(
-                    f"Invalid latitude: {lat} (must be between -90 and 90)"
-                )
+                raise ValueError(f"Invalid latitude: {lat} (must be between -90 and 90)")
         # Validate URL format for URL-type settings
-        if key == "searxng_url" and isinstance(value, str) and value:
+        if key in ("searxng_url", "llm_base_url") and isinstance(value, str) and value:
             parsed = urlparse(value)
             if parsed.scheme not in ("http", "https") or not parsed.hostname:
-                raise ValueError(
-                    f"Invalid URL: '{value}' (must be http:// or https://)"
-                )
+                raise ValueError(f"Invalid URL: '{value}' (must be http:// or https://)")
 
         if key == "weather_longitude" and isinstance(value, str) and value:
             try:
                 lon = float(value)
             except ValueError:
-                raise ValueError(
-                    f"Invalid longitude: '{value}' (must be a number)"
-                ) from None
+                raise ValueError(f"Invalid longitude: '{value}' (must be a number)") from None
             if not -180 <= lon <= 180:
-                raise ValueError(
-                    f"Invalid longitude: {lon} (must be between -180 and 180)"
-                )
+                raise ValueError(f"Invalid longitude: {lon} (must be between -180 and 180)")
 
         store_value = value
         if self._enc and key in _ENCRYPTED_KEYS and isinstance(store_value, str):
