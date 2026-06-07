@@ -11,9 +11,7 @@ _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 class WeatherAction:
     """Weather location search and persistence."""
 
-    def __init__(
-        self, settings_store: SettingsStore, *, http_client: httpx.AsyncClient
-    ):
+    def __init__(self, settings_store: SettingsStore, *, http_client: httpx.AsyncClient):
         self.settings_store = settings_store
         self.http_client = http_client
 
@@ -29,9 +27,7 @@ class WeatherAction:
         resp.raise_for_status()
         return resp.json().get("results", [])
 
-    async def set_location(
-        self, lat: str, lon: str, name: str, current_settings: Settings
-    ) -> Settings:
+    async def set_location(self, lat: str, lon: str, name: str, current_settings: Settings) -> Settings:
         """Persist weather location, return updated settings.
 
         Raises ValueError if lat/lon are not valid numbers.

@@ -93,9 +93,7 @@ TOOLS = [
                 "properties": {
                     "contact": {
                         "type": "string",
-                        "description": (
-                            "Kontaktname oder Telefonnummer (erforderlich)."
-                        ),
+                        "description": ("Kontaktname oder Telefonnummer (erforderlich)."),
                     },
                 },
                 "required": ["contact"],
@@ -141,9 +139,7 @@ TOOLS = [
                 "properties": {
                     "contact": {
                         "type": "string",
-                        "description": (
-                            "Kontaktname oder Telefonnummer (erforderlich)."
-                        ),
+                        "description": ("Kontaktname oder Telefonnummer (erforderlich)."),
                     },
                 },
                 "required": ["contact"],
@@ -256,23 +252,18 @@ TOOLS = [
         "function": {
             "name": "list_tasks",
             "description": (
-                "Listet offene Aufgaben aus Vikunja. "
-                "Ohne Parameter werden alle offenen Aufgaben zurückgegeben."
+                "Listet offene Aufgaben aus Vikunja. Ohne Parameter werden alle offenen Aufgaben zurückgegeben."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "project": {
                         "type": "string",
-                        "description": (
-                            "Projektname zum Filtern. Optional. Leer = alle Projekte."
-                        ),
+                        "description": ("Projektname zum Filtern. Optional. Leer = alle Projekte."),
                     },
                     "include_done": {
                         "type": "boolean",
-                        "description": (
-                            "Auch erledigte Aufgaben anzeigen. Standard: false."
-                        ),
+                        "description": ("Auch erledigte Aufgaben anzeigen. Standard: false."),
                     },
                 },
                 "required": [],
@@ -301,23 +292,15 @@ TOOLS = [
                     },
                     "due_date": {
                         "type": "string",
-                        "description": (
-                            "Fälligkeitsdatum (ISO-Format, "
-                            "z.B. '2026-02-25T18:00'). Optional."
-                        ),
+                        "description": ("Fälligkeitsdatum (ISO-Format, z.B. '2026-02-25T18:00'). Optional."),
                     },
                     "priority": {
                         "type": "integer",
-                        "description": (
-                            "Priorität: 0=keine, 1=niedrig, 2=mittel, "
-                            "3=hoch, 4=dringend. Standard: 0."
-                        ),
+                        "description": ("Priorität: 0=keine, 1=niedrig, 2=mittel, 3=hoch, 4=dringend. Standard: 0."),
                     },
                     "project": {
                         "type": "string",
-                        "description": (
-                            "Projektname. Optional. Leer = Standard-Projekt."
-                        ),
+                        "description": ("Projektname. Optional. Leer = Standard-Projekt."),
                     },
                 },
                 "required": ["title"],
@@ -328,19 +311,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "complete_task",
-            "description": (
-                "Markiert eine Aufgabe als erledigt. "
-                "Sucht nach dem Titel in offenen Aufgaben."
-            ),
+            "description": ("Markiert eine Aufgabe als erledigt. Sucht nach dem Titel in offenen Aufgaben."),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": (
-                            "Titel oder Teil des Titels der Aufgabe "
-                            "die erledigt werden soll."
-                        ),
+                        "description": ("Titel oder Teil des Titels der Aufgabe die erledigt werden soll."),
                     },
                 },
                 "required": ["title"],
@@ -479,9 +456,7 @@ class NilesAgent:
         """
         chat_id = event["from"]
         # Store original user message in history (without injected Notion context)
-        _history_content = (
-            event.get("metadata", {}).get("original_message") or event["content"]
-        )
+        _history_content = event.get("metadata", {}).get("original_message") or event["content"]
 
         # Intercept pending phone choice (bypass LLM entirely)
         reply = await self._handle_phone_choice(chat_id, event["content"])
@@ -553,12 +528,8 @@ class NilesAgent:
                     # Final chunk with usage data has empty choices
                     if not chunk.choices:
                         if chunk.usage:
-                            LLM_TOKENS.labels(type="prompt").inc(
-                                chunk.usage.prompt_tokens
-                            )
-                            LLM_TOKENS.labels(type="completion").inc(
-                                chunk.usage.completion_tokens
-                            )
+                            LLM_TOKENS.labels(type="prompt").inc(chunk.usage.prompt_tokens)
+                            LLM_TOKENS.labels(type="completion").inc(chunk.usage.completion_tokens)
                         continue
                     choice = chunk.choices[0]
                     finish_reason = choice.finish_reason or finish_reason
@@ -570,9 +541,7 @@ class NilesAgent:
                         # are NOT buffered — only triple-backtick fences or
                         # bare '{'.
                         stripped = full_content.lstrip()
-                        if not _buffering and (
-                            stripped.startswith("{") or stripped.startswith("```")
-                        ):
+                        if not _buffering and (stripped.startswith("{") or stripped.startswith("```")):
                             _buffering = True
                         if not _buffering:
                             yield {"type": "chunk", "text": choice.delta.content}
@@ -590,28 +559,18 @@ class NilesAgent:
                                 tool_calls_by_idx[idx]["id"] = tc_delta.id
                             if tc_delta.function:
                                 if tc_delta.function.name:
-                                    tool_calls_by_idx[idx]["name"] += (
-                                        tc_delta.function.name
-                                    )
+                                    tool_calls_by_idx[idx]["name"] += tc_delta.function.name
                                 if tc_delta.function.arguments:
-                                    tool_calls_by_idx[idx]["arguments"] += (
-                                        tc_delta.function.arguments
-                                    )
+                                    tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
             finally:
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
                 _all_names = frozenset(t["function"]["name"] for t in all_tools)
-                parsed = (
-                    self._try_parse_text_tool_call(full_content, _all_names)
-                    if full_content
-                    else None
-                )
+                parsed = self._try_parse_text_tool_call(full_content, _all_names) if full_content else None
                 if parsed:
-                    logger.info(
-                        "Detected text-based tool call (stream): %s", parsed["name"]
-                    )
+                    logger.info("Detected text-based tool call (stream): %s", parsed["name"])
                     tc_dict, _ = self._synthetic_tool_call(parsed)
                     tool_calls_by_idx = {0: tc_dict}
                     full_content = ""  # Don't pass JSON as assistant content
@@ -632,12 +591,8 @@ class NilesAgent:
                             )
                         yield {"type": "chunk", "text": full_content}
                     if full_content:
-                        await self.history.add_message(
-                            chat_id, "user", _history_content
-                        )
-                        await self.history.add_message(
-                            chat_id, "assistant", full_content
-                        )
+                        await self.history.add_message(chat_id, "user", _history_content)
+                        await self.history.add_message(chat_id, "assistant", full_content)
                     else:
                         logger.warning(
                             "LLM returned empty streaming response for event: %s",
@@ -675,9 +630,7 @@ class NilesAgent:
                     ),
                 )
                 result = await self._execute_tool_call(tool_call, chat_id)
-                _success = (
-                    result.get("error") is None if isinstance(result, dict) else True
-                )
+                _success = result.get("error") is None if isinstance(result, dict) else True
                 TOOL_CALLS.labels(
                     tool_name=tc_dict["function"]["name"],
                     success=str(_success).lower(),
@@ -729,9 +682,7 @@ class NilesAgent:
         """
         chat_id = event["from"]
         # Store original user message in history (without injected Notion context)
-        _history_content = (
-            event.get("metadata", {}).get("original_message") or event["content"]
-        )
+        _history_content = event.get("metadata", {}).get("original_message") or event["content"]
 
         # Intercept pending phone choice (bypass LLM entirely)
         reply = await self._handle_phone_choice(chat_id, event["content"])
@@ -753,9 +704,7 @@ class NilesAgent:
         # Force search tool on first round when Recherche-Modus is active
         _web_search = event.get("metadata", {}).get("web_search", False)
         _search_tool = "mcp__searxng__web_search"
-        _force_search = _web_search and any(
-            t["function"]["name"] == _search_tool for t in all_tools
-        )
+        _force_search = _web_search and any(t["function"]["name"] == _search_tool for t in all_tools)
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _round in range(MAX_TOOL_ROUNDS):
@@ -787,19 +736,13 @@ class NilesAgent:
             # Record token usage if available
             if response.usage:
                 LLM_TOKENS.labels(type="prompt").inc(response.usage.prompt_tokens)
-                LLM_TOKENS.labels(type="completion").inc(
-                    response.usage.completion_tokens
-                )
+                LLM_TOKENS.labels(type="completion").inc(response.usage.completion_tokens)
 
             # No tool calls – check for text-based tool call fallback
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
                 content = choice.message.content or ""
                 _all_names = frozenset(t["function"]["name"] for t in all_tools)
-                parsed = (
-                    self._try_parse_text_tool_call(content, _all_names)
-                    if content
-                    else None
-                )
+                parsed = self._try_parse_text_tool_call(content, _all_names) if content else None
                 if parsed:
                     logger.info("Detected text-based tool call: %s", parsed["name"])
                     tc_dict, assistant_msg = self._synthetic_tool_call(parsed)
@@ -815,16 +758,12 @@ class NilesAgent:
                     logger.info("Tool result [%s]: %s", tc.id, result)
                     if isinstance(result, dict) and "choose_phone" in result:
                         text = result["choose_phone"]
-                        await self.history.add_message(
-                            chat_id, "user", _history_content
-                        )
+                        await self.history.add_message(chat_id, "user", _history_content)
                         await self.history.add_message(chat_id, "assistant", text)
                         return text
                     if isinstance(result, dict) and "confirm" in result:
                         text = result["confirm"]
-                        await self.history.add_message(
-                            chat_id, "user", _history_content
-                        )
+                        await self.history.add_message(chat_id, "user", _history_content)
                         await self.history.add_message(chat_id, "assistant", text)
                         return text
                     messages.append(
@@ -867,9 +806,7 @@ class NilesAgent:
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
                 result = await self._execute_tool_call(tool_call, chat_id)
-                _success = (
-                    result.get("error") is None if isinstance(result, dict) else True
-                )
+                _success = result.get("error") is None if isinstance(result, dict) else True
                 TOOL_CALLS.labels(
                     tool_name=tool_call.function.name,
                     success=str(_success).lower(),

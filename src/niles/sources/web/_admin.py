@@ -120,7 +120,9 @@ async def admin_reset_password(
     except KeyError as e:
         return Response(content=str(e), status_code=404)
 
-    logger.info("Admin %s reset password for user_id=%s", admin["email"], user_id)
+    logger.info(  # nosemgrep: python-logger-credential-disclosure
+        "Admin %s reset password for user_id=%s", admin["email"], user_id
+    )
     return Response(
         content="Passwort geändert.",
         headers={"HX-Trigger": "userUpdated"},

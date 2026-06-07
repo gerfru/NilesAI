@@ -73,9 +73,7 @@ class TestGetStatus:
         assert ctx["wa_status"] == "connected"
         assert ctx["wa_phone"] == "436601234567"
         wa.get_owner_jid.assert_awaited_once_with("niles-wa-1")
-        store.update_status.assert_awaited_once_with(
-            1, "connected", phone_number="436601234567"
-        )
+        store.update_status.assert_awaited_once_with(1, "connected", phone_number="436601234567")
 
     async def test_connecting_returns_qr_code(self):
         store = AsyncMock()
@@ -129,9 +127,7 @@ class TestConnect:
         assert ctx["wa_status"] == "connecting"
         assert ctx["wa_qr"] == "NEW_QR_CODE"
         wa.create_instance.assert_awaited_once()
-        store.upsert_session.assert_awaited_once_with(
-            7, "niles-wa-7", status="connecting"
-        )
+        store.upsert_session.assert_awaited_once_with(7, "niles-wa-7", status="connecting")
 
     async def test_fallback_qr_on_existing_instance(self):
         store = AsyncMock()
@@ -168,15 +164,11 @@ class TestConnect:
 
         args = wa.create_instance.call_args
         webhook_url = args[0][1]
-        assert webhook_url == (
-            "http://niles_core:8000/webhook/whatsapp?token=my-secret"
-        )
+        assert webhook_url == ("http://niles_core:8000/webhook/whatsapp?token=my-secret")
 
     async def test_fk_violation_propagates(self):
         store = AsyncMock()
-        store.upsert_session.side_effect = asyncpg.ForeignKeyViolationError(
-            "insert violates FK"
-        )
+        store.upsert_session.side_effect = asyncpg.ForeignKeyViolationError("insert violates FK")
         wa = AsyncMock()
         wa.create_instance.return_value = {"qrcode": {"base64": ""}}
         action = _make_action(wa_store=store, whatsapp_action=wa)

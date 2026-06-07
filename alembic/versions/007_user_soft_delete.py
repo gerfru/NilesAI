@@ -16,15 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE users "
-        "ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
-    )
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ")
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_users_active"
-        " ON users (is_active) WHERE is_active = TRUE"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_users_active ON users (is_active) WHERE is_active = TRUE")
 
 
 def downgrade() -> None:

@@ -59,9 +59,7 @@ async def _fetch_wa_history(
             content = text
 
         ts = msg.get("timestamp", 0)
-        timestamp = (
-            datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
-        )
+        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
         all_msgs.append({"role": role, "content": content, "timestamp": timestamp})
 
     # Pagination: slice from the end (most recent) like get_recent()
@@ -95,9 +93,7 @@ async def chat_page(
 
     settings = request.app.state.settings
     signal_phone = settings.signal_phone_number if settings.signal_api_url else ""
-    chat_id, readonly = await _resolve_channel(
-        user, channel, wa_store, wa_session, signal_phone=signal_phone
-    )
+    chat_id, readonly = await _resolve_channel(user, channel, wa_store, wa_session, signal_phone=signal_phone)
 
     # WhatsApp: fetch from Evolution API (source of truth for WA messages)
     if channel == "whatsapp" and wa_session and wa_session.get("phone_number"):
@@ -115,11 +111,7 @@ async def chat_page(
 
     # Determine available channels (WhatsApp only if connected with phone)
     available_channels = [("web", "Web-Chat")]
-    if (
-        wa_session
-        and wa_session.get("phone_number")
-        and wa_session["status"] == "connected"
-    ):
+    if wa_session and wa_session.get("phone_number") and wa_session["status"] == "connected":
         available_channels.append(("whatsapp", "WhatsApp"))
     if signal_phone:
         available_channels.append(("signal", "Signal"))
@@ -133,15 +125,12 @@ async def chat_page(
             "next_offset": _CHAT_PAGE_SIZE,
             "active_page": "chat",
             "user": user,
-            "channel": channel
-            if not readonly or channel in ("whatsapp", "signal")
-            else "web",
+            "channel": channel if not readonly or channel in ("whatsapp", "signal") else "web",
             "readonly": readonly,
             "available_channels": available_channels,
             "vikunja_url": settings.vikunja_public_url or "",
             "feature_search": settings.feature_search,
-            "feature_notion": settings.feature_notion
-            and bool(getattr(request.app.state, "notion_retriever", None)),
+            "feature_notion": settings.feature_notion and bool(getattr(request.app.state, "notion_retriever", None)),
         },
     )
     _ensure_csrf_cookie(request, response)
@@ -178,9 +167,7 @@ async def chat_history(
     else:
         chat_id, _readonly = await _resolve_channel(user, channel, wa_store)
         history = request.app.state.history
-        messages = await history.get_recent(
-            chat_id, limit=_CHAT_PAGE_SIZE, offset=offset
-        )
+        messages = await history.get_recent(chat_id, limit=_CHAT_PAGE_SIZE, offset=offset)
         has_more = len(messages) == _CHAT_PAGE_SIZE
     return templates.TemplateResponse(
         request,
@@ -204,9 +191,7 @@ async def chat_send(request: Request, message: str = Form(...)):
     assert user is not None
 
     if len(message) > 2000:
-        return Response(
-            status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
-        )
+        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
 
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
@@ -224,9 +209,7 @@ async def chat_send(request: Request, message: str = Form(...)):
         response_text = await agent.process_event(event)
     except Exception:
         logger.exception("Agent error processing web chat message")
-        response_text = (
-            "Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es erneut."
-        )
+        response_text = "Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es erneut."
 
     return templates.TemplateResponse(
         request,
@@ -260,9 +243,7 @@ async def chat_stream(
     assert user is not None
 
     if len(message) > 2000:
-        return Response(
-            status_code=400, content="Nachricht zu lang (max. 2000 Zeichen)."
-        )
+        return Response(status_code=400, content="Nachricht zu lang (max. 2000 Zeichen).")
 
     # Server-side guard: ignore client flags when features are globally disabled
     settings = request.app.state.settings
@@ -304,9 +285,7 @@ async def chat_stream(
                     source_line = f"Quelle: [{title}]({url})"
                     if heading and heading != title:
                         source_line += f"\nAbschnitt: {heading}"
-                    context_parts.append(
-                        f"{source_line}\nRelevanz: {score:.0%}\n{chunk}"
-                    )
+                    context_parts.append(f"{source_line}\nRelevanz: {score:.0%}\n{chunk}")
                     logger.info(
                         "Notion RAG result #%d: %s (%.0f%%) — %.80s",
                         i + 1,
@@ -354,9 +333,7 @@ async def chat_stream(
                 yield f"data: {data}\n\n"
         except Exception:
             logger.exception("Agent streaming error")
-            err = json.dumps(
-                {"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."}
-            )
+            err = json.dumps({"type": "chunk", "text": "Entschuldigung, ein Fehler ist aufgetreten."})
             yield f"data: {err}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         finally:

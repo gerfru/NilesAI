@@ -2,9 +2,7 @@
 
 from . import ToolContext, register_tool
 
-_VIKUNJA_NOT_CONFIGURED = (
-    "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
-)
+_VIKUNJA_NOT_CONFIGURED = "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
 
 
 @register_tool("list_tasks")

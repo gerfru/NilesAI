@@ -49,9 +49,7 @@ async def _get_pool():
     )
 
 
-async def _vikunja_sync_password(
-    pool: asyncpg.Pool, user_id: int, email: str, password: str
-) -> None:
+async def _vikunja_sync_password(pool: asyncpg.Pool, user_id: int, email: str, password: str) -> None:
     """Best-effort sync of plaintext password to Vikunja account."""
     settings = Settings()
     if not settings.vikunja_api_url:
@@ -71,7 +69,9 @@ async def _vikunja_sync_password(
         else:
             print("Warning: Vikunja password sync failed (will retry on next login).")
     except Exception:
-        logger.warning("Vikunja password sync failed for %s", email, exc_info=True)
+        logger.warning(  # nosemgrep: python-logger-credential-disclosure
+            "Vikunja password sync failed for %s", email, exc_info=True
+        )
         print("Warning: Vikunja password sync failed (will retry on next login).")
 
 
@@ -115,9 +115,7 @@ async def _create_user(email: str, name: str, password: str) -> None:
         # Check if email already exists
         existing = await store.get_by_email(email)
         if existing:
-            print(
-                f"Error: User with email '{email}' already exists (id={existing['id']})"
-            )
+            print(f"Error: User with email '{email}' already exists (id={existing['id']})")
             sys.exit(1)
 
         hashed = ph.hash(password)
@@ -143,10 +141,7 @@ async def _delete_user(email: str, confirm: bool) -> None:
             sys.exit(1)
 
         if not confirm:
-            answer = input(
-                f"Permanently delete user '{email}' (id={user['id']}) "
-                "and ALL associated data? [y/N]: "
-            )
+            answer = input(f"Permanently delete user '{email}' (id={user['id']}) and ALL associated data? [y/N]: ")
             if answer.strip().lower() not in ("y", "yes"):
                 print("Aborted.")
                 sys.exit(0)
@@ -193,9 +188,7 @@ def main() -> None:
         help="Read password from stdin (for scripts)",
     )
 
-    delete = sub.add_parser(
-        "delete-user", help="Permanently delete a user and all data (GDPR Art. 17)"
-    )
+    delete = sub.add_parser("delete-user", help="Permanently delete a user and all data (GDPR Art. 17)")
     delete.add_argument("--email", required=True, help="User email address")
     delete.add_argument(
         "--confirm",

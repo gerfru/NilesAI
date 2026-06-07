@@ -44,9 +44,7 @@ class TestSaveCredentials:
         client.get.return_value = response
 
         action = VikunjaSetupAction(store, http_client=client, default_api_url="")
-        count = await action.save_credentials(
-            user_id=1, api_token="tok", api_url="https://vikunja.example.com"
-        )
+        count = await action.save_credentials(user_id=1, api_token="tok", api_url="https://vikunja.example.com")
 
         assert count == 3
         store.upsert_credentials.assert_called_once_with(
@@ -62,9 +60,7 @@ class TestSaveCredentials:
         client = AsyncMock()
         client.get.return_value = response
 
-        action = VikunjaSetupAction(
-            store, http_client=client, default_api_url="https://default.example.com"
-        )
+        action = VikunjaSetupAction(store, http_client=client, default_api_url="https://default.example.com")
         count = await action.save_credentials(user_id=1, api_token="tok")
 
         assert count == 1
@@ -74,9 +70,7 @@ class TestSaveCredentials:
             timeout=10,
         )
         # Default URL is only used for connection test, not persisted
-        store.upsert_credentials.assert_called_once_with(
-            user_id=1, api_token="tok", api_url=""
-        )
+        store.upsert_credentials.assert_called_once_with(user_id=1, api_token="tok", api_url="")
 
     @pytest.mark.asyncio
     async def test_no_url_raises_value_error(self):
@@ -97,9 +91,7 @@ class TestSaveCredentials:
         action = VikunjaSetupAction(store, http_client=client, default_api_url="")
 
         with pytest.raises(ConnectionError, match="Verbindung fehlgeschlagen"):
-            await action.save_credentials(
-                user_id=1, api_token="tok", api_url="https://vikunja.example.com"
-            )
+            await action.save_credentials(user_id=1, api_token="tok", api_url="https://vikunja.example.com")
 
         store.upsert_credentials.assert_not_called()
 
@@ -164,9 +156,7 @@ class TestGetStatus:
         result = await action.get_status(user_id=1)
 
         assert result["vikunja_connected"] is True
-        assert (
-            result["vikunja_error"] == "Verbindung zum Vikunja-Server fehlgeschlagen."
-        )
+        assert result["vikunja_error"] == "Verbindung zum Vikunja-Server fehlgeschlagen."
 
     @pytest.mark.asyncio
     async def test_no_api_url_configured(self):

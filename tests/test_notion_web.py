@@ -157,9 +157,7 @@ class TestNotionConnect:
             patch("niles.sources.web._notion.templates") as mock_tpl,
         ):
             mock_sync = MockSync.return_value
-            mock_sync.test_connection = AsyncMock(
-                return_value=(False, "Invalid API token")
-            )
+            mock_sync.test_connection = AsyncMock(return_value=(False, "Invalid API token"))
             mock_tpl.TemplateResponse.return_value = MagicMock(status_code=200)
             await notion_connect(request, token="ntn_invalid")
 
@@ -196,9 +194,7 @@ class TestNotionConnect:
             patch("niles.sources.web._notion.asyncio") as mock_asyncio,
         ):
             mock_sync_inst = MockSync.return_value
-            mock_sync_inst.test_connection = AsyncMock(
-                return_value=(True, "Verbunden. 5+ Seiten zugaenglich.")
-            )
+            mock_sync_inst.test_connection = AsyncMock(return_value=(True, "Verbunden. 5+ Seiten zugaenglich."))
             mock_tpl.TemplateResponse.return_value = MagicMock(status_code=200)
 
             await notion_connect(request, token="ntn_valid_token_here")

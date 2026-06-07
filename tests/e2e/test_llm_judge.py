@@ -74,8 +74,7 @@ class TestContactsJudge:
         )
         record_score("find_contact", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
         assert result["scores"]["response_quality"] >= SCORE_THRESHOLD
 
@@ -94,8 +93,7 @@ class TestMemoryJudge:
         )
         record_score("remember", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -113,8 +111,7 @@ class TestCalendarJudge:
         )
         record_score("find_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -151,8 +148,7 @@ class TestTasksJudge:
         )
         record_score("create_task", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -179,8 +175,7 @@ class TestSearchToolJudge:
         )
         record_score("web_search", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
     async def test_fetch_url(self, real_agent):
@@ -191,8 +186,7 @@ class TestSearchToolJudge:
         )
         record_score("fetch_url", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -214,8 +208,7 @@ class TestNotionToolJudge:
         )
         record_score("notion_search", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -237,8 +230,7 @@ class TestWeatherToolJudge:
         )
         record_score("weather_forecast", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
     async def test_weather_current(self, real_agent):
@@ -249,8 +241,7 @@ class TestWeatherToolJudge:
         )
         record_score("weather_current", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -268,8 +259,7 @@ class TestMessagingJudge:
         )
         record_score("send_whatsapp", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
     @pytest.mark.skipif(
@@ -284,8 +274,7 @@ class TestMessagingJudge:
         )
         record_score("send_signal", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
     async def test_get_whatsapp_messages(self, real_agent, seed_contact):
@@ -300,8 +289,7 @@ class TestMessagingJudge:
         )
         record_score("get_whatsapp_messages", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -319,8 +307,7 @@ class TestCalendarExtJudge:
         )
         record_score("create_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -338,8 +325,7 @@ class TestTasksExtJudge:
         )
         record_score("list_tasks", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )
 
 
@@ -361,8 +347,7 @@ class TestMemoryExtJudge:
         )
         record_score("remember_wifi", result_remember["scores"])
         assert result_remember["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result_remember['scores']['tool_selection']}: "
-            f"{result_remember['reasoning']}"
+            f"tool_selection={result_remember['scores']['tool_selection']}: {result_remember['reasoning']}"
         )
 
         # Step 2: recall (same chat_id for context)
@@ -373,8 +358,7 @@ class TestMemoryExtJudge:
         )
         record_score("recall_wifi", result_recall["scores"])
         assert result_recall["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result_recall['scores']['tool_selection']}: "
-            f"{result_recall['reasoning']}"
+            f"tool_selection={result_recall['scores']['tool_selection']}: {result_recall['reasoning']}"
         )
 
 
@@ -404,8 +388,7 @@ class TestNoToolNeededJudge:
         )
         record_score("no_tool_explanation", result["scores"])
         assert result["scores"]["response_quality"] >= SCORE_THRESHOLD, (
-            f"response_quality={result['scores']['response_quality']}: "
-            f"{result['reasoning']}"
+            f"response_quality={result['scores']['response_quality']}: {result['reasoning']}"
         )
         assert result["scores"]["language"] >= SCORE_THRESHOLD
 
@@ -462,13 +445,9 @@ class TestMultiToolJudge:
         """Agent should use both remember and create_event."""
         result = await run_and_judge(
             agent=real_agent,
-            message=(
-                "Merk dir dass ich morgen Zahnarzt habe "
-                "und erstelle einen Termin dafuer"
-            ),
+            message=("Merk dir dass ich morgen Zahnarzt habe und erstelle einen Termin dafuer"),
         )
         record_score("multi_remember_event", result["scores"])
         assert result["scores"]["tool_selection"] >= SCORE_THRESHOLD, (
-            f"tool_selection={result['scores']['tool_selection']}: "
-            f"{result['reasoning']}"
+            f"tool_selection={result['scores']['tool_selection']}: {result['reasoning']}"
         )

@@ -18,8 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE vikunja_credentials "
-        "ADD COLUMN IF NOT EXISTS password_synced BOOLEAN NOT NULL DEFAULT FALSE"
+        "ALTER TABLE vikunja_credentials ADD COLUMN IF NOT EXISTS password_synced BOOLEAN NOT NULL DEFAULT FALSE"
     )
 
 

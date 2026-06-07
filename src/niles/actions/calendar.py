@@ -14,9 +14,7 @@ _CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MAX_FIELD_LENGTH = 500
 
 # Extract ISO date from malformed LLM output like "{'date': '2026-02-24'}"
-_ISO_DATE_REGEX = re.compile(
-    r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?"
-)
+_ISO_DATE_REGEX = re.compile(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?")
 
 
 # Weekday name → Python weekday index (Monday=0 … Sunday=6)
@@ -115,14 +113,10 @@ class CalendarAction:
 
         return [self._row_to_dict(row) for row in rows]
 
-    async def _resolve_source_id(
-        self, name: str, user_id: int | None = None
-    ) -> int | None:
+    async def _resolve_source_id(self, name: str, user_id: int | None = None) -> int | None:
         """Resolve a calendar source name to its ID."""
         row = await self.pool.fetchrow(
-            "SELECT id FROM calendar_sources"
-            " WHERE LOWER(name) = LOWER($1)"
-            " AND ($2::integer IS NULL OR user_id = $2)",
+            "SELECT id FROM calendar_sources WHERE LOWER(name) = LOWER($1) AND ($2::integer IS NULL OR user_id = $2)",
             name,
             user_id,
         )
@@ -152,16 +146,12 @@ class CalendarAction:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
         if relative in ("morgen", "tomorrow"):
-            dt = (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             if end_of_day:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt
         if relative in ("übermorgen", "uebermorgen"):
-            dt = (now + timedelta(days=2)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            dt = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
             if end_of_day:
                 dt = dt.replace(hour=23, minute=59, second=59)
             return dt

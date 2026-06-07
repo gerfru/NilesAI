@@ -10,6 +10,8 @@ def _set_test_env(monkeypatch):
     monkeypatch.setenv("EVOLUTION_POSTGRES_PASSWORD", "test-password")
     monkeypatch.setenv("EVOLUTION_API_KEY", "test-api-key")
     monkeypatch.setenv("NILES_API_KEY", "test-niles-key")
+    # Tests run in development mode (no encryption key required)
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
 
 
 @pytest.fixture(autouse=True)
