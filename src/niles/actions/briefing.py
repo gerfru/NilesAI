@@ -163,7 +163,7 @@ class BriefingGenerator:
                     due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                     if due < now:
                         overdue.append(t)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
         return overdue
 
@@ -239,7 +239,7 @@ class BriefingGenerator:
             try:
                 dt = datetime.fromisoformat(date_str)
                 day_label = f"{_WEEKDAYS_SHORT[dt.weekday()]} {dt.strftime('%d.%m.')}"
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 day_label = date_str
 
             code = self._daily_value(daily, "weather_code", i, default=0)
@@ -286,7 +286,7 @@ class BriefingGenerator:
                 due = datetime.fromisoformat(task["due_date"].replace("Z", "+00:00"))
                 local_due = due.astimezone(self.tz)
                 line += f" (fällig: {local_due.strftime('%d.%m.')})"
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
         return line
 
@@ -335,7 +335,7 @@ class BriefingGenerator:
                     due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                     if due.astimezone(self.tz).date() == today_date:
                         tasks_today.append(t)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
         # --- Build message ---
@@ -439,7 +439,7 @@ class BriefingGenerator:
                         due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
                         if week_start <= due <= week_end:
                             tasks_this_week.append(t)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         pass
 
             lines.append(f"📋 *Offene Aufgaben:* {total_open}")

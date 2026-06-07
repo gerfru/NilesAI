@@ -141,7 +141,7 @@ class TasksAction:
         # LLMs sometimes pass priority as string
         try:
             priority = int(priority)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             priority = 0
         if priority > 0:
             payload["priority"] = min(priority, 4)

@@ -111,7 +111,7 @@ async def db_pool():
             max_size=5,
             timeout=5,
         )
-    except (OSError, asyncpg.PostgresError, asyncio.TimeoutError):
+    except OSError, asyncpg.PostgresError, asyncio.TimeoutError:
         pytest.skip(f"PostgreSQL not reachable at {POSTGRES_HOST}:{POSTGRES_PORT}")
         return
 
@@ -163,7 +163,7 @@ async def evolution_client():
     try:
         resp = await client.get(f"{EVOLUTION_API_URL}/")
         resp.raise_for_status()
-    except (httpx.ConnectError, httpx.HTTPError):
+    except httpx.ConnectError, httpx.HTTPError:
         await client.aclose()
         pytest.skip(f"Evolution API not reachable at {EVOLUTION_API_URL}")
         return
@@ -187,7 +187,7 @@ async def vikunja_available():
             data = resp.json()
             if not data:
                 pytest.skip(f"Vikunja returned empty response at {VIKUNJA_API_URL}")
-        except (httpx.ConnectError, httpx.HTTPError, ValueError):
+        except httpx.ConnectError, httpx.HTTPError, ValueError:
             pytest.skip(f"Vikunja not reachable at {VIKUNJA_API_URL}")
 
 
@@ -200,7 +200,7 @@ async def signal_available():
         try:
             resp = await client.get(f"{SIGNAL_API_URL}/v1/about")
             resp.raise_for_status()
-        except (httpx.ConnectError, httpx.HTTPError):
+        except httpx.ConnectError, httpx.HTTPError:
             pytest.skip(f"Signal API not reachable at {SIGNAL_API_URL}")
 
 
@@ -212,7 +212,7 @@ async def ollama_available():
         try:
             resp = await client.get(f"{ollama_url}/api/tags")
             resp.raise_for_status()
-        except (httpx.ConnectError, httpx.HTTPError):
+        except httpx.ConnectError, httpx.HTTPError:
             pytest.skip(f"Ollama not reachable at {ollama_url}")
 
 
@@ -223,7 +223,7 @@ async def searxng_available():
         try:
             resp = await client.get(f"{SEARXNG_URL}/")
             resp.raise_for_status()
-        except (httpx.ConnectError, httpx.HTTPError):
+        except httpx.ConnectError, httpx.HTTPError:
             pytest.skip(f"SearXNG not reachable at {SEARXNG_URL}")
 
 

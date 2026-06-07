@@ -144,7 +144,7 @@ async def get_current_weather() -> str:
     try:
         dt = datetime.fromisoformat(time_str)
         formatted_time = dt.strftime("%d.%m.%Y %H:%M")
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         formatted_time = time_str
 
     lines = [
@@ -207,7 +207,7 @@ async def get_forecast(days: int = 3) -> str:
             dt = datetime.fromisoformat(date_str)
             weekday = _WEEKDAYS[dt.weekday()]
             day_label = f"{weekday}, {dt.strftime('%d.%m.')}"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             day_label = date_str
 
         code = _daily_value(daily, "weather_code", i, default=0)
@@ -220,11 +220,11 @@ async def get_forecast(days: int = 3) -> str:
 
         try:
             sunrise = datetime.fromisoformat(sunrise_raw).strftime("%H:%M")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             sunrise = sunrise_raw
         try:
             sunset = datetime.fromisoformat(sunset_raw).strftime("%H:%M")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             sunset = sunset_raw
 
         lines.append(f"\n{day_label}:")
