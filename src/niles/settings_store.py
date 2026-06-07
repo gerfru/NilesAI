@@ -88,7 +88,7 @@ class SettingsStore:
                 if self._enc and row["key"] in _ENCRYPTED_KEYS and isinstance(val, str):
                     val = self._enc.decrypt(val)
                 result[row["key"]] = val
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted settings override: %s", row["key"])
         return result
 

@@ -78,7 +78,7 @@ def parse_dt(line: str) -> tuple[datetime | None, bool]:
             tz = ZoneInfo(iana_name)
             dt = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=tz)
             return dt, False
-        except (ValueError, KeyError):
+        except ValueError, KeyError:
             logger.warning("Failed to parse datetime with TZID=%s: %s", tz_name, value)
             return None, False
 
@@ -116,7 +116,7 @@ def _parse_exdate_line(line: str) -> list[datetime]:
         iana_name = _WINDOWS_TZ_MAP.get(tz_name, tz_name)
         try:
             tzid = ZoneInfo(iana_name)
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             pass
 
     results: list[datetime] = []
@@ -209,7 +209,7 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
         elif line.startswith("EXDATE"):
             try:
                 event["exdates"].extend(_parse_exdate_line(line))
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 logger.warning("Failed to parse EXDATE line: %s", line)
 
     # Skip events without summary
@@ -268,7 +268,7 @@ def expand_recurring_event(
 
     try:
         rule = rrulestr(rule_value, dtstart=dtstart)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         logger.warning(
             "Failed to parse RRULE for '%s': %s",
             event.get("summary", ""),

@@ -22,7 +22,7 @@ class MemoryStore:
             return None
         try:
             return json.loads(row["value"])
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             logger.warning("Corrupted memory value for key: %s", key)
             return None
 
@@ -54,7 +54,7 @@ class MemoryStore:
         for row in rows:
             try:
                 results.append({"key": row["key"], "value": json.loads(row["value"])})
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted memory value for key: %s", row["key"])
         return results
 
@@ -69,6 +69,6 @@ class MemoryStore:
         for row in rows:
             try:
                 results.append({"key": row["key"], "value": json.loads(row["value"])})
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted memory value for key: %s", row["key"])
         return results

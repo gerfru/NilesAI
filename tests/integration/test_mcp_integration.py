@@ -40,7 +40,7 @@ class TestFetchMCP:
         try:
             async with httpx.AsyncClient(timeout=5) as client:
                 await client.head("https://example.com")
-        except (httpx.ConnectError, httpx.TimeoutException):
+        except httpx.ConnectError, httpx.TimeoutException:
             pytest.skip("No outbound internet access")
         result = await fetch_url("https://example.com")
         assert len(result) > 0
