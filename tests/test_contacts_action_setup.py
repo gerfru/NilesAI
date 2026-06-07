@@ -19,16 +19,10 @@ class TestContactsConnect:
         }
         action = ContactsAction(AsyncMock(), carddav_manager=manager)
 
-        result = await action.connect(
-            "  https://dav.example.com  ", "  user  ", "pass", user_id=42
-        )
+        result = await action.connect("  https://dav.example.com  ", "  user  ", "pass", user_id=42)
 
-        manager.test_connection.assert_called_once_with(
-            "https://dav.example.com", "user", "pass"
-        )
-        manager.add_source.assert_called_once_with(
-            "https://dav.example.com", "user", "pass", user_id=42
-        )
+        manager.test_connection.assert_called_once_with("https://dav.example.com", "user", "pass")
+        manager.add_source.assert_called_once_with("https://dav.example.com", "user", "pass", user_id=42)
         manager.sync_source.assert_called_once_with(1, user_id=42)
         assert result["id"] == 1
 

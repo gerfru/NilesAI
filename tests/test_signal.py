@@ -54,9 +54,7 @@ class TestSignalAction:
         import httpx
 
         action._client = AsyncMock()
-        action._client.post = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        action._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         result = await action.send_message(to="+4369912345678", text="Hello")
 
@@ -138,9 +136,7 @@ class TestSignalAction:
         import httpx
 
         action._client = AsyncMock()
-        action._client.delete = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        action._client.delete = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         action.phone = "+436601234567"
 
         result = await action.unlink()

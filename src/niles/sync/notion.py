@@ -88,9 +88,7 @@ class NotionSync:
         title = self._extract_title(page)
         url = page.get("url", "")
         last_edited_str = page.get("last_edited_time")
-        last_edited = (
-            datetime.fromisoformat(last_edited_str) if last_edited_str else None
-        )
+        last_edited = datetime.fromisoformat(last_edited_str) if last_edited_str else None
 
         # Quick check: skip if last_edited hasn't changed
         existing = await self._pool.fetchrow(
@@ -107,7 +105,7 @@ class NotionSync:
         if object_type == "page":
             content = await self._fetch_page_content(page["id"])
 
-        content_md5 = hashlib.md5(content.encode()).hexdigest()  # noqa: S324
+        content_md5 = hashlib.md5(content.encode()).hexdigest()  # noqa: S324  # nosemgrep: insecure-hash-algorithm-md5
 
         # Skip if content hasn't actually changed
         if existing and existing["content_md5"] == content_md5:

@@ -60,20 +60,17 @@ async def ollama_models(request: Request):
 
     try:
         settings_action = request.app.state.settings_action
-        models = await settings_action.list_ollama_models(
-            settings.llm_base_url, current_model
-        )
+        models = await settings_action.list_ollama_models(settings.llm_base_url, current_model)
     except Exception:
         # Ollama unreachable — return single option with current value
         return HTMLResponse(
-            f'<option value="{_html.escape(current_model)}" selected>'
+            f'<option value="{_html.escape(current_model)}" selected>'  # nosemgrep: raw-html-format
             f"{_html.escape(current_model)} (Ollama nicht erreichbar)</option>"
         )
 
     if not models:
         return HTMLResponse(
-            f'<option value="{_html.escape(current_model)}" selected>'
-            f"{_html.escape(current_model)}</option>"
+            f'<option value="{_html.escape(current_model)}" selected>{_html.escape(current_model)}</option>'  # nosemgrep: raw-html-format
         )
 
     options = []
@@ -81,8 +78,7 @@ async def ollama_models(request: Request):
         name = m["name"]
         selected = " selected" if m["selected"] else ""
         options.append(
-            f'<option value="{_html.escape(name)}"{selected}>'
-            f"{_html.escape(name)}</option>"
+            f'<option value="{_html.escape(name)}"{selected}>{_html.escape(name)}</option>'  # nosemgrep: raw-html-format
         )
 
     # If current model is not in the list (e.g. deleted), add it at top
@@ -90,7 +86,7 @@ async def ollama_models(request: Request):
     if current_model and current_model not in model_names:
         options.insert(
             0,
-            f'<option value="{_html.escape(current_model)}" selected>'
+            f'<option value="{_html.escape(current_model)}" selected>'  # nosemgrep: raw-html-format
             f"{_html.escape(current_model)} (nicht installiert)</option>",
         )
 

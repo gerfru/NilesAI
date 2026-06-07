@@ -44,9 +44,7 @@ async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> di
     own_number = await ctx.get_own_phone_number(chat_id)
     if own_number:
         normalized = resolved_number.replace("+", "").replace(" ", "")
-        is_self = normalized == own_number or (
-            len(own_number) >= 8 and normalized.endswith(own_number)
-        )
+        is_self = normalized == own_number or (len(own_number) >= 8 and normalized.endswith(own_number))
 
     # 3. Sending to others: only if feature flag is active
     if not is_self and not ctx.config.feature_whatsapp_send_others:
@@ -65,11 +63,7 @@ async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> di
             text=text,
             instance=instance,
         )
-        return (
-            {"status": "sent", "to": resolved_number}
-            if "error" not in result
-            else result
-        )
+        return {"status": "sent", "to": resolved_number} if "error" not in result else result
 
     # Store pending confirmation and ask user
     display_to = to if to != resolved_number else resolved_number
@@ -82,18 +76,13 @@ async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> di
     preview = text[:200] + ("..." if len(text) > 200 else "")
     return {
         "confirm": (
-            f"Soll ich diese Nachricht senden?\n"
-            f"An: {display_to}\n"
-            f"Text: {preview}\n\n"
-            f"Antworte mit ja oder nein."
+            f"Soll ich diese Nachricht senden?\nAn: {display_to}\nText: {preview}\n\nAntworte mit ja oder nein."
         )
     }
 
 
 @register_tool("get_whatsapp_messages")
-async def handle_get_whatsapp_messages(
-    args: dict, chat_id: str, ctx: ToolContext
-) -> dict:
+async def handle_get_whatsapp_messages(args: dict, chat_id: str, ctx: ToolContext) -> dict:
     contact_arg = args.get("contact", "").strip()
     if not contact_arg:
         return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}

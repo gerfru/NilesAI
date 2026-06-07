@@ -46,14 +46,11 @@ class ContactsAction:
         """Return contact count and last sync timestamp, optionally per user."""
         if user_id is not None:
             row = await self.pool.fetchrow(
-                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync "
-                "FROM contacts WHERE user_id = $1",
+                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts WHERE user_id = $1",
                 user_id,
             )
         else:
-            row = await self.pool.fetchrow(
-                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts"
-            )
+            row = await self.pool.fetchrow("SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts")
         return dict(row) if row else {"cnt": 0, "last_sync": None}
 
     async def clear_all(self, user_id: int | None = None) -> None:
@@ -78,18 +75,14 @@ class ContactsAction:
         Raises ConnectionError on test failure, ValueError on invalid input.
         """
         if self.carddav_manager is None:
-            raise RuntimeError(
-                "ContactsAction requires carddav_manager for connect/disconnect"
-            )
+            raise RuntimeError("ContactsAction requires carddav_manager for connect/disconnect")
         url, user = url.strip(), user.strip()
 
         ok, message = await self.carddav_manager.test_connection(url, user, password)
         if not ok:
             raise ConnectionError(message)
 
-        source = await self.carddav_manager.add_source(
-            url, user, password, user_id=user_id
-        )
+        source = await self.carddav_manager.add_source(url, user, password, user_id=user_id)
 
         # Run initial sync for the new source
         try:
@@ -102,14 +95,10 @@ class ContactsAction:
     async def disconnect(self, source_id: int, user_id: int | None = None) -> bool:
         """Remove a CardDAV source (contacts are CASCADE-deleted)."""
         if self.carddav_manager is None:
-            raise RuntimeError(
-                "ContactsAction requires carddav_manager for connect/disconnect"
-            )
+            raise RuntimeError("ContactsAction requires carddav_manager for connect/disconnect")
         return await self.carddav_manager.remove_source(source_id, user_id=user_id)
 
-    async def find_by_name(
-        self, name: str, *, user_id: int | None = None
-    ) -> dict | None:
+    async def find_by_name(self, name: str, *, user_id: int | None = None) -> dict | None:
         """
         Search contact by name (case-insensitive, partial match).
 
@@ -234,10 +223,7 @@ class ContactsAction:
             contact_id,
         )
 
-        phones = [
-            {"type": p["type"], "number": normalize_phone(p["number"])}
-            for p in phone_rows
-        ]
+        phones = [{"type": p["type"], "number": normalize_phone(p["number"])} for p in phone_rows]
 
         # Preferred phone: first from sorted list (mobile > home > work > other)
         preferred = phones[0]["number"] if phones else None

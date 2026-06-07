@@ -237,9 +237,7 @@ class TestAgentPerUserVikunja:
 
         # Mock the resolved TasksAction's list_tasks method
         mock_tasks_action = AsyncMock()
-        mock_tasks_action.list_tasks.return_value = [
-            {"id": 1, "title": "Test task", "done": False}
-        ]
+        mock_tasks_action.list_tasks.return_value = [{"id": 1, "title": "Test task", "done": False}]
         agent._resolve_vikunja_tasks = AsyncMock(return_value=mock_tasks_action)
 
         tool_call = MagicMock()
@@ -292,9 +290,7 @@ class TestAgentPerUserVikunja:
         all_tools = [t for t in TOOLS]
         if not agent.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
-            all_tools = [
-                t for t in all_tools if t["function"]["name"] not in _task_tools
-            ]
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
 
         tool_names = {t["function"]["name"] for t in all_tools}
         assert "list_tasks" not in tool_names
@@ -316,9 +312,7 @@ class TestAgentPerUserVikunja:
         all_tools = [t for t in TOOLS]
         if not agent.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
-            all_tools = [
-                t for t in all_tools if t["function"]["name"] not in _task_tools
-            ]
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
 
         tool_names = {t["function"]["name"] for t in all_tools}
         assert "list_tasks" in tool_names

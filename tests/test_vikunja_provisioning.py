@@ -44,15 +44,10 @@ class TestDerivePassword:
 
 class TestDeriveUsername:
     def test_basic(self):
-        assert (
-            VikunjaProvisioner._derive_username(1, "gerhard@example.com") == "gerhard_1"
-        )
+        assert VikunjaProvisioner._derive_username(1, "gerhard@example.com") == "gerhard_1"
 
     def test_strips_dots_and_plus(self):
-        assert (
-            VikunjaProvisioner._derive_username(2, "ger.hard+test@gmail.com")
-            == "gerhardtest_2"
-        )
+        assert VikunjaProvisioner._derive_username(2, "ger.hard+test@gmail.com") == "gerhardtest_2"
 
     def test_truncates_long_prefix(self):
         username = VikunjaProvisioner._derive_username(3, "a" * 30 + "@example.com")
@@ -82,9 +77,7 @@ class TestEnsureProvisioned:
         provisioner._create_api_token.assert_called_once()
         # Verify the JWT was passed (second arg after client)
         assert provisioner._create_api_token.call_args[0][1] == "jwt-token-123"
-        store.upsert_credentials.assert_called_once_with(
-            1, "tk_new_token", "http://vikunja:3456/api/v1"
-        )
+        store.upsert_credentials.assert_called_once_with(1, "tk_new_token", "http://vikunja:3456/api/v1")
 
     @pytest.mark.asyncio
     async def test_login_fails_returns_false(self, provisioner, store):
@@ -182,9 +175,7 @@ class TestChangePassword:
         client = AsyncMock()
         client.post.return_value = mock_resp
 
-        result = await provisioner._change_password(
-            client, "jwt-123", "old-pw", "new-pw"
-        )
+        result = await provisioner._change_password(client, "jwt-123", "old-pw", "new-pw")
         assert result is True
         client.post.assert_called_once_with(
             "/user/password",
@@ -201,9 +192,7 @@ class TestChangePassword:
         client = AsyncMock()
         client.post.return_value = mock_resp
 
-        result = await provisioner._change_password(
-            client, "jwt-123", "old-pw", "new-pw"
-        )
+        result = await provisioner._change_password(client, "jwt-123", "old-pw", "new-pw")
         assert result is False
 
     @pytest.mark.asyncio
@@ -212,9 +201,7 @@ class TestChangePassword:
         client = AsyncMock()
         client.post.side_effect = ConnectionError("unreachable")
 
-        result = await provisioner._change_password(
-            client, "jwt-123", "old-pw", "new-pw"
-        )
+        result = await provisioner._change_password(client, "jwt-123", "old-pw", "new-pw")
         assert result is False
 
 

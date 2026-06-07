@@ -64,9 +64,7 @@ async def signal_status(request: Request):
     settings = request.app.state.settings
     signal_setup = getattr(request.app.state, "signal_setup_action", None)
     if not settings.signal_api_url or not signal_setup:
-        return HTMLResponse(
-            '<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-zinc-500 py-2">Signal nicht konfiguriert.</p>')
 
     linking = request.query_params.get("linking") == "1"
     signal_disabled = getattr(request.app.state, "signal_disabled", False)
@@ -76,9 +74,7 @@ async def signal_status(request: Request):
     # Route handles app.state mutations when phone was auto-discovered
     phone_discovered = ctx.pop("phone_discovered", None)
     if phone_discovered:
-        new_settings = apply_overrides(
-            settings, {"signal_phone_number": phone_discovered}
-        )
+        new_settings = apply_overrides(settings, {"signal_phone_number": phone_discovered})
         request.app.state.settings = new_settings
         signal_action = getattr(request.app.state, "signal_action", None)
         if signal_action:
@@ -145,7 +141,7 @@ async def signal_disconnect(request: Request):
         sig_task.cancel()
         try:
             await sig_task
-        except (asyncio.CancelledError, Exception):
+        except (asyncio.CancelledError, Exception):  # noqa: S110
             pass
     request.app.state.signal_task = None
 

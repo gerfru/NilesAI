@@ -19,9 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("DROP TABLE IF EXISTS user_google_tokens")
-    op.execute(
-        "ALTER TABLE calendar_sources DROP COLUMN IF EXISTS google_refresh_token"
-    )
+    op.execute("ALTER TABLE calendar_sources DROP COLUMN IF EXISTS google_refresh_token")
     op.execute("ALTER TABLE calendar_sources DROP COLUMN IF EXISTS google_token_expiry")
 
 
@@ -37,11 +35,5 @@ def downgrade() -> None:
             updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     """)
-    op.execute(
-        "ALTER TABLE calendar_sources "
-        "ADD COLUMN IF NOT EXISTS google_refresh_token TEXT"
-    )
-    op.execute(
-        "ALTER TABLE calendar_sources "
-        "ADD COLUMN IF NOT EXISTS google_token_expiry TIMESTAMPTZ"
-    )
+    op.execute("ALTER TABLE calendar_sources ADD COLUMN IF NOT EXISTS google_refresh_token TEXT")
+    op.execute("ALTER TABLE calendar_sources ADD COLUMN IF NOT EXISTS google_token_expiry TIMESTAMPTZ")
