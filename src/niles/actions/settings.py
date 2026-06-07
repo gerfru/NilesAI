@@ -9,15 +9,11 @@ from ..settings_store import SettingsStore
 class SettingsAction:
     """Validate, coerce, and persist runtime settings."""
 
-    def __init__(
-        self, settings_store: SettingsStore, *, http_client: httpx.AsyncClient
-    ):
+    def __init__(self, settings_store: SettingsStore, *, http_client: httpx.AsyncClient):
         self.settings_store = settings_store
         self.http_client = http_client
 
-    async def update(
-        self, key: str, value: str, current_settings: Settings
-    ) -> Settings:
+    async def update(self, key: str, value: str, current_settings: Settings) -> Settings:
         """Validate key, coerce type, persist, return new Settings.
 
         Raises ValueError for unknown keys or persistence failures.
@@ -43,7 +39,5 @@ class SettingsAction:
             base = base[:-3]
         resp = await self.http_client.get(f"{base}/api/tags", timeout=5)
         resp.raise_for_status()
-        models = sorted(
-            (m["name"] for m in resp.json().get("models", [])), key=str.lower
-        )
+        models = sorted((m["name"] for m in resp.json().get("models", [])), key=str.lower)
         return [{"name": m, "selected": m == current_model} for m in models]

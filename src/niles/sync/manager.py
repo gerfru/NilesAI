@@ -89,10 +89,7 @@ class CalendarSourceManager:
             raise ValueError("Interne Adressen sind nicht erlaubt")
         # Strip embedded credentials from URL
         if parsed.username or parsed.password:
-            url = parsed._replace(
-                netloc=(parsed.hostname or "")
-                + (f":{parsed.port}" if parsed.port else "")
-            ).geturl()
+            url = parsed._replace(netloc=(parsed.hostname or "") + (f":{parsed.port}" if parsed.port else "")).geturl()
         if len(url) > 2048:
             raise ValueError("URL ist zu lang (max 2048 Zeichen)")
         if len(name) > 200:
@@ -100,11 +97,7 @@ class CalendarSourceManager:
         if source_type not in ("ics", "caldav"):
             raise ValueError(f"Unbekannter Typ: {source_type}")
 
-        enc_password = (
-            self._enc.encrypt(auth_password)
-            if self._enc and auth_password
-            else auth_password
-        )
+        enc_password = self._enc.encrypt(auth_password) if self._enc and auth_password else auth_password
         row = await self.pool.fetchrow(
             """
             INSERT INTO calendar_sources
@@ -132,8 +125,7 @@ class CalendarSourceManager:
         and is reserved for admin/system operations.
         """
         result = await self.pool.execute(
-            "DELETE FROM calendar_sources WHERE id = $1"
-            " AND ($2::integer IS NULL OR user_id = $2)",
+            "DELETE FROM calendar_sources WHERE id = $1 AND ($2::integer IS NULL OR user_id = $2)",
             source_id,
             user_id,
         )
@@ -200,9 +192,7 @@ class CalendarSourceManager:
         )
         count = int(result.split()[-1])  # "UPDATE N"
         if count > 0:
-            logger.info(
-                "Claimed %d orphan calendar source(s) for user %d", count, user_id
-            )
+            logger.info("Claimed %d orphan calendar source(s) for user %d", count, user_id)
         return count
 
     # --- Sync ---
@@ -236,14 +226,10 @@ class CalendarSourceManager:
                     src["id"],
                     src["name"],
                 )
-        logger.info(
-            "Calendar sync complete: %d events from %d sources", total, len(sources)
-        )
+        logger.info("Calendar sync complete: %d events from %d sources", total, len(sources))
         return total
 
-    async def sync_source(
-        self, source_id: int, user_id: int | None = None
-    ) -> int | None:
+    async def sync_source(self, source_id: int, user_id: int | None = None) -> int | None:
         """Sync a single source by ID. Returns event count, or None if not found.
 
         ``user_id=None`` skips the ownership filter (admin/system use).

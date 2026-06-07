@@ -61,9 +61,7 @@ async def calendar_sources_list(request: Request):
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return templates.TemplateResponse(
-            request, "fragments/calendar_unavailable.html", {}
-        )
+        return templates.TemplateResponse(request, "fragments/calendar_unavailable.html", {})
 
     await manager.claim_orphan_sources(user["uid"])
     sources = await manager.get_sources(user_id=user["uid"])
@@ -94,9 +92,7 @@ async def calendar_source_add(
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>')
 
     # Default name from URL if not provided
     if not name.strip():
@@ -158,9 +154,7 @@ async def calendar_source_remove(request: Request, source_id: int):
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>')
 
     uid = _user["uid"]
     removed = await manager.remove_source(source_id, user_id=uid)
@@ -182,9 +176,7 @@ async def calendar_source_sync(request: Request, source_id: int):
 
     manager = getattr(request.app.state, "calendar_manager", None)
     if not manager:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500">Kalender-Manager nicht verfuegbar.</p>')
 
     uid = _user["uid"]
     ctx: dict = {}

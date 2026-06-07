@@ -110,9 +110,7 @@ class ContextBuilder:
                 return session["instance_name"]
         return None
 
-    async def resolve_contact_phone(
-        self, name_or_number: str
-    ) -> tuple[str | None, dict | None]:
+    async def resolve_contact_phone(self, name_or_number: str) -> tuple[str | None, dict | None]:
         """Resolve a contact name or phone number to a normalized phone string.
 
         Returns (phone, None) on success or (None, error_dict) on failure.
@@ -288,9 +286,7 @@ class ContextBuilder:
             logger.exception("Error executing confirmed action %s", action)
             return "Fehler bei der Ausführung."
 
-    async def prepare_messages(
-        self, event: dict, tools: list
-    ) -> tuple[str, list[dict], list]:
+    async def prepare_messages(self, event: dict, tools: list) -> tuple[str, list[dict], list]:
         """Build the messages list for an LLM call.
 
         Returns (chat_id, messages, filtered_tools).
@@ -308,9 +304,7 @@ class ContextBuilder:
             )
             history_messages = await self.history.get_recent(chat_id, limit=4)
             messages: list[dict] = [{"role": "system", "content": system_prompt}]
-            messages.extend(
-                {"role": m["role"], "content": m["content"]} for m in history_messages
-            )
+            messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
             messages.append({"role": "user", "content": event["content"]})
             return chat_id, messages, []
 
@@ -328,8 +322,7 @@ class ContextBuilder:
         # Append recherche-mode instruction only when MCP search tools exist
         web_search = event.get("metadata", {}).get("web_search", False)
         _has_search_mcp = self.mcp and any(
-            t["function"]["name"].startswith("mcp__searxng__")
-            for t in self.mcp.get_openai_tools()
+            t["function"]["name"].startswith("mcp__searxng__") for t in self.mcp.get_openai_tools()
         )
         if _has_search_mcp:
             if web_search:
@@ -353,41 +346,27 @@ class ContextBuilder:
 
         history_messages = await self.history.get_recent(chat_id)
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(
-            {"role": m["role"], "content": m["content"]} for m in history_messages
-        )
+        messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
         messages.append({"role": "user", "content": event["content"]})
 
         all_tools = list(tools)
         # Remove task tools when Vikunja is not configured
         if not self.config.vikunja_api_url:
             _task_tools = {"list_tasks", "create_task", "complete_task"}
-            all_tools = [
-                t for t in all_tools if t["function"]["name"] not in _task_tools
-            ]
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _task_tools]
         # Remove Signal tools when no Signal action is configured
         if self.signal is None:
             _signal_tools = {"send_signal", "get_signal_messages"}
-            all_tools = [
-                t for t in all_tools if t["function"]["name"] not in _signal_tools
-            ]
+            all_tools = [t for t in all_tools if t["function"]["name"] not in _signal_tools]
         # Remove Notion tool when disabled or retriever not available
-        if not self.config.feature_notion or not getattr(
-            self, "notion_retriever", None
-        ):
-            all_tools = [
-                t for t in all_tools if t["function"]["name"] != "search_notion"
-            ]
+        if not self.config.feature_notion or not getattr(self, "notion_retriever", None):
+            all_tools = [t for t in all_tools if t["function"]["name"] != "search_notion"]
         if self.mcp:
             mcp_tools = self.mcp.get_openai_tools()
             # Only include search/fetch MCP tools when web_search is active
             if not web_search:
                 _search_prefixes = ("mcp__searxng__", "mcp__fetch__")
-                mcp_tools = [
-                    t
-                    for t in mcp_tools
-                    if not t["function"]["name"].startswith(_search_prefixes)
-                ]
+                mcp_tools = [t for t in mcp_tools if not t["function"]["name"].startswith(_search_prefixes)]
             all_tools.extend(mcp_tools)
             if mcp_tools and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(

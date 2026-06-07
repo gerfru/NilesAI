@@ -99,9 +99,7 @@ def main() -> None:
         # Existing installation — tables already exist.
         # Stamp baseline (001), then upgrade to apply data migrations (e.g. 002)
         # which are idempotent and safe to re-run on existing data.
-        logger.info(
-            "Existing installation detected — stamping baseline, then upgrading"
-        )
+        logger.info("Existing installation detected — stamping baseline, then upgrading")
         command.stamp(cfg, "001")
         command.upgrade(cfg, "head")
         logger.info("Stamped + upgraded to head")

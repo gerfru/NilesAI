@@ -207,3 +207,40 @@ class TestSettingsStoreEncryption:
         ]
         result = await store.get_all()
         assert result["notion_token"] == "plain-legacy-token"
+
+
+class TestURLValidation:
+    """Test URL scheme validation for searxng_url and llm_base_url."""
+
+    @pytest.fixture
+    def store(self):
+        pool = AsyncMock()
+        conn = AsyncMock()
+        acq_ctx = MagicMock()
+        acq_ctx.__aenter__ = AsyncMock(return_value=conn)
+        acq_ctx.__aexit__ = AsyncMock(return_value=False)
+        pool.acquire = MagicMock(return_value=acq_ctx)
+        tx_ctx = MagicMock()
+        tx_ctx.__aenter__ = AsyncMock()
+        tx_ctx.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=tx_ctx)
+        return SettingsStore(pool)
+
+    async def test_llm_base_url_rejects_file_scheme(self, store):
+        with pytest.raises(ValueError, match="must be http:// or https://"):
+            await store.set("llm_base_url", "file:///etc/passwd")
+
+    async def test_llm_base_url_rejects_no_hostname(self, store):
+        with pytest.raises(ValueError, match="must be http:// or https://"):
+            await store.set("llm_base_url", "http://")
+
+    async def test_llm_base_url_accepts_private_host(self, store):
+        """Private hosts are allowed (LLM typically on Docker internal network)."""
+        await store.set("llm_base_url", "http://host.docker.internal:11434/v1")
+
+    async def test_llm_base_url_accepts_https(self, store):
+        await store.set("llm_base_url", "https://api.openai.com/v1")
+
+    async def test_searxng_url_rejects_invalid_scheme(self, store):
+        with pytest.raises(ValueError, match="must be http:// or https://"):
+            await store.set("searxng_url", "ftp://searxng:8080")

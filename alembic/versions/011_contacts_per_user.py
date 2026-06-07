@@ -33,44 +33,31 @@ def upgrade() -> None:
     """)
     # Expression-based unique constraint (COALESCE not allowed in inline UNIQUE)
     op.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_carddav_sources_url_user "
-        "ON carddav_sources (url, COALESCE(user_id, -1))"
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_carddav_sources_url_user ON carddav_sources (url, COALESCE(user_id, -1))"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_carddav_sources_user_id "
-        "ON carddav_sources (user_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_carddav_sources_user_id ON carddav_sources (user_id)")
 
     # 2. Add user_id and source_id to contacts
-    op.execute(
-        "ALTER TABLE contacts "
-        "ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"
-    )
+    op.execute("ALTER TABLE contacts ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE")
     op.execute(
         "ALTER TABLE contacts "
         "ADD COLUMN IF NOT EXISTS source_id INTEGER "
         "REFERENCES carddav_sources(id) ON DELETE CASCADE"
     )
     op.execute("CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts (user_id)")
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_contacts_source_id ON contacts (source_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_contacts_source_id ON contacts (source_id)")
 
     # 3. Make cardav_uid unique per user instead of globally
     op.execute("ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_cardav_uid_key")
     op.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_cardav_uid_user "
-        "ON contacts (cardav_uid, COALESCE(user_id, -1))"
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_cardav_uid_user ON contacts (cardav_uid, COALESCE(user_id, -1))"
     )
 
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_contacts_cardav_uid_user")
     # Restore global unique constraint (only safe if no duplicates exist)
-    op.execute(
-        "ALTER TABLE contacts "
-        "ADD CONSTRAINT contacts_cardav_uid_key UNIQUE (cardav_uid)"
-    )
+    op.execute("ALTER TABLE contacts ADD CONSTRAINT contacts_cardav_uid_key UNIQUE (cardav_uid)")
     op.execute("DROP INDEX IF EXISTS idx_contacts_source_id")
     op.execute("DROP INDEX IF EXISTS idx_contacts_user_id")
     op.execute("ALTER TABLE contacts DROP COLUMN IF EXISTS source_id")

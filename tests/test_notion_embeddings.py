@@ -52,10 +52,7 @@ def _setup_embed_pending(pool, pending_rows, breadcrumb_rows=None):
     """
     if breadcrumb_rows is None:
         # Auto-generate breadcrumb rows from pending rows
-        breadcrumb_rows = [
-            {"id": r["id"], "title": r["title"], "parent_id": None}
-            for r in pending_rows
-        ]
+        breadcrumb_rows = [{"id": r["id"], "title": r["title"], "parent_id": None} for r in pending_rows]
     pool.fetch.side_effect = [breadcrumb_rows, pending_rows]
 
 
@@ -145,9 +142,7 @@ class TestChunkText:
 
 class TestSplitByHeadings:
     def test_no_headings_returns_full_text(self):
-        sections = NotionEmbeddingPipeline._split_by_headings(
-            "Just some text\nAnother line"
-        )
+        sections = NotionEmbeddingPipeline._split_by_headings("Just some text\nAnother line")
         assert len(sections) == 1
         assert sections[0][0] == ""  # No heading context
         assert "Just some text" in sections[0][1]
@@ -236,10 +231,7 @@ class TestHeadingAwareChunking:
 
     def test_multiple_sections_get_separate_chunks(self):
         pipe, _, _ = _pipeline(chunk_size=100, chunk_overlap=0)
-        text = (
-            "# Setup\nInstall the dependencies first.\n"
-            "# Usage\nRun the main command to start."
-        )
+        text = "# Setup\nInstall the dependencies first.\n# Usage\nRun the main command to start."
         chunks = pipe._chunk_text(text, "Guide")
         assert len(chunks) == 2
         assert "[Guide > # Setup]" in chunks[0].text
@@ -415,9 +407,7 @@ class TestEmbedPending:
     async def test_partial_failure_skips_embedded_at(self):
         """Fix #1: page not marked as embedded when some chunks fail."""
         pipe, pool, embedder = _pipeline(chunk_size=20, chunk_overlap=0)
-        pending = [
-            {"id": "p1", "title": "", "content_text": "First chunk.\nSecond chunk."}
-        ]
+        pending = [{"id": "p1", "title": "", "content_text": "First chunk.\nSecond chunk."}]
         _setup_embed_pending(pool, pending)
         pool.execute = AsyncMock()
         pool.fetchval = AsyncMock(return_value=0)
@@ -429,9 +419,7 @@ class TestEmbedPending:
         assert stats["errors"] == 1
         assert stats["pages_embedded"] == 0
         # embedded_at should NOT have been updated
-        update_calls = [
-            c[0][0] for c in pool.execute.call_args_list if "embedded_at" in c[0][0]
-        ]
+        update_calls = [c[0][0] for c in pool.execute.call_args_list if "embedded_at" in c[0][0]]
         assert len(update_calls) == 0
 
     async def test_empty_content_skipped(self):
@@ -470,9 +458,7 @@ class TestEmbedPending:
         await pipe.embed_pending()
 
         # embed() should be called with search_document prefix
-        embedder.embed.assert_called_once_with(
-            "[Test] Content here", prefix="search_document: "
-        )
+        embedder.embed.assert_called_once_with("[Test] Content here", prefix="search_document: ")
 
     async def test_insert_uses_chunk_level_detail(self):
         """Detail chunks are inserted with chunk_level=1."""

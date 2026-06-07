@@ -23,9 +23,7 @@ class TestMigrationChain:
         """All migrations form an unbroken chain from base to head."""
         scripts = _get_script_directory()
         revisions = list(scripts.walk_revisions())
-        assert len(revisions) >= 2, (
-            f"Expected at least 2 migrations, got {len(revisions)}"
-        )
+        assert len(revisions) >= 2, f"Expected at least 2 migrations, got {len(revisions)}"
 
     def test_exactly_one_base_revision(self):
         """Exactly one migration has down_revision = None (the base)."""

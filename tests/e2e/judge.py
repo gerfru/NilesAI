@@ -71,12 +71,8 @@ async def judge_interaction(
     prompt = JUDGE_PROMPT.format(
         user_message=user_message,
         available_tools=", ".join(available_tools) if available_tools else "(keine)",
-        tool_calls=json.dumps(tool_calls, ensure_ascii=False)
-        if tool_calls
-        else "(keine)",
-        tool_results=(
-            json.dumps(tool_results, ensure_ascii=False) if tool_results else "(keine)"
-        ),
+        tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else "(keine)",
+        tool_results=(json.dumps(tool_results, ensure_ascii=False) if tool_results else "(keine)"),
         agent_response=agent_response or "(keine Antwort)",
     )
 
@@ -120,9 +116,7 @@ async def run_and_judge(
 
     async def _capturing_execute(tool_call, tc_chat_id):
         result = await original_execute(tool_call, tc_chat_id)
-        collected_tool_results.append(
-            {"name": tool_call.function.name, "result": result}
-        )
+        collected_tool_results.append({"name": tool_call.function.name, "result": result})
         return result
 
     agent._execute_tool_call = _capturing_execute

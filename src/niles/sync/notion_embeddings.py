@@ -60,9 +60,7 @@ class NotionEmbeddingPipeline:
         Returns the number of pages marked. Call embed_pending() afterwards
         to actually regenerate the embeddings.
         """
-        result = await self._pool.execute(
-            "UPDATE notion_pages SET embedded_at = NULL WHERE embedded_at IS NOT NULL"
-        )
+        result = await self._pool.execute("UPDATE notion_pages SET embedded_at = NULL WHERE embedded_at IS NOT NULL")
         count = int(result.split()[-1])  # "UPDATE 378"
         logger.info("Marked %d pages for re-embedding", count)
         return count
@@ -74,9 +72,7 @@ class NotionEmbeddingPipeline:
         Example: page "Installation" under "Migration Guide" under "ThemisEcho"
         → "ThemisEcho > Migration Guide > Installation"
         """
-        rows = await self._pool.fetch(
-            "SELECT id, title, parent_id FROM notion_pages WHERE title != ''"
-        )
+        rows = await self._pool.fetch("SELECT id, title, parent_id FROM notion_pages WHERE title != ''")
         titles: dict[str, str] = {}
         parents: dict[str, str | None] = {}
         for row in rows:
@@ -112,8 +108,7 @@ class NotionEmbeddingPipeline:
             "errors": 0,
         }
         logger.info(
-            "Embedding with model %s (dim check: query prefix='search_query: ', "
-            "doc prefix='search_document: ')",
+            "Embedding with model %s (dim check: query prefix='search_query: ', doc prefix='search_document: ')",
             self._embedder.model,
         )
 
@@ -140,24 +135,17 @@ class NotionEmbeddingPipeline:
                     continue
 
                 # Delete old embeddings for this page (both levels)
-                await self._pool.execute(
-                    "DELETE FROM notion_embeddings WHERE page_id = $1", page_id
-                )
+                await self._pool.execute("DELETE FROM notion_embeddings WHERE page_id = $1", page_id)
 
                 detail_errors = 0
 
                 # Level 0: Summary (if summarizer is available and content is long enough)
-                if (
-                    self._summarizer
-                    and len(content_text.strip()) >= _MIN_CONTENT_FOR_SUMMARY
-                ):
+                if self._summarizer and len(content_text.strip()) >= _MIN_CONTENT_FOR_SUMMARY:
                     summary = await self._summarizer.summarize(content_text, title)
                     if summary:
                         prefix = f"[{breadcrumb}] " if breadcrumb else ""
                         summary_text = prefix + summary
-                        embedding = await self._embedder.embed(
-                            summary_text, prefix="search_document: "
-                        )
+                        embedding = await self._embedder.embed(summary_text, prefix="search_document: ")
                         if embedding is not None:
                             await self._pool.execute(
                                 """
@@ -190,9 +178,7 @@ class NotionEmbeddingPipeline:
 
                 # Level 1: Detail chunks
                 for idx, chunk_info in enumerate(chunks):
-                    embedding = await self._embedder.embed(
-                        chunk_info.text, prefix="search_document: "
-                    )
+                    embedding = await self._embedder.embed(chunk_info.text, prefix="search_document: ")
                     if embedding is None:
                         detail_errors += 1
                         stats["errors"] += 1
@@ -241,12 +227,9 @@ class NotionEmbeddingPipeline:
               AND (embedded_at IS NULL OR embedded_at < synced_at)
         """)
         if total_pending:
-            logger.info(
-                "%d more pages pending embedding (batch limit 200)", total_pending
-            )
+            logger.info("%d more pages pending embedding (batch limit 200)", total_pending)
         logger.info(
-            "Embedding complete: %d pages, %d chunks, %d summaries "
-            "(%d failed), %d errors",
+            "Embedding complete: %d pages, %d chunks, %d summaries (%d failed), %d errors",
             stats["pages_embedded"],
             stats["chunks_created"],
             stats["summaries_created"],

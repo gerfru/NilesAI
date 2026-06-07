@@ -21,16 +21,10 @@ depends_on = None
 
 def upgrade() -> None:
     # 1. Add chunk_level with default 1 (all existing rows become detail chunks)
-    op.execute(
-        "ALTER TABLE notion_embeddings "
-        "ADD COLUMN IF NOT EXISTS chunk_level SMALLINT NOT NULL DEFAULT 1"
-    )
+    op.execute("ALTER TABLE notion_embeddings ADD COLUMN IF NOT EXISTS chunk_level SMALLINT NOT NULL DEFAULT 1")
 
     # 2. Replace unique constraint to include chunk_level
-    op.execute(
-        "ALTER TABLE notion_embeddings "
-        "DROP CONSTRAINT IF EXISTS notion_embeddings_page_id_chunk_index_key"
-    )
+    op.execute("ALTER TABLE notion_embeddings DROP CONSTRAINT IF EXISTS notion_embeddings_page_id_chunk_index_key")
     op.execute(
         "ALTER TABLE notion_embeddings "
         "ADD CONSTRAINT notion_embeddings_page_id_level_chunk_key "
@@ -46,10 +40,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_notion_embeddings_summaries")
-    op.execute(
-        "ALTER TABLE notion_embeddings "
-        "DROP CONSTRAINT IF EXISTS notion_embeddings_page_id_level_chunk_key"
-    )
+    op.execute("ALTER TABLE notion_embeddings DROP CONSTRAINT IF EXISTS notion_embeddings_page_id_level_chunk_key")
     # Delete summaries before restoring old constraint
     op.execute("DELETE FROM notion_embeddings WHERE chunk_level = 0")
     op.execute(

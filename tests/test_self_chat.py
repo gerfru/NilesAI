@@ -117,9 +117,7 @@ class TestSelfChatWebhook:
 
         request = AsyncMock()
         request.app = mock_app
-        request.json.return_value = self._self_chat_payload(
-            "Hey Niles, was steht morgen an?"
-        )
+        request.json.return_value = self._self_chat_payload("Hey Niles, was steht morgen an?")
 
         result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
 
