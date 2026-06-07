@@ -6,44 +6,117 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  check-pr-size:
+    name: PR Size Check
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+      - name: Fail if PR adds more than 400 lines
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          ADDED=$(git diff "origin/$BASE_REF"...HEAD \
+            -- . ':(exclude)*.lock' ':(exclude)*-lock.json' ':(exclude)*.lockb' \
+               ':(exclude)*.md' ':(exclude)*/data/*.json' \
+            | grep -cE '^\+[^+]' || echo 0)
+          echo "Lines added (excl. lockfiles): $ADDED"
+          if [ "$ADDED" -gt 400 ]; then
+            echo "::error::PR zu gross (${ADDED} Zeilen hinzugefuegt, Maximum: 400)"
+            exit 1
+          fi
 
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b  # v4.0.0
+        with:
+          args: check src/ tests/
+      - uses: astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b  # v4.0.0
+        with:
+          args: format --check src/ tests/
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e  # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv + audit tools
+        run: pip install pip-audit==2.8.0 uv==0.7.8
+      - name: pip-audit
+        # CVE-2025-69872: diskcache pickle deserialisation (transitive via trafilatura, no fix available)
+        # GHSA-pjjw-68hj-v9mw: uv RECORD path traversal on uninstall (build tool, not runtime dep)
+        # PYSEC-2026-196: pip console_scripts path traversal (build tool, not runtime)
+        run: |
+          uv export --frozen --no-hashes -o /tmp/req.txt
+          pip-audit -r /tmp/req.txt --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw --ignore-vuln PYSEC-2026-196
+      - name: bandit
+        run: |
+          pip install bandit==1.8.3
+          bandit -r src/niles/ -q
+      - name: semgrep
+        run: |
+          pip install semgrep==1.164.0
+          semgrep scan --error --config p/python --config p/owasp-top-ten src/niles/
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+      - name: mypy
+        run: uv run --extra dev mypy src/niles/
+
+  test:
+    name: Tests
+    needs: typecheck
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
 
       - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Ruff lint
-        run: uv run --extra dev ruff check src/ tests/
-
-      - name: Ruff format check
-        run: uv run --extra dev ruff format --check src/ tests/
-
-      - name: mypy
-        run: uv run --extra dev mypy src/niles/
+        run: uv sync --frozen --extra dev
 
       - name: Run tests with coverage
         env:
           EVOLUTION_POSTGRES_PASSWORD: test-password
           EVOLUTION_API_KEY: test-api-key
           NILES_API_KEY: test-niles-key
+          LOG_LEVEL: DEBUG
         run: uv run --extra dev pytest --cov --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage artifact
@@ -53,57 +126,41 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  dependency-audit:
+  trivy:
+    name: Trivy Image Scan
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
-
-      - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Run pip-audit
-        # --skip-editable: skip niles-core (not on PyPI)
-        # CVE-2025-69872: diskcache pickle deserialisation (transitive via trafilatura, no fix available)
-        # GHSA-pjjw-68hj-v9mw: uv RECORD path traversal on uninstall (build tool, not runtime dep; fixed in uv >=0.11.6)
-        # PYSEC-2026-196: pip console_scripts path traversal (build tool, not runtime; fixed in pip >=26.1.2)
-        run: uv run --extra dev pip-audit --desc --skip-editable --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw --ignore-vuln PYSEC-2026-196
-
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-        with:
-          fetch-depth: 0
-
-      - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51  # v3.95.5
-        with:
-          extra_args: --results=verified,unknown
-
-  trivy-scan:
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-
       - name: Build Docker image
         run: docker build -t niles-core:ci -f docker/Dockerfile.niles .
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: niles-core:ci
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-niles.txt
+      - name: Upload Trivy results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: trivy-niles
+          path: trivy-niles.txt
+          retention-days: 90
 
-      - name: Install Trivy
+  ci-ok:
+    name: CI OK (All Green Gate)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [check-pr-size, lint, security, typecheck, test, trivy]
+    steps:
+      - name: All checks passed
         run: |
-          sudo apt-get install -y wget apt-transport-https gnupg
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install -y trivy
-
-      - name: Run Trivy vulnerability scanner
-        run: trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table niles-core:ci
+          if echo '${{ toJSON(needs.*.result) }}' | grep -qE '"failure"|"cancelled"'; then
+            echo "One or more required jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All CI jobs passed."
