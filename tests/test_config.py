@@ -59,3 +59,29 @@ def test_settings_missing_api_key(monkeypatch):
 
     with pytest.raises(ValidationError, match="evolution_api_key"):
         Settings(_env_file=None)
+
+
+def test_production_requires_encryption_key(monkeypatch):
+    """Production mode (non-DEBUG) requires CREDENTIAL_ENCRYPTION_KEY."""
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    with pytest.raises(ValidationError, match="CREDENTIAL_ENCRYPTION_KEY"):
+        Settings(
+            _env_file=None,
+            postgres_password="test",
+            evolution_api_key="test",
+            log_level="INFO",
+            credential_encryption_key="",
+        )
+
+
+def test_debug_allows_empty_encryption_key(monkeypatch):
+    """Development mode (DEBUG) allows empty encryption key."""
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    settings = Settings(
+        _env_file=None,
+        postgres_password="test",
+        evolution_api_key="test",
+        log_level="DEBUG",
+        credential_encryption_key="",
+    )
+    assert settings.credential_encryption_key == ""
