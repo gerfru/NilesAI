@@ -30,7 +30,7 @@ async def _notion_status_ctx(request: Request) -> dict:
     if len(token) > 8:
         ctx["notion_token_masked"] = token[:7] + "..." + token[-4:]
     else:
-        ctx["notion_token_masked"] = "****"
+        ctx["notion_token_masked"] = "****"  # noqa: S105
 
     notion_store = request.app.state.notion_store
     try:

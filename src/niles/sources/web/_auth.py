@@ -28,7 +28,7 @@ from ._core import (
     templates,
 )
 
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +104,7 @@ async def login_submit(
 
     # Look up user and verify password
     user = await user_store.get_with_hash(email)
-    if (
-        user is None
-        or user.get("auth_method") != "password"
-        or not user.get("password_hash")
-    ):
+    if user is None or user.get("auth_method") != "password" or not user.get("password_hash"):
         # Hash dummy to prevent timing-based user enumeration
         _ph.hash("dummy-password-timing-defense")
         return templates.TemplateResponse(
@@ -131,9 +127,7 @@ async def login_submit(
     # Update last_login
     await user_store.update_last_login(user["id"])
 
-    await _maybe_provision_vikunja(
-        request, user["id"], user["email"], password=password
-    )
+    await _maybe_provision_vikunja(request, user["id"], user["email"], password=password)
 
     response = RedirectResponse(url="/ui/chat", status_code=303)
     _create_session_cookie(request, response, user)
@@ -233,7 +227,7 @@ async def callback_google(
             timeout=10.0,
         )
         if token_resp.status_code != 200:
-            logger.error(
+            logger.error(  # nosemgrep: python-logger-credential-disclosure
                 "Google token exchange failed (HTTP %s)", token_resp.status_code
             )
             return templates.TemplateResponse(
@@ -255,9 +249,7 @@ async def callback_google(
             timeout=10.0,
         )
         if userinfo_resp.status_code != 200:
-            logger.error(
-                "Google userinfo request failed (HTTP %s)", userinfo_resp.status_code
-            )
+            logger.error("Google userinfo request failed (HTTP %s)", userinfo_resp.status_code)
             return templates.TemplateResponse(
                 request,
                 "login.html",
@@ -301,11 +293,7 @@ async def callback_google(
 
     # Check allowed emails whitelist
     if settings.google_allowed_emails:
-        allowed = [
-            e.strip().lower()
-            for e in settings.google_allowed_emails.split(",")
-            if e.strip()
-        ]
+        allowed = [e.strip().lower() for e in settings.google_allowed_emails.split(",") if e.strip()]
         if email.lower() not in allowed:
             logger.warning("Google login rejected for %s (not in allowed list)", email)
             return templates.TemplateResponse(

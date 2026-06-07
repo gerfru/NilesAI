@@ -35,15 +35,10 @@ async def weather_location_search(
     try:
         results = await weather_action.search_locations(q)
     except httpx.HTTPError:
-        return HTMLResponse(
-            '<p class="text-sm text-red-500 py-1">Suche fehlgeschlagen.</p>'
-        )
+        return HTMLResponse('<p class="text-sm text-red-500 py-1">Suche fehlgeschlagen.</p>')
 
     if not results:
-        return HTMLResponse(
-            '<p class="text-sm text-zinc-500 dark:text-zinc-400 py-1">'
-            "Kein Ergebnis gefunden.</p>"
-        )
+        return HTMLResponse('<p class="text-sm text-zinc-500 dark:text-zinc-400 py-1">Kein Ergebnis gefunden.</p>')
 
     items = []
     for r in results:
@@ -84,9 +79,7 @@ async def weather_location_set(
     weather_action = request.app.state.weather_action
 
     try:
-        new_settings = await weather_action.set_location(
-            latitude, longitude, location_name, settings
-        )
+        new_settings = await weather_action.set_location(latitude, longitude, location_name, settings)
         request.app.state.settings = new_settings
     except ValueError as e:
         return templates.TemplateResponse(

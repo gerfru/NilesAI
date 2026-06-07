@@ -23,8 +23,7 @@ class VikunjaCredentialStore:
     async def get_credentials(self, user_id: int) -> dict | None:
         """Get Vikunja credentials for a user (decrypted)."""
         row = await self.pool.fetchrow(
-            "SELECT user_id, api_token, api_url, password_synced "
-            "FROM vikunja_credentials WHERE user_id = $1",
+            "SELECT user_id, api_token, api_url, password_synced FROM vikunja_credentials WHERE user_id = $1",
             user_id,
         )
         if row:

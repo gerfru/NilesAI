@@ -15,17 +15,12 @@ class NotionStore:
 
     async def get_page_stats(self) -> dict:
         """Return page count and last sync timestamp."""
-        row = await self.pool.fetchrow(
-            "SELECT COUNT(*) AS cnt, MAX(synced_at) AS last_sync FROM notion_pages"
-        )
+        row = await self.pool.fetchrow("SELECT COUNT(*) AS cnt, MAX(synced_at) AS last_sync FROM notion_pages")
         return dict(row) if row else {"cnt": 0, "last_sync": None}
 
     async def get_embedding_stats(self) -> list[dict]:
         """Return per-chunk-level counts."""
-        rows = await self.pool.fetch(
-            "SELECT chunk_level, COUNT(*) AS cnt"
-            " FROM notion_embeddings GROUP BY chunk_level"
-        )
+        rows = await self.pool.fetch("SELECT chunk_level, COUNT(*) AS cnt FROM notion_embeddings GROUP BY chunk_level")
         return [dict(r) for r in rows]
 
     async def clear_all(self) -> None:

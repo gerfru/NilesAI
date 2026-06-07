@@ -207,9 +207,7 @@ class TestExtractParentId:
 class TestDiscoverPages:
     async def test_single_page(self):
         sync, _pool = _sync()
-        sync._client.search = AsyncMock(
-            return_value={"results": [_page()], "has_more": False}
-        )
+        sync._client.search = AsyncMock(return_value={"results": [_page()], "has_more": False})
         pages = await sync._discover_pages()
         assert len(pages) == 1
 
@@ -370,9 +368,7 @@ class TestTestConnection:
 class TestSyncAll:
     async def test_counts_errors(self):
         sync, pool = _sync()
-        sync._client.search = AsyncMock(
-            return_value={"results": [_page()], "has_more": False}
-        )
+        sync._client.search = AsyncMock(return_value={"results": [_page()], "has_more": False})
         pool.fetchrow.side_effect = Exception("DB error")
 
         stats = await sync.sync_all()

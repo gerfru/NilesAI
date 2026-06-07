@@ -118,9 +118,7 @@ class TestPrepareMessagesNotionMode:
 
     async def test_limits_history_to_4(self):
         ctx = _make_ctx()
-        ctx.history.get_recent.return_value = [
-            {"role": "user", "content": f"msg{i}"} for i in range(4)
-        ]
+        ctx.history.get_recent.return_value = [{"role": "user", "content": f"msg{i}"} for i in range(4)]
         event = {
             "from": "test-chat",
             "content": "test",

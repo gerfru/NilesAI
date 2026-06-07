@@ -29,9 +29,7 @@ class TestFindEvent:
 
     async def test_find_no_match(self, pool_in_tx, seed_events, seed_user):
         action = CalendarAction(pool_in_tx, timezone="Europe/Vienna")
-        results = await action.find_by_query(
-            query="Nonexistent Event XYZ", user_id=seed_user
-        )
+        results = await action.find_by_query(query="Nonexistent Event XYZ", user_id=seed_user)
         assert results == []
 
     async def test_result_has_expected_keys(self, pool_in_tx, seed_events, seed_user):
@@ -73,9 +71,7 @@ class TestCrossUserIsolation:
             """,
         )
 
-    async def test_other_user_sees_no_events(
-        self, pool_in_tx, seed_events, seed_user, second_user
-    ):
+    async def test_other_user_sees_no_events(self, pool_in_tx, seed_events, seed_user, second_user):
         """User B should not see user A's events."""
         action = CalendarAction(pool_in_tx, timezone="Europe/Vienna")
 
@@ -87,9 +83,7 @@ class TestCrossUserIsolation:
         results_b = await action.find_by_query(query="Meeting", user_id=second_user)
         assert results_b == []
 
-    async def test_other_user_date_range_isolated(
-        self, pool_in_tx, seed_events, seed_user, second_user
-    ):
+    async def test_other_user_date_range_isolated(self, pool_in_tx, seed_events, seed_user, second_user):
         """User B should not see user A's events even with a wide date range."""
         now = datetime.now(timezone.utc)
         action = CalendarAction(pool_in_tx, timezone="Europe/Vienna")

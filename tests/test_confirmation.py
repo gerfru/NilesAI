@@ -53,9 +53,7 @@ class TestHandleConfirmation:
         }
         result = await ctx.handle_confirmation("chat-1", "ja")
         assert "gesendet" in result
-        ctx.whatsapp.send_message.assert_called_once_with(
-            to="436601234", text="Hello", instance=None
-        )
+        ctx.whatsapp.send_message.assert_called_once_with(to="436601234", text="Hello", instance=None)
         assert "chat-1" not in ctx._pending_confirmations
 
     async def test_accept_yes_also_works(self):
@@ -181,9 +179,7 @@ class TestSendWhatsAppConfirmation:
     async def test_sends_to_others_returns_confirm(self, ctx):
         from niles.agent.tools.whatsapp import handle_send_whatsapp
 
-        result = await handle_send_whatsapp(
-            {"to": "436601234", "text": "Hello"}, "chat-1", ctx
-        )
+        result = await handle_send_whatsapp({"to": "436601234", "text": "Hello"}, "chat-1", ctx)
         assert "confirm" in result
         assert "chat-1" in ctx.pending_confirmations
         assert ctx.pending_confirmations["chat-1"]["action"] == "send_whatsapp"
@@ -194,9 +190,7 @@ class TestSendWhatsAppConfirmation:
         # Own number matches
         ctx.get_own_phone_number = AsyncMock(return_value="436601234")
         ctx.whatsapp.send_message.return_value = {"status": "sent"}
-        result = await handle_send_whatsapp(
-            {"to": "436601234", "text": "Note to self"}, "chat-1", ctx
-        )
+        result = await handle_send_whatsapp({"to": "436601234", "text": "Note to self"}, "chat-1", ctx)
         assert "status" in result
         assert result["status"] == "sent"
         assert "chat-1" not in ctx.pending_confirmations
@@ -231,8 +225,6 @@ class TestSendSignalConfirmation:
             pending_phone_choices={},
             pending_confirmations={},
         )
-        result = await handle_send_signal(
-            {"to": "+436601234", "text": "Hello via Signal"}, "chat-1", ctx
-        )
+        result = await handle_send_signal({"to": "+436601234", "text": "Hello via Signal"}, "chat-1", ctx)
         assert "confirm" in result
         assert ctx.pending_confirmations["chat-1"]["action"] == "send_signal"

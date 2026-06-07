@@ -44,9 +44,7 @@ def _expand_env(value: str) -> str:
     def _replacer(match: re.Match) -> str:
         var_name = match.group(1)
         if var_name not in os.environ:
-            logger.warning(
-                "Environment variable ${%s} not set, using empty string", var_name
-            )
+            logger.warning("Environment variable ${%s} not set, using empty string", var_name)
         return os.environ.get(var_name, "")
 
     return re.sub(r"\$\{(\w+)\}", _replacer, value)
@@ -73,9 +71,7 @@ class MCPManager:
         entries without an ``enabled`` key keep working.
         """
         if not self._config_path.exists():
-            logger.info(
-                "MCP config not found at %s, no servers to start", self._config_path
-            )
+            logger.info("MCP config not found at %s, no servers to start", self._config_path)
             return {}
 
         with open(self._config_path, encoding="utf-8") as f:
@@ -111,9 +107,7 @@ class MCPManager:
 
         tool_count = len(self._tool_map)
         server_count = len(self._sessions)
-        logger.info(
-            "MCP: %d server(s) started, %d tool(s) available", server_count, tool_count
-        )
+        logger.info("MCP: %d server(s) started, %d tool(s) available", server_count, tool_count)
 
     async def _start_server(self, name: str, config: dict) -> None:
         """Start a single MCP server and register its tools."""
@@ -135,13 +129,9 @@ class MCPManager:
 
         async with asyncio.timeout(_STARTUP_TIMEOUT):
             # Enter the stdio_client context via the exit stack
-            read_stream, write_stream = await self._exit_stack.enter_async_context(
-                stdio_client(params)
-            )
+            read_stream, write_stream = await self._exit_stack.enter_async_context(stdio_client(params))
 
-            session = await self._exit_stack.enter_async_context(
-                ClientSession(read_stream, write_stream)
-            )
+            session = await self._exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
 
             await session.initialize()
             self._sessions[name] = session
@@ -272,9 +262,7 @@ def _simplify_schema(schema: dict) -> dict:
         elif isinstance(value, dict):
             result[key] = _simplify_schema(value)
         elif isinstance(value, list):
-            result[key] = [
-                _simplify_schema(v) if isinstance(v, dict) else v for v in value
-            ]
+            result[key] = [_simplify_schema(v) if isinstance(v, dict) else v for v in value]
         else:
             result[key] = value
     return result

@@ -35,9 +35,7 @@ class TestFetchUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client):
             with patch(
                 "niles.mcp.fetch.server.trafilatura.extract",
                 return_value="Hello World",
@@ -56,9 +54,7 @@ class TestFetchUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_url("https://slow-site.example.com")
             assert "Timeout" in result
 
@@ -74,9 +70,7 @@ class TestFetchUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_url("https://example.com/doc.pdf")
             assert "Content-Type" in result
 
@@ -84,12 +78,8 @@ class TestFetchUrl:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"content-type": "text/html; charset=utf-8"}
-        mock_response.content = (
-            b"<html><body><article><p>Main content here.</p></article></body></html>"
-        )
-        mock_response.text = (
-            "<html><body><article><p>Main content here.</p></article></body></html>"
-        )
+        mock_response.content = b"<html><body><article><p>Main content here.</p></article></body></html>"
+        mock_response.text = "<html><body><article><p>Main content here.</p></article></body></html>"
         mock_response.raise_for_status = MagicMock()
         mock_response.is_redirect = False
 
@@ -288,18 +278,14 @@ class TestIsPrivateHost:
     def test_private_ip_is_private(self):
         with patch(
             "niles.network.socket.getaddrinfo",
-            return_value=[
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))
-            ],
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0))],
         ):
             assert _is_private_host("internal.example.com") is True
 
     def test_public_ip_is_not_private(self):
         with patch(
             "niles.network.socket.getaddrinfo",
-            return_value=[
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
-            ],
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))],
         ):
             assert _is_private_host("example.com") is False
 

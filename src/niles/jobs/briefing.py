@@ -31,14 +31,10 @@ async def _get_connected_session(
     return row["phone_number"], row["instance_name"], row["user_id"]
 
 
-async def _send_via_whatsapp(
-    app_state, message: str, number: str, instance: str
-) -> bool:
+async def _send_via_whatsapp(app_state, message: str, number: str, instance: str) -> bool:
     """Send briefing message via WhatsApp using pre-resolved session. Returns True on success."""
     try:
-        await app_state.whatsapp_action.send_message(
-            to=number, text=message, instance=instance
-        )
+        await app_state.whatsapp_action.send_message(to=number, text=message, instance=instance)
         logger.info("Briefing sent via WhatsApp to %s", number)
         return True
     except Exception:
@@ -53,9 +49,7 @@ async def _send_via_signal(app_state, message: str) -> bool:
         logger.info("Briefing: Signal nicht konfiguriert")
         return False
     try:
-        await signal_action.send_message(
-            to=app_state.settings.signal_phone_number, text=message
-        )
+        await signal_action.send_message(to=app_state.settings.signal_phone_number, text=message)
         logger.info("Briefing sent via Signal")
         return True
     except Exception:
@@ -63,9 +57,7 @@ async def _send_via_signal(app_state, message: str) -> bool:
         return False
 
 
-async def _send_briefing(
-    app_state, message: str, wa_number: str | None, wa_instance: str | None
-) -> bool:
+async def _send_briefing(app_state, message: str, wa_number: str | None, wa_instance: str | None) -> bool:
     """Send a briefing message via the configured channel(s).
 
     Respects settings.briefing_channel: whatsapp | signal | both.
