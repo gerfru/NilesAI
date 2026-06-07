@@ -1,6 +1,6 @@
-"""Tests for SSRF protection (network.py)."""
+"""Tests for SSRF protection (network.py + consumers)."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -63,8 +63,6 @@ class TestCalendarManagerSSRF:
     """Test that CalendarSourceManager.add_source blocks internal URLs."""
 
     async def test_rejects_localhost_url(self):
-        from unittest.mock import AsyncMock
-
         from niles.sync.manager import CalendarSourceManager
 
         pool = AsyncMock()
@@ -79,8 +77,6 @@ class TestCalendarManagerSSRF:
             )
 
     async def test_rejects_private_ip_url(self):
-        from unittest.mock import AsyncMock
-
         from niles.sync.manager import CalendarSourceManager
 
         pool = AsyncMock()
@@ -95,8 +91,6 @@ class TestCalendarManagerSSRF:
             )
 
     async def test_rejects_non_https(self):
-        from unittest.mock import AsyncMock
-
         from niles.sync.manager import CalendarSourceManager
 
         pool = AsyncMock()
@@ -109,3 +103,28 @@ class TestCalendarManagerSSRF:
                 name="Evil",
                 url="http://example.com/calendar.ics",
             )
+
+
+class TestCardDAVManagerSSRF:
+    """Test that CardDAVSourceManager.add_source uses canonical is_private_host."""
+
+    async def test_rejects_private_host(self):
+        from niles.sync.carddav_manager import CardDAVSourceManager
+
+        pool = AsyncMock()
+        mgr = CardDAVSourceManager(pool)
+
+        with patch("niles.sync.carddav_manager.is_private_host", return_value=True):
+            with pytest.raises(ValueError, match="Interne Adressen"):
+                await mgr.add_source("https://internal.corp/carddav", "user", "pass")
+
+    async def test_allows_public_host(self):
+        from niles.sync.carddav_manager import CardDAVSourceManager
+
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={"id": 1, "url": "https://dav.example.com"})
+        mgr = CardDAVSourceManager(pool)
+
+        with patch("niles.sync.carddav_manager.is_private_host", return_value=False):
+            result = await mgr.add_source("https://dav.example.com/contacts", "user", "pass")
+            assert result is not None

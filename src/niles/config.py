@@ -3,7 +3,7 @@
 import logging
 import secrets
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     feature_notion: bool = False
 
     # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
+    # REQUIRED in production (LOG_LEVEL != DEBUG). App refuses to start without it.
     # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     credential_encryption_key: str = ""
 
@@ -111,6 +112,18 @@ class Settings(BaseSettings):
     briefing_daily_time: str = "07:30"  # HH:MM, Mo-Fr
     briefing_weekly_time: str = "07:15"  # HH:MM, Montag
     briefing_channel: str = "whatsapp"  # whatsapp | signal | both
+
+    @model_validator(mode="after")
+    def _enforce_production_encryption_key(self) -> "Settings":
+        """In production (non-DEBUG), CREDENTIAL_ENCRYPTION_KEY is required."""
+        if self.log_level.upper() != "DEBUG" and not self.credential_encryption_key:
+            raise ValueError(
+                "CREDENTIAL_ENCRYPTION_KEY is required in production "
+                "(set LOG_LEVEL=DEBUG to bypass for development). "
+                'Generate: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
+            )
+        return self
 
     model_config = {
         "env_file": ".env",
