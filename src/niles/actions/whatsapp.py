@@ -124,7 +124,7 @@ class WhatsAppAction:
         for rec in records:
             try:
                 ts = int(rec.get("messageTimestamp", 0))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             if ts < cutoff:
                 continue

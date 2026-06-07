@@ -377,7 +377,7 @@ class TestEnsureSignalListener:
                 task.cancel()
                 try:
                     await task
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError, Exception:
                     pass
 
     @pytest.mark.asyncio
@@ -410,5 +410,5 @@ class TestEnsureSignalListener:
                 task.cancel()
                 try:
                     await task
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError, Exception:
                     pass

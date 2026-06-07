@@ -79,7 +79,7 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
         hostname = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
         if _is_private_host(hostname):
             return "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
-    except (IndexError, ValueError):
+    except IndexError, ValueError:
         pass
 
     # --- Fetch (manual redirect loop for SSRF protection) ---
@@ -109,7 +109,7 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
                         redir_host = location.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
                         if _is_private_host(redir_host):
                             return "Fehler: Redirect zu interner Adresse blockiert."
-                    except (IndexError, ValueError):
+                    except IndexError, ValueError:
                         return "Fehler: Ungueltige Redirect-URL."
                     current_url = location
                     continue
