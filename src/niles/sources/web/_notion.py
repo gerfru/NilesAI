@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from ...config import apply_overrides
 from ._core import (
     _get_session_user,
+    _require_admin,
     _require_auth_and_csrf,
     router,
     templates,
@@ -74,7 +75,7 @@ async def notion_connect(
     token: str = Form(...),
 ):
     """Test Notion connection, save token, and trigger initial sync."""
-    _user, error = await _require_auth_and_csrf(request)
+    _user, error = await _require_admin(request)
     if error:
         return error
 
