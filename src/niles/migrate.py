@@ -87,9 +87,15 @@ def main() -> None:
     has_alembic = _table_exists(engine, "alembic_version")
     has_users = _table_exists(engine, "users")
 
-    # Alembic config — point to project root
+    # Alembic config — point to project root.
+    # When running from source (__file__ in src/niles/), __file__-based resolution
+    # works. When installed as a package (venv site-packages), fall back to CWD
+    # which is /app in Docker (set via WORKDIR).
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     ini_path = os.path.join(project_root, "alembic.ini")
+    if not os.path.exists(ini_path):
+        project_root = os.getcwd()
+        ini_path = os.path.join(project_root, "alembic.ini")
     cfg = Config(ini_path)
     cfg.set_main_option("script_location", os.path.join(project_root, "alembic"))
     # Pass URL to env.py (overrides get_database_url if set)
