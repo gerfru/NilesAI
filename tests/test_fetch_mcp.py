@@ -54,7 +54,10 @@ class TestFetchUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("niles.mcp.fetch.server._is_private_host", return_value=False),
+            patch("niles.mcp.fetch.server.httpx.AsyncClient", return_value=mock_client),
+        ):
             result = await fetch_url("https://slow-site.example.com")
             assert "Timeout" in result
 
@@ -289,9 +292,9 @@ class TestIsPrivateHost:
         ):
             assert _is_private_host("example.com") is False
 
-    def test_unresolvable_host_returns_false(self):
+    def test_unresolvable_host_returns_true(self):
         with patch(
             "niles.network.socket.getaddrinfo",
             side_effect=socket.gaierror("not found"),
         ):
-            assert _is_private_host("nonexistent.invalid") is False
+            assert _is_private_host("nonexistent.invalid") is True

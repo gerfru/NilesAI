@@ -52,11 +52,11 @@ class TestIsPrivateHost:
         assert is_private_host("example.com") is False
 
     @patch("niles.network.socket.getaddrinfo")
-    def test_dns_failure_returns_false(self, mock_gai):
+    def test_dns_failure_returns_true(self, mock_gai):
         import socket
 
         mock_gai.side_effect = socket.gaierror("Name resolution failed")
-        assert is_private_host("nonexistent.invalid") is False
+        assert is_private_host("nonexistent.invalid") is True
 
 
 class TestCalendarManagerSSRF:
