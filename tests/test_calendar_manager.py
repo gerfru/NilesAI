@@ -408,7 +408,8 @@ class TestSyncAll:
 
 
 class TestMigrateEnvSource:
-    async def test_migrates_when_table_empty(self, manager, pool):
+    @patch("niles.sync.manager.is_private_host", return_value=False)
+    async def test_migrates_when_table_empty(self, _mock_priv, manager, pool):
         pool.fetchval.return_value = 0
         pool.fetchrow.return_value = {
             "id": 1,
