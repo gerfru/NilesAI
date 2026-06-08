@@ -26,6 +26,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     logging:
       driver: json-file
       options:
@@ -60,7 +65,7 @@ services:
       # WhatsApp Version (disabled - causes group message issues)
       # CONFIG_SESSION_PHONE_VERSION: ""
     volumes:
-      - ~/.evolution/instances:/evolution/instances
+      - evolution_instances:/evolution/instances
     networks:
       - niles_network
       - proxy
@@ -77,6 +82,11 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       evolution_postgres:
         condition: service_healthy
@@ -120,6 +130,11 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     depends_on:
       evolution_postgres:
         condition: service_healthy
@@ -147,6 +162,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -170,6 +190,11 @@ services:
       - niles_network
     profiles:
       - search
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -186,7 +211,6 @@ services:
     restart: unless-stopped
     # No port exposed -- access via gateway-caddy reverse proxy
     environment:
-      - PYTHONPATH=/app/src
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_POSTGRES_PASSWORD=${EVOLUTION_POSTGRES_PASSWORD}
       - NILES_API_KEY=${NILES_API_KEY:-}
@@ -244,9 +268,15 @@ services:
         condition: service_healthy
       evolution_api:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
 
 volumes:
   evolution_postgres:
+  evolution_instances:
   vikunja_files:
   signal_cli_config:
   searxng_data:
