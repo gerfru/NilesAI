@@ -23,13 +23,13 @@ def is_private_host(hostname: str) -> bool:
     """Check if a hostname resolves to a private/reserved IP address.
 
     Returns True if any resolved address is in a private/reserved network.
-    Returns False if DNS resolution fails (conservative: allow unknown hosts
-    to fail at the connection level rather than silently blocking).
+    Returns True if DNS resolution fails (fail-closed: block unknown hosts
+    rather than allowing potential SSRF via DNS rebinding).
     """
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        return False
+        return True
     for _family, _type, _proto, _canonname, sockaddr in infos:
         ip = ipaddress.ip_address(sockaddr[0])
         if any(ip in net for net in PRIVATE_NETWORKS):
