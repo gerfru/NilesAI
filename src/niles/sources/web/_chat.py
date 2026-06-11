@@ -224,6 +224,51 @@ async def chat_send(request: Request, message: str = Form(...)):
     )
 
 
+async def _enrich_with_notion_context(message: str, retriever) -> str:
+    """Prepend Notion RAG context to the user message (or a no-results note)."""
+    results = await retriever.search(message, max_results=5)
+    if not results:
+        return (
+            "[Notion-Kontext]\n"
+            "Keine relevanten Inhalte im Notion-Wissensspeicher "
+            "gefunden. Teile dem Benutzer mit, dass zu seiner Frage "
+            "keine passenden Notion-Seiten vorhanden sind.\n\n"
+            f"[Frage]\n{message}"
+        )
+
+    context_parts = [
+        "[Notion-Kontext]\n"
+        "Die folgenden Abschnitte stammen aus deinem "
+        "Notion-Wissensspeicher (sortiert nach Relevanz). "
+        "Nutze sie, um die Frage zu beantworten."
+    ]
+    for i, r in enumerate(results):
+        score = r.get("similarity", 0)
+        title = r["page_title"]
+        url = r["page_url"]
+        chunk = r["chunk_text"]
+        # Strip the [breadcrumb > heading] prefix for cleaner presentation.
+        heading = ""
+        if chunk.startswith("["):
+            bracket_end = chunk.find("] ")
+            if bracket_end > 0:
+                heading = chunk[1:bracket_end]
+                chunk = chunk[bracket_end + 2 :]
+        source_line = f"Quelle: [{title}]({url})"
+        if heading and heading != title:
+            source_line += f"\nAbschnitt: {heading}"
+        context_parts.append(f"{source_line}\nRelevanz: {score:.0%}\n{chunk}")
+        logger.info(
+            "Notion RAG result #%d: %s (%.0f%%) — %.80s",
+            i + 1,
+            title,
+            score * 100,
+            chunk[:80],
+        )
+    context_parts.append(f"[Frage]\n{message}")
+    return "\n\n".join(context_parts)
+
+
 @router.post("/api/chat/stream")
 async def chat_stream(
     request: Request,
@@ -253,56 +298,11 @@ async def chat_stream(
         notion_search = False
 
     # Notion context injection (deterministic, bypasses LLM tool selection).
-    # When the toggle is active, the `search_notion` tool is removed from
-    # the LLM tools (via notion_search metadata flag in context.py) to
-    # prevent duplicate searches.
     enriched_message = message
     if notion_search:
         retriever = getattr(request.app.state, "notion_retriever", None)
         if retriever:
-            results = await retriever.search(message, max_results=5)
-            if results:
-                context_parts = [
-                    "[Notion-Kontext]\n"
-                    "Die folgenden Abschnitte stammen aus deinem "
-                    "Notion-Wissensspeicher (sortiert nach Relevanz). "
-                    "Nutze sie, um die Frage zu beantworten."
-                ]
-                for i, r in enumerate(results):
-                    score = r.get("similarity", 0)
-                    title = r["page_title"]
-                    url = r["page_url"]
-                    chunk = r["chunk_text"]
-                    # Strip the [breadcrumb > heading] prefix for cleaner
-                    # presentation — the heading info is shown separately.
-                    # Find first "] " to locate end of bracket prefix.
-                    heading = ""
-                    if chunk.startswith("["):
-                        bracket_end = chunk.find("] ")
-                        if bracket_end > 0:
-                            heading = chunk[1:bracket_end]
-                            chunk = chunk[bracket_end + 2 :]
-                    source_line = f"Quelle: [{title}]({url})"
-                    if heading and heading != title:
-                        source_line += f"\nAbschnitt: {heading}"
-                    context_parts.append(f"{source_line}\nRelevanz: {score:.0%}\n{chunk}")
-                    logger.info(
-                        "Notion RAG result #%d: %s (%.0f%%) — %.80s",
-                        i + 1,
-                        title,
-                        score * 100,
-                        chunk[:80],
-                    )
-                context_parts.append(f"[Frage]\n{message}")
-                enriched_message = "\n\n".join(context_parts)
-            else:
-                enriched_message = (
-                    "[Notion-Kontext]\n"
-                    "Keine relevanten Inhalte im Notion-Wissensspeicher "
-                    "gefunden. Teile dem Benutzer mit, dass zu seiner Frage "
-                    "keine passenden Notion-Seiten vorhanden sind.\n\n"
-                    f"[Frage]\n{message}"
-                )
+            enriched_message = await _enrich_with_notion_context(message, retriever)
 
     chat_id = _user_chat_id(user)
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="web")
