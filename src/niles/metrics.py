@@ -37,3 +37,13 @@ ACTIVE_SSE = Gauge(
     "niles_active_sse_connections",
     "Currently active SSE streaming connections",
 )
+
+# DB pool saturation (updated on /metrics scrape)
+DB_POOL_SIZE = Gauge(
+    "niles_db_pool_size",
+    "Current DB connection pool size",
+)
+DB_POOL_FREE = Gauge(
+    "niles_db_pool_free",
+    "Free (idle) DB pool connections",
+)
