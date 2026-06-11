@@ -416,7 +416,8 @@ class TestAgentMCPDispatch:
         tool_call.function.arguments = '{"key": "test", "value": "hello"}'
         tool_call.id = "call_456"
 
-        result = await agent._execute_tool_call(tool_call)
+        # Pass a chat_id that resolves to a user_id (memory tools require it)
+        result = await agent._execute_tool_call(tool_call, "web-user-1")
 
         assert result == {"status": "saved", "key": "test"}
         mock_mcp.call_tool.assert_not_called()

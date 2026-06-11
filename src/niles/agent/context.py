@@ -294,7 +294,9 @@ class ContextBuilder:
         chat_id = event["from"]
         notion_search = event.get("metadata", {}).get("notion_search", False)
 
-        memories = await self.memory.list_all()
+        # Resolve user_id early — needed for scoped memory and calendar sources
+        uid = await self.resolve_user_id(chat_id) if chat_id else None
+        memories = await self.memory.list_all(uid) if uid is not None else []
 
         # --- Notion RAG mode: minimal prompt, limited history, no tools ---
         if notion_search:
@@ -309,7 +311,6 @@ class ContextBuilder:
             return chat_id, messages, []
 
         # --- Normal mode: full soul.md prompt + tool filtering ---
-        uid = await self.resolve_user_id(chat_id) if chat_id else None
         source_names = await self.get_calendar_source_names(user_id=uid)
 
         system_prompt = build_system_prompt(
