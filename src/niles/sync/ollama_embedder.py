@@ -47,7 +47,7 @@ class OllamaEmbedder:
             if embeddings:
                 return embeddings[0]
             return None
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Ollama embedding request failed")
             return None
 

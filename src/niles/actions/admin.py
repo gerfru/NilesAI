@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from argon2 import PasswordHasher
 
+from ..types import UserInfo, UserListItem
 from ..user_store import UserStore
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class AdminAction:
         self._vikunja = vikunja_provisioner
         self._vikunja_store = vikunja_store
 
-    async def create_user(self, email: str, display_name: str, password: str) -> dict:
+    async def create_user(self, email: str, display_name: str, password: str) -> UserInfo:
         """Validate, hash password, create user.
 
         Raises ValueError on validation failure or duplicate email.
@@ -108,6 +109,6 @@ class AdminAction:
             raise KeyError("User nicht gefunden.")
         await self.user_store.hard_delete_user(user_id)
 
-    async def list_users(self) -> list[dict]:
+    async def list_users(self) -> list[UserListItem]:
         """List all users for admin page."""
         return await self.user_store.list_all()

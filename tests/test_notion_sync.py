@@ -4,7 +4,9 @@ import hashlib
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from notion_client.errors import APIErrorCode, APIResponseError
 
 from niles.sync.notion import NotionSync, _TEXT_BLOCK_TYPES
 
@@ -356,7 +358,15 @@ class TestTestConnection:
 
     async def test_failure(self):
         sync, _pool = _sync()
-        sync._client.search = AsyncMock(side_effect=Exception("Invalid token"))
+        sync._client.search = AsyncMock(
+            side_effect=APIResponseError(
+                code=APIErrorCode.Unauthorized,
+                status=401,
+                message="Invalid token",
+                headers=httpx.Headers({}),
+                raw_body_text="Invalid token",
+            )
+        )
         ok, msg = await sync.test_connection()
         assert ok is False
         assert "fehlgeschlagen" in msg

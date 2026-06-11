@@ -6,6 +6,7 @@ from datetime import datetime
 
 import asyncpg
 from notion_client import AsyncClient
+from notion_client.errors import APIResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -235,5 +236,5 @@ class NotionSync:
             response = await self._client.search(page_size=1)
             count = len(response.get("results", []))
             return True, f"Verbunden. {count}+ Seiten zugaenglich."
-        except Exception as exc:
+        except (APIResponseError, OSError) as exc:
             return False, f"Verbindung fehlgeschlagen: {exc}"

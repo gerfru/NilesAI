@@ -1,14 +1,18 @@
 """Shared message transcript formatting for WhatsApp and Signal handlers."""
 
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 
 def format_message_transcript(
-    messages: list[dict],
+    messages: Sequence[Mapping[str, Any]],
     contact_name: str,
     timezone_str: str,
-) -> dict:
+) -> dict[str, Any]:
     """Format messages into a readable chat transcript with date range.
 
     Returns dict with keys: chat_with, count, date_range, hinweis, transcript.

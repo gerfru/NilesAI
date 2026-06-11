@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import asyncpg
 
 if TYPE_CHECKING:
     from .crypto import FieldEncryptor
+
+from niles.types import VikunjaCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class VikunjaCredentialStore:
         self.pool = pool
         self._enc = encryptor
 
-    async def get_credentials(self, user_id: int) -> dict | None:
+    async def get_credentials(self, user_id: int) -> VikunjaCredentials | None:
         """Get Vikunja credentials for a user (decrypted)."""
         row = await self.pool.fetchrow(
             "SELECT user_id, api_token, api_url, password_synced FROM vikunja_credentials WHERE user_id = $1",
@@ -30,7 +32,7 @@ class VikunjaCredentialStore:
             d = dict(row)
             if self._enc:
                 d["api_token"] = self._enc.decrypt(d["api_token"])
-            return d
+            return cast(VikunjaCredentials, d)
         return None
 
     async def upsert_credentials(

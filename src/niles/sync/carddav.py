@@ -53,7 +53,7 @@ class CardDAVSync:
             if exc.response.status_code == 401:
                 return False, "Authentifizierung fehlgeschlagen (401)."
             return False, f"Server-Fehler: HTTP {exc.response.status_code}"
-        except Exception as exc:
+        except (httpx.HTTPError, OSError) as exc:
             return False, f"Verbindung fehlgeschlagen: {exc}"
 
     async def sync_contacts(self) -> int:

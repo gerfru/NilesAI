@@ -1,8 +1,11 @@
 """WhatsApp session management backed by PostgreSQL."""
 
 import logging
+from typing import cast
 
 import asyncpg
+
+from niles.types import WhatsAppSession
 
 logger = logging.getLogger(__name__)
 
@@ -13,34 +16,34 @@ class WhatsAppSessionStore:
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
 
-    async def get_session(self, user_id: int) -> dict | None:
+    async def get_session(self, user_id: int) -> WhatsAppSession | None:
         """Get WhatsApp session for a user."""
         row = await self.pool.fetchrow(
             "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE user_id = $1",
             user_id,
         )
         if row:
-            return dict(row)
+            return cast(WhatsAppSession, dict(row))
         return None
 
-    async def get_by_instance(self, instance_name: str) -> dict | None:
+    async def get_by_instance(self, instance_name: str) -> WhatsAppSession | None:
         """Look up session by Evolution API instance name (for webhook routing)."""
         row = await self.pool.fetchrow(
             "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE instance_name = $1",
             instance_name,
         )
         if row:
-            return dict(row)
+            return cast(WhatsAppSession, dict(row))
         return None
 
-    async def get_by_phone(self, phone_number: str) -> dict | None:
+    async def get_by_phone(self, phone_number: str) -> WhatsAppSession | None:
         """Look up session by phone number (for self-chat user resolution)."""
         row = await self.pool.fetchrow(
             "SELECT user_id, instance_name, phone_number, status FROM whatsapp_sessions WHERE phone_number = $1",
             phone_number,
         )
         if row:
-            return dict(row)
+            return cast(WhatsAppSession, dict(row))
         return None
 
     async def upsert_session(

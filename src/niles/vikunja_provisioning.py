@@ -119,7 +119,7 @@ class VikunjaProvisioner:
                     resp.status_code,
                     resp.text[:200],
                 )
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Vikunja register failed for %s", username)
 
     async def _login(self, client: httpx.AsyncClient, username: str, password: str) -> str | None:
@@ -141,7 +141,7 @@ class VikunjaProvisioner:
                 resp.text[:200],
             )
             return None
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Vikunja login failed for %s", username)
             return None
 
@@ -234,7 +234,7 @@ class VikunjaProvisioner:
                 resp.text[:200],
             )
             return False
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Vikunja password change request failed")
             return False
 
@@ -263,6 +263,6 @@ class VikunjaProvisioner:
                 resp.text[:200],
             )
             return None
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Vikunja create token failed")
             return None

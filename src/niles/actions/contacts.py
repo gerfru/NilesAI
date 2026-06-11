@@ -2,8 +2,11 @@
 
 import logging
 import re
+from typing import cast
 
 import asyncpg
+
+from niles.types import ContactInfo
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +101,7 @@ class ContactsAction:
             raise RuntimeError("ContactsAction requires carddav_manager for connect/disconnect")
         return await self.carddav_manager.remove_source(source_id, user_id=user_id)
 
-    async def find_by_name(self, name: str, *, user_id: int | None = None) -> dict | None:
+    async def find_by_name(self, name: str, *, user_id: int | None = None) -> ContactInfo | None:
         """
         Search contact by name (case-insensitive, partial match).
 
@@ -233,9 +236,12 @@ class ContactsAction:
             raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
             preferred = normalize_phone(raw_phone) if raw_phone else None
 
-        return {
-            "full_name": row["full_name"],
-            "phone": preferred,
-            "phones": phones,
-            "email": row["email"],
-        }
+        return cast(
+            ContactInfo,
+            {
+                "full_name": row["full_name"],
+                "phone": preferred,
+                "phones": phones,
+                "email": row["email"],
+            },
+        )
