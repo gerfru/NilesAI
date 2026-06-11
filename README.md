@@ -1,56 +1,82 @@
-# Niles AI Core
+<div align="center">
 
-A local, privacy-first AI butler running on a Mac Mini. Niles connects to WhatsApp, calendars, contacts, and task managers -- all processed by a local LLM with zero cloud dependencies for core functionality.
+# Niles AI
 
-**Key principles:** 100% local inference, privacy first, extensible via MCP.
+**Your AI butler. Your server. Your data.**
 
-## Features
+A privacy-first, self-hosted AI assistant that connects WhatsApp, Signal, calendars,
+contacts, and tasks — powered entirely by a local LLM with zero cloud dependencies.
 
-- **WhatsApp Integration** -- Self-chat via "Hey Niles" trigger, message history, contact lookup.
-- **Calendar** -- Multi-source sync (CalDAV, Google Calendar, ICS), event search and creation.
-- **Tasks** -- Vikunja integration (list, create, complete), auto-provisioned per-user accounts.
-- **Contacts** -- CardDAV sync with multi-phone support.
-- **Memory** -- Persistent key-value store, injected into every conversation.
-- **Knowledge Base** -- Notion RAG integration with semantic search (pgvector embeddings, local Ollama). See [RAG Architecture](docs/RAG.md).
-- **Web Search** -- SearXNG meta search (Google, Bing, DuckDuckGo), privacy-first, self-hosted.
-- **Web Fetch** -- Extract and summarize web page content (trafilatura, SSRF-protected).
-- **Briefings** -- Automated daily/weekly summaries via WhatsApp (no LLM, template-based).
-- **Web UI** -- Chat with SSE streaming, settings dashboard, calendar/contact management.
-- **MCP** -- Extend Niles with community tools via Model Context Protocol.
-- **Multi-User** -- Google OAuth login, per-user WhatsApp sessions and task lists.
-- **Security** -- HTTPS (homelab-gateway), rate limiting, CSRF protection, no-delete policy.
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-000000?style=flat-square)
+![Self-hosted](https://img.shields.io/badge/Self--hosted-Privacy--first-10B981?style=flat-square)
 
-## Architecture
+[Quickstart](#quickstart) · [Features](#whats-inside) · [Docs](#documentation) · [Security](#security-at-a-glance)
 
-```text
-Browser / curl / WhatsApp
-    |
-    v  HTTPS (homelab-gateway)
-+-------------------------------------------------------------+
-|  Niles Core (FastAPI :8000)                                 |
-|                                                             |
-|  /ui/*  ---- sources/web/ (htmx + Jinja2 + SSE)              |
-|                 |  Google OAuth / API-Key Auth              |
-|                 v                                           |
-|  /chat  ---> agent/core.py (NilesAgent) --------> Ollama    |
-|                 |  Tool-Call Loop (max 5)           :11434  |
-|                 |                                           |
-|                 +-- actions/contacts.py ----> PostgreSQL    |
-|                 +-- actions/whatsapp.py ----> Evolution API |
-|                 +-- actions/signal.py -----> signal-cli API |
-|                 +-- actions/calendar.py ----> PostgreSQL    |
-|                 +-- actions/tasks.py -------> Vikunja       |
-|                 +-- actions/notion.py -----> pgvector (RAG) |
-|                 +-- memory/store.py -------> PostgreSQL     |
-|                 +-- mcp/client.py ---------> MCP Servers    |
-|                                                             |
-|  /webhook/whatsapp --- sources/whatsapp.py                  |
-|                                                             |
-|  jobs/briefing.py --- APScheduler (Mo-Fr 07:30, Mo 07:15)   |
-+-------------------------------------------------------------+
-```
+</div>
 
-## Quick Start
+---
+
+> *Your messages live on someone else's server.*
+> *Your calendar, your contacts, your tasks — accessible through APIs you don't control,
+> processed by models you can't audit.*
+
+**Niles takes it back.**
+
+One `./scripts/start.sh`, and you have a personal AI assistant running on **your** hardware —
+with WhatsApp and Signal integration, calendar management, task tracking, and a Notion-powered
+knowledge base. All processed by a local LLM. No cloud. No subscription. No data leaving your network.
+
+> **Self-hosted by design.** Niles runs entirely on hardware you control. LLM inference happens
+> locally via Ollama, per-user credentials are Fernet-encrypted at rest, and your data never
+> leaves your server.
+
+---
+
+## Why Niles
+
+- **Privacy by architecture, not by promise** — 100% local LLM inference via Ollama. No cloud API calls, no telemetry, no data broker.
+- **Talk to it like a person** — "Hey Niles, was steht morgen an?" via WhatsApp self-chat, Signal, or the web UI. Natural language in, tool calls under the hood.
+- **Connects your world** — Calendar (CalDAV + Google), contacts (CardDAV), tasks (Vikunja), knowledge base (Notion + pgvector RAG), web search (SearXNG), weather — one assistant for everything.
+- **Extensible via MCP** — Add community tools via Model Context Protocol. Destructive operations are automatically blocked.
+- **Multi-user from day one** — Google OAuth, per-user WhatsApp sessions, per-user task lists, per-user Google Calendar.
+- **One command to run it** — Docker Compose, auto-provisioned accounts, automated briefings. No manual wiring.
+
+---
+
+## What's inside
+
+### Messaging
+
+- WhatsApp self-chat via "Hey Niles" trigger (Evolution API, per-user instances)
+- Signal integration as linked device (signal-cli-rest-api, WebSocket listener)
+- Automated daily/weekly briefings via WhatsApp, Signal, or both (no LLM, template-based)
+
+### Intelligence
+
+- Local LLM agent with tool-call loop (Ollama, llama3.1:8b default, max 5 rounds)
+- Notion RAG knowledge base: sync, chunk, embed, pgvector search (nomic-embed-text-v2-moe)
+- Web search (SearXNG meta search) + web page extraction (trafilatura, SSRF-protected)
+- Persistent key-value memory injected into every conversation
+
+### Productivity
+
+- Multi-source calendar sync (CalDAV, Google Calendar via MCP, ICS) with event search and creation
+- Task management via Vikunja (list, create, complete) with auto-provisioned per-user accounts
+- Contact sync via CardDAV with multi-phone support
+
+### Web UI
+
+- Chat with SSE streaming, markdown rendering (marked.js + DOMPurify)
+- Settings dashboard, calendar/contact/WhatsApp/Signal management
+- Dark mode, WCAG accessibility (labels, ARIA, skip-link, focus-visible)
+
+---
+
+## Quickstart
 
 **Prerequisites:** Docker Desktop, Ollama (native on host), Python >= 3.14
 
@@ -58,100 +84,95 @@ Browser / curl / WhatsApp
 # 1. Clone and configure
 git clone <repo-url> Niles && cd Niles
 cp .env.example .env
-# Set: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY
+# Set: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY, CREDENTIAL_ENCRYPTION_KEY
 
 # 2. Pull the LLM model
 ollama pull llama3.1:8b
 
-# 3. Start all services
+# 3. Start homelab-gateway (HTTPS reverse proxy)
+# See: https://github.com/gerfru/homelab-gateway
+
+# 4. Start all services
 ./scripts/start.sh
 
-# 4. Open Web UI
-# https://localhost/ui/login
+# 5. Open Web UI
+# https://niles.home.lab/ui/login
 ```
 
-For detailed setup including Google OAuth, WhatsApp, Vikunja, CalDAV, and Tailscale: see the [Deployment Guide](docs/Deployment.md).
+> Full walkthrough: **[docs/Deployment.md](docs/Deployment.md)**
 
-## Project Structure
+---
 
-```text
-Niles/
-src/niles/                     Python Backend
-  main.py                      FastAPI + Lifespan + Middleware
-  config.py                    Pydantic Settings
-  agent/                       LLM Agent (core, context, text_tool_parser), Prompts
-    tools/                     Tool handler modules (registry-based)
-  memory/                      Key-Value Store, Conversation History
-  actions/                     12 action modules (Routes → Actions → Stores)
-  jobs/                        Scheduled Jobs (Briefing)
-  sources/                     Webhook Handler, Web UI (13 feature modules)
-  sync/                        CardDAV, CalDAV, Notion, iCal Parser, Embeddings
-  mcp/                         MCP Server Manager, Weather + Fetch servers
-  *_store.py                   7 data stores (asyncpg, per-user credentials)
-  templates/                   Jinja2 Templates (Tailwind CSS)
-  static/                      CSS, JavaScript
-alembic/                       Database migrations (7 versions)
-tests/                         914 tests across 45 files (pytest + pytest-asyncio)
-config/                        soul.md (Agent Personality)
-docker/                        Dockerfile, docker-compose.yml
-scripts/                       start, stop, status, dev, test, backup
-docs/                          Technical Documentation
-```
+## Documentation
+
+| | |
+|---|---|
+| **[Deployment Guide](docs/Deployment.md)** | Complete setup: Ollama, OAuth, WhatsApp, Signal, CalDAV, Vikunja, Notion, Tailscale |
+| **[API Reference](docs/API.md)** | Every endpoint, auth methods, webhook configuration, request tracing |
+| **[Development Guide](docs/Development.md)** | Local dev, testing, Docker workflow, conventions |
+| **[Technical Spec](docs/Niles-Core-Spec.md)** | Architecture, components, database schema, configuration reference |
+| **[RAG Architecture](docs/RAG.md)** | Notion knowledge base: pipeline, chunking, embedding, retrieval |
+| **[LLM Evaluation](docs/LLM-Evaluation.md)** | Model comparison (llama3.1:8b vs mistral:7b), Claude-as-Judge framework |
+| **[Quality Assessment](docs/Quality-Assessment.md)** | Codebase quality scores across 10 dimensions |
+| **[Legal](docs/LEGAL.md)** | Third-party licenses, WhatsApp risk disclosure, GDPR, EU AI Act |
+
+---
+
+## Security at a glance
+
+Self-hosting your AI butler only helps if the app itself is hard to break into. Niles ships
+with Argon2id password hashing, rate-limited auth, CSRF protection (double-submit), signed
+httpOnly session cookies (`SameSite=Lax`), Fernet-encrypted per-user credentials, parameterized
+queries (asyncpg), a strict nonce-based CSP (`'strict-dynamic'`), and SAST/SCA/container scanning
+in CI (bandit, semgrep, pip-audit, Trivy, gitleaks, detect-secrets).
+
+> Vulnerability reports and threat model: **[SECURITY.md](SECURITY.md)**
+
+---
 
 ## Stack
 
-| Component      | Technology                                  |
-| -------------- | ------------------------------------------- |
-| Backend        | FastAPI (Python 3.14)                       |
-| Web UI         | Jinja2 + htmx + Tailwind CSS + SSE         |
-| LLM            | Ollama (local, llama3.1:8b)                 |
-| Embeddings     | nomic-embed-text-v2-moe (Ollama)            |
-| Database       | PostgreSQL 15 + pgvector                    |
-| WhatsApp       | Evolution API v2.3.7                        |
-| Signal         | signal-cli-rest-api (signal-cli v0.13.24)   |
-| Tasks          | Vikunja 1.1.0                               |
-| Knowledge Base | Notion API + pgvector RAG                   |
-| Reverse Proxy  | homelab-gateway (Caddy + CoreDNS)           |
-| Logging        | structlog (JSON to stdout)                  |
-| Metrics        | Prometheus (prometheus-client)              |
-| Scheduling     | APScheduler                                 |
-| Web Search     | SearXNG (self-hosted, optional)             |
-| Web Fetch      | trafilatura (HTML text extraction)          |
-| Extensions     | MCP (Model Context Protocol)                |
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI (Python 3.14) · uvicorn |
+| Web UI | Jinja2 · htmx · Tailwind CSS · SSE |
+| LLM | Ollama (local, llama3.1:8b) |
+| Embeddings | nomic-embed-text-v2-moe (Ollama, 768d) |
+| Database | PostgreSQL 15 · pgvector · Alembic |
+| WhatsApp | Evolution API v2.3.7 |
+| Signal | signal-cli-rest-api (v0.13.24) |
+| Tasks | Vikunja 1.1.0 |
+| Knowledge Base | Notion API · pgvector RAG |
+| Web Search | SearXNG (self-hosted, optional) |
+| Reverse Proxy | homelab-gateway (Caddy · CoreDNS) |
+| Extensions | MCP (Model Context Protocol) |
+
+---
 
 ## Agent Tools
 
 The LLM can invoke these tools during conversations:
 
-| Tool                    | Description                              |
-| ----------------------- | ---------------------------------------- |
-| `find_contact`          | Search contacts by name                  |
-| `send_whatsapp`         | Send WhatsApp message (by name or number) |
-| `get_whatsapp_messages` | Read chat history (last 30 days)         |
-| `find_event`            | Search calendar events                   |
-| `create_event`          | Create calendar event                    |
-| `list_tasks`            | List open tasks from Vikunja             |
-| `create_task`           | Create a new task                        |
-| `complete_task`         | Mark a task as done                      |
-| `remember` / `recall`   | Persistent key-value memory              |
-| `send_signal`           | Send Signal message (by name or number)  |
-| `get_signal_messages`   | Read Signal chat history (last 30 days)  |
-| `mcp__fetch__fetch_url` | Fetch and extract text from a web page   |
+| Tool | Description |
+|------|-------------|
+| `find_contact` | Search contacts by name (multi-phone support) |
+| `send_whatsapp` | Send WhatsApp message (by name or number, per-user instance) |
+| `get_whatsapp_messages` | Read WhatsApp chat history (last 30 days) |
+| `send_signal` | Send Signal message (by name or number) |
+| `get_signal_messages` | Read Signal chat history (last 30 days) |
+| `find_event` | Search calendar events (CalDAV + ICS sources) |
+| `create_event` | Create calendar event on writable source |
+| `list_tasks` / `create_task` / `complete_task` | Vikunja task management |
+| `remember` / `recall` | Persistent key-value memory |
+| `search_notion` | Semantic search over Notion knowledge base (pgvector) |
+| `mcp__fetch__fetch_url` | Fetch and extract text from web pages (SSRF-protected) |
 | `mcp__searxng__web_search` | Web search via SearXNG (when enabled) |
-| `search_notion`         | Semantic search over Notion knowledge base |
-| `mcp__weather__*`       | Weather data (current + forecast)        |
+| `mcp__weather__*` | Weather data (current + forecast, Open-Meteo) |
+| `mcp__gws__*` | Google Calendar (per-user OAuth, when connected) |
 
-Additional MCP tools from external servers are automatically discovered and added.
+Additional MCP tools from external servers are automatically discovered.
 
-## Security
-
-Self-hosting your AI butler only helps if the app itself is hard to break into. Niles ships
-with Argon2id password hashing, rate-limited auth, CSRF protection, signed httpOnly session
-cookies (`SameSite=Lax`), Fernet-encrypted per-user credentials, parameterized queries
-(asyncpg), a strict nonce-based CSP (`'strict-dynamic'`), and SAST/SCA/container scanning
-in CI (bandit, semgrep, pip-audit, Trivy, gitleaks, detect-secrets).
-
-→ Vulnerability reports: [SECURITY.md](SECURITY.md)
+---
 
 ## Development
 
@@ -166,14 +187,16 @@ uv run pytest tests/ -v
 pre-commit run --all-files
 ```
 
-See [Development Guide](docs/Development.md) for details on testing, Docker workflow, and conventions.
+> **[Development Guide](docs/Development.md)** — testing, Docker workflow, conventions
 
-## Documentation
+---
 
-- [Deployment Guide](docs/Deployment.md) -- Setup, configuration, backup, troubleshooting
-- [API Reference](docs/API.md) -- Endpoints, payloads, agent tools
-- [Development Guide](docs/Development.md) -- Testing, Docker, conventions
-- [Technical Spec](docs/Niles-Core-Spec.md) -- Architecture, components, roadmap
-- [RAG Architecture](docs/RAG.md) -- Notion knowledge base, embeddings, retrieval
-- [Quality Assessment](docs/Quality-Assessment.md) -- Codebase quality scores and metrics
-- [Legal](docs/LEGAL.md) -- Licenses, legal notices
+## License
+
+[AGPL-3.0-only](LICENSE) — see [LEGAL.md](docs/LEGAL.md) for third-party licenses and obligations.
+
+---
+
+<div align="center">
+<sub>Built for people who'd rather own their data than rent it back.</sub>
+</div>

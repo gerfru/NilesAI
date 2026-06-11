@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-03-13
+> **Updated:** 2026-06-11
 
 ---
 
@@ -13,8 +13,9 @@ Additionally for development:
 | Software | Version | Purpose |
 | -------- | ------- | ------- |
 | Python | >= 3.14 | Runtime + Tests |
+| uv | latest | Package manager (`brew install uv` or [docs.astral.sh/uv](https://docs.astral.sh/uv/)) |
 | Tailwind CSS CLI | v3.4.17 | CSS Build (standalone binary, no Node.js) |
-| TruffleHog | >= 3.88 | Secret scanning (pre-commit hook, `brew install trufflehog`) |
+| pre-commit | latest | Git hook framework (`uv tool install pre-commit`) |
 
 ---
 
@@ -30,9 +31,7 @@ cd Niles
 ### Python Environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --frozen --extra dev
 ```
 
 ### Configure Environment
@@ -148,8 +147,7 @@ Then: `psql -h 127.0.0.1 -U evolution -d evolution_db`
 Or directly:
 
 ```bash
-source .venv/bin/activate
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### Test Structure
@@ -163,13 +161,15 @@ tests/
 ├── test_calendar_improvements.py   # Calendar query improvements
 ├── test_calendar_manager.py        # CalendarSourceManager (CRUD, sync, migration)
 ├── test_carddav.py                 # CardDAV sync
+├── test_chat_wa_history.py         # Chat + WhatsApp history integration
 ├── test_config.py                  # Settings validation
+├── test_confirmation.py            # Agent confirmation flow (send_whatsapp, multi-phone)
 ├── test_contacts.py                # ContactsAction, normalize_phone, multi-phone
 ├── test_contacts_action_setup.py   # ContactsAction connect/disconnect (CardDAV setup)
 ├── test_core.py                    # NilesAgent, tool-call pipeline, text-tool-call fallback
+├── test_crypto.py                  # FieldEncryptor (Fernet encryption/decryption)
 ├── test_features.py                # Feature flags (send_others, self-check) + webhook auth
 ├── test_fetch_mcp.py               # Web Fetch MCP server (SSRF, extraction, truncation)
-├── test_google_token_store.py      # Per-user Google OAuth token store
 ├── test_health.py                  # GET /health endpoint
 ├── test_http_retry.py              # HTTP client retry logic
 ├── test_ical_parser.py             # iCalendar parser
@@ -177,6 +177,7 @@ tests/
 ├── test_mcp.py                     # MCP integration
 ├── test_memory.py                  # MemoryStore, ConversationHistory
 ├── test_migrations.py              # Alembic migration chain validation
+├── test_network.py                 # Network-level tests (SSRF, private IP detection)
 ├── test_notion_embeddings.py       # Notion embedding pipeline (chunking, Ollama calls)
 ├── test_notion_rag_prompt.py       # Notion RAG context injection into prompts
 ├── test_notion_retriever.py        # NotionRetriever (pgvector search, threshold)
@@ -185,20 +186,22 @@ tests/
 ├── test_notion_tool.py             # search_notion tool handler
 ├── test_notion_web.py              # Notion web routes (status/connect/disconnect/sync/search)
 ├── test_rrule_expansion.py         # RRULE expansion (recurring events)
+├── test_search_mcp.py              # SearXNG search MCP server
 ├── test_security.py                # API auth, rate limiting
 ├── test_self_chat.py               # WhatsApp self-chat (trigger, strip, webhook integration)
 ├── test_settings_action.py         # SettingsAction (runtime settings management)
 ├── test_settings_store.py          # Runtime settings store
 ├── test_signal.py                  # Signal action, listener, echo guard, triggers
+├── test_signal_setup_action.py     # Signal setup action (QR link, connect/disconnect)
 ├── test_tasks.py                   # Vikunja task management
-├── test_user_mcp_pool.py           # Per-user gws MCP server pool
 ├── test_vikunja_provisioning.py    # Vikunja auto-provisioning (register, login, token)
 ├── test_vikunja_setup_action.py    # VikunjaSetupAction (credentials, SSRF validation)
 ├── test_vikunja_store.py           # Per-user Vikunja credentials + agent resolution
 ├── test_weather_action.py          # WeatherAction (coordinates, Open-Meteo API)
 ├── test_weather_mcp.py             # Weather MCP server integration
 ├── test_web.py                     # Web UI, Google OAuth, sessions, CSRF
-└── test_whatsapp_sessions.py       # Per-user WhatsApp sessions
+├── test_whatsapp_sessions.py       # Per-user WhatsApp sessions
+└── test_whatsapp_setup_action.py   # WhatsApp setup action (instance management)
 ```
 
 ### Conventions
@@ -319,6 +322,10 @@ DATABASE_URL="..." alembic history
 | `005_notion_hierarchical_chunks.py` | Add `chunk_level` column for 2-level (summary + detail) chunking  |
 | `006_notion_metadata_columns.py`   | Add `page_title` + `heading_context` for keyword boost scoring    |
 | `007_user_soft_delete.py`          | Soft-delete columns (`is_active`, `deactivated_at`) on users      |
+| `008_calendar_user_id.py`          | Per-user calendar sources (`user_id` column)                      |
+| `009_vikunja_password_synced.py`   | Vikunja password sync tracking columns                            |
+| `010_drop_google_calendar.py`      | Remove legacy Google Calendar source type                         |
+| `011_contacts_per_user.py`         | Per-user contacts scoping                                         |
 
 ---
 
@@ -326,7 +333,7 @@ DATABASE_URL="..." alembic history
 
 ### New Tool (Agent Capability)
 
-1. Add tool definition to the `TOOLS` list in `src/niles/agent/core.py` (OpenAI function calling format)
+1. Add tool definition to the `TOOLS` list in `src/niles/agent/tool_defs.py` (OpenAI function calling format)
 2. Create a handler module in `src/niles/agent/tools/<name>.py` with a `@register_tool("tool_name")` decorated async function
 3. Add the side-effect import in `src/niles/agent/tools/__init__.py`
 4. Add tests in `tests/test_core.py` (or new test file)
@@ -348,7 +355,7 @@ async def handle_my_tool(args: dict, chat_id: str, ctx: ToolContext) -> dict:
 
 1. Create file `src/niles/actions/<name>.py`
 2. Implement class with async methods
-3. Instantiate in `main.py` lifespan and pass to agent
+3. Instantiate in `startup.py` helpers and pass to agent via `main.py` lifespan
 4. Write tests with mocked external calls
 
 ### New Event Source
@@ -418,7 +425,7 @@ When adding new tools or integrations: do not expose `delete_*` methods to the L
 
 ### Scheduled Jobs (APScheduler)
 
-Niles uses APScheduler for automatic background jobs. All jobs are registered in `main.py` during `lifespan()`:
+Niles uses APScheduler for automatic background jobs. All jobs are registered during `lifespan()` (via `startup.py` helpers):
 
 | Job ID | Schedule | Condition | Module |
 | ------ | -------- | --------- | ------ |

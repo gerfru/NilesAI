@@ -1,6 +1,9 @@
 # Technical Quality Assessment
 
-> Last updated: 2026-03-13 | After Phase 3 (PR #59) + Phase 4a (PR #60) — Action Layer Extraction
+> Last updated: 2026-06-11 | After Phase 2 Refactoring (PR #92) — God Function Extraction + Security Fixes
+>
+> **Note:** Scores below remain from the 2026-03-13 assessment. LOC metrics have been updated
+> to reflect the Phase 2 refactoring. A full re-scoring is pending.
 
 ## Score Overview
 
@@ -40,9 +43,12 @@ Maintainability +0.5). Phase 2 raised 4 structural dimensions (KISS +1.0,
 Security +0.5, DevOps +0.5, API Design +0.5).
 
 Architecture +0.5 (2026-03-13) from action layer extraction — 12 action modules
-now mediate between routes and stores. Weighted average unchanged at 8.5 because
-Architecture's gain is offset by `main.py` growing to 802 LOC (34 app.state
-attributes). Observability 7.0 remains the biggest drag.
+now mediate between routes and stores.
+
+Phase 2 Refactoring (2026-06-11, PR #92) extracted `startup.py` (499 LOC) from
+`main.py` (now 448 LOC) and `tool_defs.py` (322 LOC) from `agent/core.py` (now
+557 LOC). License changed from MIT to AGPL-3.0-only. Added Fernet credential
+encryption, gitleaks + detect-secrets to pre-commit, SBOM generation in CI.
 
 ---
 
@@ -50,13 +56,14 @@ attributes). Observability 7.0 remains the biggest drag.
 
 | Metric              | Value                                                          |
 |---------------------|----------------------------------------------------------------|
-| Largest file        | `agent/core.py` — 866 LOC (was 1,126)                         |
-| Second largest      | `main.py` — 802 LOC (was 772)                                 |
-| Agent modules       | `core.py` 866, `context.py` 346, `text_tool_parser.py` 121    |
+| Largest file        | `agent/core.py` — 557 LOC (was 866, tool_defs.py extracted)   |
+| Second largest      | `startup.py` — 499 LOC (extracted from main.py)               |
+| Third largest       | `main.py` — 448 LOC (was 802, startup.py extracted)           |
+| Agent modules       | `core.py` 557, `tool_defs.py` 322, `context.py` ~346          |
 | Web module max      | 388 LOC (`_notion.py`) — was 2,444                             |
-| Direct dependencies | 26 (pyproject.toml)                                            |
-| Avg file size       | ~151 LOC across 89 Python files                                |
-| File size dist.     | 49% < 100 LOC, 74% < 200 LOC, 94% < 400 LOC, 2 files > 800   |
+| Direct dependencies | 25 production + 8 dev (pyproject.toml)                         |
+| Avg file size       | ~140 LOC across 97 Python files                                |
+| File size dist.     | No files > 600 LOC (was 2 files > 800 LOC)                    |
 
 ### Evidence
 
@@ -321,15 +328,17 @@ concerns (templates, cookies, redirects, scheduler jobs).
 4 jobs, all action versions pinned with SHA256 digest:
 1. `lint-and-test`: Ruff lint → Ruff format → mypy → pytest + coverage
 2. `dependency-audit`: pip-audit (CVE-2025-69872 explicitly ignored)
-3. `secret-scan`: TruffleHog (verified + unknown results)
+3. `secret-scan`: gitleaks (pre-commit + CI)
 4. `trivy-scan`: Container scan (CRITICAL/HIGH exit-code 1, depends on
    lint-and-test)
 
 **Pre-commit** (`.pre-commit-config.yaml`):
 
-4 hooks: TruffleHog v3.88.0 (secret scan), PII check (custom script for
-IP/hostname scanning), Ruff v0.9.6 (lint + format), mypy (type check). Run
-on every commit.
+10 hooks: gitleaks (secret scan), trailing-whitespace, end-of-file-fixer,
+check-json/yaml/toml, check-merge-conflict, check-added-large-files,
+no-commit-to-branch, PII check (custom script), bandit (SAST), detect-secrets
+(baseline), Ruff (lint + format), semgrep (OWASP top 10), mypy (type check).
+Run on every commit.
 
 **Migrations** (`migrate.py` + `entrypoint.sh`):
 
@@ -478,9 +487,9 @@ Remaining overrides: `sync.manager`, `main`, `sync.ical_parser`,
 
 **Why 8.5 and not lower:**
 
-- 914 tests with good behavior-oriented style (+6% since action layer PRs)
-- Test LOC exceeds source LOC (1:1.14 ratio)
-- Integration tests (9 files) and E2E tests (3 files) add multi-layer coverage
+- ~1000+ tests across 47 unit test files with behavior-oriented style
+- Test LOC exceeds source LOC
+- Integration tests and E2E tests add multi-layer coverage
 - structlog JSON logging is production-ready
 - AppState Protocol and removal of `web.*` overrides show type safety
   trend is improving
