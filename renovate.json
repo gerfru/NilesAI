@@ -1,15 +1,63 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "docker:pinDigests", "helpers:pinGitHubActionDigests"],
+  "extends": ["config:recommended"],
+  "pinDigests": true,
+  "platformAutomerge": true,
   "packageRules": [
     {
+      "description": "Python dev-dep patch-Updates: sicher, automatisch mergen",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dev"],
       "matchUpdateTypes": ["patch"],
-      "matchDepTypes": ["devDependencies"],
       "automerge": true
     },
     {
+      "description": "Python prod-dep patch-Updates: manueller Review",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": false,
+      "labels": ["dependencies"]
+    },
+    {
+      "description": "Python minor-Updates: manueller Review",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "labels": ["dependencies", "review-needed"]
+    },
+    {
+      "description": "Python major-Updates: manueller Review",
+      "matchManagers": ["pep621"],
       "matchUpdateTypes": ["major"],
-      "dependencyDashboardApproval": true
+      "automerge": false,
+      "labels": ["dependencies", "review-needed"]
+    },
+    {
+      "description": "GitHub Actions patch-Updates: sicher, automatisch mergen",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions minor/major-Updates: manueller Review (Actions koennen Code ausfuehren)",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "labels": ["dependencies", "review-needed"]
+    },
+    {
+      "description": "Docker Digest-Updates (gleiche Version, neuer Digest): sicher, automatisch mergen",
+      "matchManagers": ["docker-compose", "dockerfile"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true
+    },
+    {
+      "description": "Docker minor/major-Updates: manueller Review",
+      "matchManagers": ["docker-compose", "dockerfile"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "labels": ["dependencies", "review-needed"]
     }
   ]
 }

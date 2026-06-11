@@ -1,6 +1,6 @@
 # Niles AI — Legal Notices & Third-Party Licenses
 
-> **Last updated:** 2026-03-03
+> **Last updated:** 2026-06-11
 
 This document contains legal notices, third-party license obligations, risk disclosures, and disclaimers for operators deploying Niles AI. It is intended to be distributed alongside the software.
 
@@ -22,7 +22,9 @@ This document contains legal notices, third-party license obligations, risk disc
 
 ## 1. Niles AI License
 
-Niles AI is released under the **MIT License**. See [LICENSE](../LICENSE) for the full text.
+Niles AI is released under the **GNU Affero General Public License v3.0** (AGPL-3.0-only). See [LICENSE](../LICENSE) for the full text.
+
+As a copyleft license, AGPL-3.0 requires that modified versions of the source code are made available under the same license. Additionally, Section 13 (Remote Network Interaction) requires that users interacting with the software over a network can obtain the source code.
 
 ---
 
@@ -34,17 +36,17 @@ Full audit performed 2026-03-03 via `pip-licenses`. All 148 transitive Python
 dependencies were verified. No GPL-only dependencies found in the Python
 dependency tree.
 
-| License Category | Count | Commercial Use |
+| License Category | Count | Compatibility |
 |---|---|---|
-| MIT | ~65 | Permissive — no restrictions |
-| Apache-2.0 | ~30 | Permissive — patent grant included |
-| BSD (2/3-Clause) | ~25 | Permissive — no restrictions |
-| MPL-2.0 | 3 | File-level copyleft — modifications to MPL files must stay open |
-| LGPL | 1 (psycopg2-binary) | Weak copyleft — dynamic linking (Python import) does not trigger |
-| ISC / PSF / Unlicense | ~5 | Permissive — no restrictions |
+| MIT | ~65 | Permissive — compatible with AGPL-3.0 |
+| Apache-2.0 | ~30 | Permissive — compatible with AGPL-3.0, patent grant included |
+| BSD (2/3-Clause) | ~25 | Permissive — compatible with AGPL-3.0 |
+| MPL-2.0 | 3 | File-level copyleft — compatible with AGPL-3.0 |
+| LGPL | 1 (psycopg2-binary) | Weak copyleft — compatible with AGPL-3.0 |
+| ISC / PSF / Unlicense | ~5 | Permissive — compatible with AGPL-3.0 |
 
-**Conclusion:** All Python dependencies are compatible with commercial,
-closed-source distribution.
+**Conclusion:** All Python dependencies are compatible with AGPL-3.0.
+No license conflicts detected.
 
 ### 2.2 Direct Dependencies (Python packages)
 
@@ -73,6 +75,7 @@ closed-source distribution.
 | alembic | MIT | [github.com/sqlalchemy/alembic](https://github.com/sqlalchemy/alembic) |
 | notion-client | MIT | [github.com/ramnes/notion-sdk-py](https://github.com/ramnes/notion-sdk-py) |
 | SQLAlchemy | MIT | [github.com/sqlalchemy/sqlalchemy](https://github.com/sqlalchemy/sqlalchemy) |
+| cryptography | Apache-2.0 / BSD | [github.com/pyca/cryptography](https://github.com/pyca/cryptography) |
 | **psycopg2-binary** | **LGPL** | [github.com/psycopg/psycopg2](https://github.com/psycopg/psycopg2) |
 
 **psycopg2-binary (LGPL):** Python imports are dynamic linking. The LGPL
@@ -151,11 +154,11 @@ Niles communicates with Signal through the **signal-cli-rest-api** Docker contai
 - **libsignal** — licensed under **AGPLv3** ([full license](https://www.gnu.org/licenses/agpl-3.0.html))
 - **signal-cli-rest-api** — licensed under **MIT**
 
-### Why Niles Can Remain Closed-Source
+### License Interaction
 
-Niles communicates with signal-cli-rest-api exclusively via HTTP REST API and WebSocket. Under established GPL interpretation, communication over network protocols (HTTP, WebSocket) does **not** constitute "linking" and therefore does **not** create a derivative work. Niles AI's own source code is not subject to GPL copyleft obligations.
+Niles communicates with signal-cli-rest-api exclusively via HTTP REST API and WebSocket. Under established GPL interpretation, communication over network protocols (HTTP, WebSocket) does **not** constitute "linking" and therefore does **not** create a derivative work. The GPLv3/AGPLv3 obligations of signal-cli and libsignal do not propagate to Niles through API communication.
 
-The AGPLv3 component (libsignal) is bundled inside signal-cli, which is bundled inside the signal-cli-rest-api Docker container. Niles does not link against libsignal directly — it communicates via HTTP. The AGPL "network use" clause applies to the container providing the service, not to HTTP clients consuming it.
+The AGPLv3 component (libsignal) is bundled inside signal-cli, which is bundled inside the signal-cli-rest-api Docker container. Niles does not link against libsignal directly — it communicates via HTTP.
 
 No modifications are made to signal-cli, libsignal, or signal-cli-rest-api.
 
@@ -186,11 +189,11 @@ Vikunja is licensed under **AGPL v3** ([full license](https://www.gnu.org/licens
 
 Niles communicates with Vikunja exclusively via its **HTTP REST API** (`/api/v1/`). Vikunja runs as a separate Docker container. Niles does not link against, modify, or bundle Vikunja source code.
 
-### Why Niles Can Remain Closed-Source
+### License Interaction (Vikunja)
 
-Under established AGPL interpretation, communicating with an AGPL-licensed service over a network API (HTTP) does **not** make the client a derivative work. Niles AI's own source code is not subject to AGPL copyleft obligations.
+Niles communicates with Vikunja exclusively via HTTP REST API. Under established AGPL interpretation, communicating with an AGPL-licensed service over a network API (HTTP) does **not** make the client a derivative work. Vikunja's AGPL copyleft obligations do not propagate to Niles through API communication.
 
-The AGPL "network use" clause (Section 13) requires that users interacting with the AGPL software over a network can obtain its source code. This obligation applies to the **Vikunja service itself**, not to HTTP clients that call its API.
+The AGPL "network use" clause (Section 13) requires that users interacting with the AGPL software over a network can obtain its source code. This obligation applies to the **Vikunja service itself**, not to HTTP clients that call its API. (Niles is independently licensed under AGPL-3.0 by choice, not by obligation from Vikunja.)
 
 No modifications are made to Vikunja.
 
@@ -314,7 +317,7 @@ and text generation.
 
 ## 9. General Disclaimer
 
-Niles AI is provided **"as is"**, without warranty of any kind, express or implied. See the [MIT License](../LICENSE) for the full warranty disclaimer.
+Niles AI is provided **"as is"**, without warranty of any kind, express or implied. See the [AGPL-3.0 License](../LICENSE) for the full warranty disclaimer.
 
 In particular:
 
