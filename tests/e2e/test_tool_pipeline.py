@@ -72,8 +72,9 @@ class TestFindContactPipeline:
 
 
 class TestMemoryPipeline:
-    async def test_remember(self, pool_in_tx):
+    async def test_remember(self, pool_in_tx, seed_e2e_user):
         """remember tool → value persisted in DB."""
+        chat_id = f"web-user-{seed_e2e_user}"
         fake = FakeLLM(
             [
                 {
@@ -88,20 +89,21 @@ class TestMemoryPipeline:
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        events = await collect_events(agent, "Merk dir: Ich bin allergisch gegen Nüsse")
+        events = await collect_events(agent, "Merk dir: Ich bin allergisch gegen Nüsse", chat_id=chat_id)
 
-        # Verify value actually written to DB
-        stored = await agent.memory.get("allergie")
+        # Verify value actually written to DB (scoped to user)
+        stored = await agent.memory.get(seed_e2e_user, "allergie")
         assert stored == "Nüsse"
         assert events[-1] == {"type": "done"}
 
-    async def test_recall(self, pool_in_tx):
+    async def test_recall(self, pool_in_tx, seed_e2e_user):
         """recall tool → reads value from DB."""
-        # Pre-seed memory
+        chat_id = f"web-user-{seed_e2e_user}"
+        # Pre-seed memory (scoped to user)
         from niles.memory.store import MemoryStore
 
         store = MemoryStore(pool_in_tx)
-        await store.set("lieblingsfarbe", "blau")
+        await store.set(seed_e2e_user, "lieblingsfarbe", "blau")
 
         fake = FakeLLM(
             [
@@ -110,13 +112,14 @@ class TestMemoryPipeline:
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        events = await collect_events(agent, "Was ist meine Lieblingsfarbe?")
+        events = await collect_events(agent, "Was ist meine Lieblingsfarbe?", chat_id=chat_id)
 
         assert "blau" in full_text(events)
         assert events[-1] == {"type": "done"}
 
-    async def test_recall_missing_key(self, pool_in_tx):
+    async def test_recall_missing_key(self, pool_in_tx, seed_e2e_user):
         """recall for nonexistent key → tool returns null → LLM handles."""
+        chat_id = f"web-user-{seed_e2e_user}"
         fake = FakeLLM(
             [
                 {"tool_calls": [{"name": "recall", "arguments": {"key": "nonexistent_xyz"}}]},
@@ -124,7 +127,7 @@ class TestMemoryPipeline:
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        events = await collect_events(agent, "Was weißt du über xyz?")
+        events = await collect_events(agent, "Was weißt du über xyz?", chat_id=chat_id)
 
         assert events[-1] == {"type": "done"}
 
@@ -407,8 +410,9 @@ class TestMultiToolPipeline:
         assert any("send_whatsapp" in t for t in tool_names)
         assert events[-1] == {"type": "done"}
 
-    async def test_remember_then_recall(self, pool_in_tx):
+    async def test_remember_then_recall(self, pool_in_tx, seed_e2e_user):
         """remember in round 1, recall in round 2 — value persisted."""
+        chat_id = f"web-user-{seed_e2e_user}"
         fake = FakeLLM(
             [
                 {
@@ -423,7 +427,7 @@ class TestMultiToolPipeline:
             ]
         )
         agent = make_e2e_agent(pool_in_tx, fake)
-        await collect_events(agent, "Merk dir: Ich habe eine Katze")
+        await collect_events(agent, "Merk dir: Ich habe eine Katze", chat_id=chat_id)
 
         # Second interaction: recall
         fake2 = FakeLLM(
@@ -433,7 +437,7 @@ class TestMultiToolPipeline:
             ]
         )
         agent2 = make_e2e_agent(pool_in_tx, fake2)
-        events2 = await collect_events(agent2, "Was für ein Haustier habe ich?")
+        events2 = await collect_events(agent2, "Was für ein Haustier habe ich?", chat_id=chat_id)
 
         assert "Katze" in full_text(events2)
 
