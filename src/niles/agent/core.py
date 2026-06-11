@@ -28,331 +28,11 @@ from .text_tool_parser import (
     synthetic_tool_call,
     try_parse_text_tool_call,
 )
+from .tool_defs import MAX_TOOL_ROUNDS, TOOLS
 from .tools import TOOL_REGISTRY, ToolContext
 from .tools.mcp import handle_mcp_tool
 
 logger = logging.getLogger(__name__)
-
-# Tool definitions in OpenAI function-calling format
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "find_contact",
-            "description": "Sucht einen Kontakt nach Name und gibt alle Telefonnummern (phone = bevorzugte, phones = alle mit Typ) und Email zurück.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Name des Kontakts (oder Teil davon)",
-                    }
-                },
-                "required": ["name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "send_whatsapp",
-            "description": "Sendet eine WhatsApp-Nachricht an eine Telefonnummer oder einen Kontaktnamen.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "to": {
-                        "type": "string",
-                        "description": "Telefonnummer (z.B. '436601234567') oder Kontaktname",
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "Nachrichtentext",
-                    },
-                },
-                "required": ["to", "text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_whatsapp_messages",
-            # Summarization instruction (2/3) — keep in sync with:
-            # 1/3: config/soul.md "Nachrichten lesen"
-            # 3/3: hinweis field in get_whatsapp_messages result below
-            "description": (
-                "Liest WhatsApp-Nachrichten aus einem Chat (max. 30 Tage). "
-                "Suche nach Kontaktname oder Telefonnummer. "
-                "Gibt ein Transcript zurueck. "
-                "Nach dem Lesen: fasse die wichtigsten Punkte zusammen "
-                "(Termine, Abmachungen, offene Fragen, wichtige Infos). "
-                "Gib NICHT das rohe Transcript wieder."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "contact": {
-                        "type": "string",
-                        "description": ("Kontaktname oder Telefonnummer (erforderlich)."),
-                    },
-                },
-                "required": ["contact"],
-            },
-        },
-    },
-    # --- Signal Tools ---
-    {
-        "type": "function",
-        "function": {
-            "name": "send_signal",
-            "description": "Sendet eine Signal-Nachricht an eine Telefonnummer oder einen Kontaktnamen.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "to": {
-                        "type": "string",
-                        "description": "Telefonnummer (z.B. '+436601234567') oder Kontaktname",
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "Nachrichtentext",
-                    },
-                },
-                "required": ["to", "text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_signal_messages",
-            "description": (
-                "Liest Signal-Nachrichten aus einem Chat (max. 30 Tage). "
-                "Suche nach Kontaktname oder Telefonnummer. "
-                "Gibt ein Transcript zurueck. "
-                "Nach dem Lesen: fasse die wichtigsten Punkte zusammen "
-                "(Termine, Abmachungen, offene Fragen, wichtige Infos). "
-                "Gib NICHT das rohe Transcript wieder."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "contact": {
-                        "type": "string",
-                        "description": ("Kontaktname oder Telefonnummer (erforderlich)."),
-                    },
-                },
-                "required": ["contact"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "remember",
-            "description": "Speichert einen Fakt oder eine Information dauerhaft im Gedächtnis. Nutze einen kurzen, beschreibenden Schlüssel.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Kurzer Schlüssel (z.B. 'zahnarzt_termin', 'lieblings_essen')",
-                    },
-                    "value": {
-                        "type": "string",
-                        "description": "Der zu merkende Inhalt",
-                    },
-                },
-                "required": ["key", "value"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "recall",
-            "description": "Ruft eine gespeicherte Information aus dem Gedächtnis ab.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Schlüssel der gespeicherten Information",
-                    },
-                },
-                "required": ["key"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "find_event",
-            "description": "Liest bestehende Kalendertermine aus der Datenbank. Nutze dieses Tool wenn der Benutzer nach Terminen fragt, wissen will wann etwas stattfindet, oder seinen Kalender sehen will. Wenn nur date_from angegeben wird, werden automatisch nur Termine an diesem Tag zurueckgegeben.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Suchbegriff (Name, Ort, Beschreibung). Leer lassen fuer reine Datumssuche.",
-                    },
-                    "date_from": {
-                        "type": "string",
-                        "description": "Startdatum (ISO-Format, z.B. '2026-02-20'). Bei 'morgen' oder einem einzelnen Tag NUR date_from setzen, NICHT date_to.",
-                    },
-                    "date_to": {
-                        "type": "string",
-                        "description": "Enddatum (ISO-Format). Nur setzen bei expliziten Zeitraeumen wie 'diese Woche' oder 'naechste 7 Tage'. NICHT setzen bei Fragen nach einem einzelnen Tag.",
-                    },
-                    "calendar": {
-                        "type": "string",
-                        "description": "Kalenderquelle zum Filtern (z.B. 'Geburtstage', 'Arbeit'). NUR bei Geburtstags-Fragen oder wenn der Benutzer explizit einen bestimmten Kalender nennt. Bei allgemeinen Fragen wie 'was steht an' NICHT setzen — leer lassen damit alle Kalender durchsucht werden.",
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_event",
-            "description": "Erstellt einen NEUEN Kalendertermin via CalDAV. Nur verwenden wenn der Benutzer explizit einen neuen Termin anlegen will.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": "Titel des Termins",
-                    },
-                    "start": {
-                        "type": "string",
-                        "description": "Startzeit (ISO-Format, z.B. '2026-02-20T14:00')",
-                    },
-                    "end": {
-                        "type": "string",
-                        "description": "Endzeit (ISO-Format). Optional, Standard: 1 Stunde nach Start.",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Beschreibung des Termins. Optional.",
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Ort des Termins. Optional.",
-                    },
-                },
-                "required": ["summary", "start"],
-            },
-        },
-    },
-    # --- Vikunja Task Tools ---
-    {
-        "type": "function",
-        "function": {
-            "name": "list_tasks",
-            "description": (
-                "Listet offene Aufgaben aus Vikunja. Ohne Parameter werden alle offenen Aufgaben zurückgegeben."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": ("Projektname zum Filtern. Optional. Leer = alle Projekte."),
-                    },
-                    "include_done": {
-                        "type": "boolean",
-                        "description": ("Auch erledigte Aufgaben anzeigen. Standard: false."),
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_task",
-            "description": (
-                "Erstellt eine neue Aufgabe in Vikunja. "
-                "Nur verwenden wenn der Benutzer explizit eine Aufgabe "
-                "oder ein Todo anlegen will."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "Titel der Aufgabe.",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Beschreibung der Aufgabe. Optional.",
-                    },
-                    "due_date": {
-                        "type": "string",
-                        "description": ("Fälligkeitsdatum (ISO-Format, z.B. '2026-02-25T18:00'). Optional."),
-                    },
-                    "priority": {
-                        "type": "integer",
-                        "description": ("Priorität: 0=keine, 1=niedrig, 2=mittel, 3=hoch, 4=dringend. Standard: 0."),
-                    },
-                    "project": {
-                        "type": "string",
-                        "description": ("Projektname. Optional. Leer = Standard-Projekt."),
-                    },
-                },
-                "required": ["title"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "complete_task",
-            "description": ("Markiert eine Aufgabe als erledigt. Sucht nach dem Titel in offenen Aufgaben."),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": ("Titel oder Teil des Titels der Aufgabe die erledigt werden soll."),
-                    },
-                },
-                "required": ["title"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_notion",
-            "description": (
-                "Durchsucht die Notion-Wissensdatenbank nach relevanten Inhalten. "
-                "Nutze dieses Tool wenn der Benutzer nach Informationen fragt, "
-                "die in seinen Notion-Seiten stehen koennten (Dokumentation, "
-                "Notizen, Projekte, Wikis)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Suchanfrage in natuerlicher Sprache",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximale Anzahl Ergebnisse (1-10, Standard: 5)",
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    },
-]
-
-MAX_TOOL_ROUNDS = 5
 
 
 class NilesAgent:
@@ -442,6 +122,64 @@ class NilesAgent:
         """Delegate to ContextBuilder.handle_phone_choice."""
         return await self._ctx.handle_phone_choice(chat_id, content)
 
+    async def _handle_interception(
+        self,
+        chat_id: str,
+        content: str,
+        history_content: str,
+    ) -> str | None:
+        """Check for pending phone choice or confirmation and save to history.
+
+        Returns the reply text if intercepted, or None to proceed normally.
+        """
+        for handler in (
+            self._handle_phone_choice,
+            self._ctx.handle_confirmation,
+        ):
+            reply = await handler(chat_id, content)
+            if reply is not None:
+                await self.history.add_message(chat_id, "user", history_content)
+                await self.history.add_message(chat_id, "assistant", reply)
+                return reply
+        return None
+
+    async def _execute_and_check(
+        self,
+        tool_call,
+        chat_id: str,
+        messages: list,
+        history_content: str,
+    ) -> str | None:
+        """Execute a tool call, record metrics, and check for bypass signals.
+
+        If the tool result contains ``choose_phone`` or ``confirm``, saves to
+        history and returns the bypass text.  Otherwise appends the tool
+        result to *messages* and returns ``None``.
+        """
+        name = tool_call.function.name
+        result = await self._execute_tool_call(tool_call, chat_id)
+
+        _success = result.get("error") is None if isinstance(result, dict) else True
+        TOOL_CALLS.labels(tool_name=name, success=str(_success).lower()).inc()
+        logger.info("Tool result [%s]: %s", tool_call.id, result)
+
+        if isinstance(result, dict):
+            for key in ("choose_phone", "confirm"):
+                if key in result:
+                    text = result[key]
+                    await self.history.add_message(chat_id, "user", history_content)
+                    await self.history.add_message(chat_id, "assistant", text)
+                    return text
+
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result, ensure_ascii=False),
+            }
+        )
+        return None
+
     async def process_event_stream(self, event: dict):
         """Async generator: yields status updates + streamed text chunks.
 
@@ -458,20 +196,9 @@ class NilesAgent:
         # Store original user message in history (without injected Notion context)
         _history_content = event.get("metadata", {}).get("original_message") or event["content"]
 
-        # Intercept pending phone choice (bypass LLM entirely)
-        reply = await self._handle_phone_choice(chat_id, event["content"])
+        # Intercept pending phone choice / confirmation (bypass LLM entirely)
+        reply = await self._handle_interception(chat_id, event["content"], _history_content)
         if reply is not None:
-            await self.history.add_message(chat_id, "user", _history_content)
-            await self.history.add_message(chat_id, "assistant", reply)
-            yield {"type": "chunk", "text": reply}
-            yield {"type": "done"}
-            return
-
-        # Intercept pending confirmation (bypass LLM entirely)
-        reply = await self._ctx.handle_confirmation(chat_id, event["content"])
-        if reply is not None:
-            await self.history.add_message(chat_id, "user", _history_content)
-            await self.history.add_message(chat_id, "assistant", reply)
             yield {"type": "chunk", "text": reply}
             yield {"type": "done"}
             return
@@ -629,39 +356,16 @@ class NilesAgent:
                         arguments=tc_dict["function"]["arguments"],
                     ),
                 )
-                result = await self._execute_tool_call(tool_call, chat_id)
-                _success = result.get("error") is None if isinstance(result, dict) else True
-                TOOL_CALLS.labels(
-                    tool_name=tc_dict["function"]["name"],
-                    success=str(_success).lower(),
-                ).inc()
-                logger.info("Tool result [%s]: %s", tool_call.id, result)
-
-                # choose_phone → bypass LLM, send list directly to user
-                if isinstance(result, dict) and "choose_phone" in result:
-                    text = result["choose_phone"]
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", text)
-                    yield {"type": "chunk", "text": text}
-                    yield {"type": "done"}
-                    return
-
-                # confirm → bypass LLM, ask user for confirmation
-                if isinstance(result, dict) and "confirm" in result:
-                    text = result["confirm"]
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", text)
-                    yield {"type": "chunk", "text": text}
-                    yield {"type": "done"}
-                    return
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result, ensure_ascii=False),
-                    }
+                bypass = await self._execute_and_check(
+                    tool_call,
+                    chat_id,
+                    messages,
+                    _history_content,
                 )
+                if bypass is not None:
+                    yield {"type": "chunk", "text": bypass}
+                    yield {"type": "done"}
+                    return
         else:
             yield {
                 "type": "chunk",
@@ -684,18 +388,9 @@ class NilesAgent:
         # Store original user message in history (without injected Notion context)
         _history_content = event.get("metadata", {}).get("original_message") or event["content"]
 
-        # Intercept pending phone choice (bypass LLM entirely)
-        reply = await self._handle_phone_choice(chat_id, event["content"])
+        # Intercept pending phone choice / confirmation (bypass LLM entirely)
+        reply = await self._handle_interception(chat_id, event["content"], _history_content)
         if reply is not None:
-            await self.history.add_message(chat_id, "user", _history_content)
-            await self.history.add_message(chat_id, "assistant", reply)
-            return reply
-
-        # Intercept pending confirmation (bypass LLM entirely)
-        reply = await self._ctx.handle_confirmation(chat_id, event["content"])
-        if reply is not None:
-            await self.history.add_message(chat_id, "user", _history_content)
-            await self.history.add_message(chat_id, "assistant", reply)
             return reply
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
@@ -754,25 +449,14 @@ class NilesAgent:
                             arguments=tc_dict["arguments"],
                         ),
                     )
-                    result = await self._execute_tool_call(tc, chat_id)
-                    logger.info("Tool result [%s]: %s", tc.id, result)
-                    if isinstance(result, dict) and "choose_phone" in result:
-                        text = result["choose_phone"]
-                        await self.history.add_message(chat_id, "user", _history_content)
-                        await self.history.add_message(chat_id, "assistant", text)
-                        return text
-                    if isinstance(result, dict) and "confirm" in result:
-                        text = result["confirm"]
-                        await self.history.add_message(chat_id, "user", _history_content)
-                        await self.history.add_message(chat_id, "assistant", text)
-                        return text
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps(result, ensure_ascii=False),
-                        }
+                    bypass = await self._execute_and_check(
+                        tc,
+                        chat_id,
+                        messages,
+                        _history_content,
                     )
+                    if bypass is not None:
+                        return bypass
                     continue  # Next LLM round to generate natural language response
 
                 # Suppress raw JSON for unavailable tools
@@ -805,35 +489,14 @@ class NilesAgent:
 
             # Execute each tool call and append results
             for tool_call in choice.message.tool_calls:
-                result = await self._execute_tool_call(tool_call, chat_id)
-                _success = result.get("error") is None if isinstance(result, dict) else True
-                TOOL_CALLS.labels(
-                    tool_name=tool_call.function.name,
-                    success=str(_success).lower(),
-                ).inc()
-                logger.info("Tool result [%s]: %s", tool_call.id, result)
-
-                # choose_phone → bypass LLM, send list directly to user
-                if isinstance(result, dict) and "choose_phone" in result:
-                    text = result["choose_phone"]
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", text)
-                    return text
-
-                # confirm → bypass LLM, ask user for confirmation
-                if isinstance(result, dict) and "confirm" in result:
-                    text = result["confirm"]
-                    await self.history.add_message(chat_id, "user", event["content"])
-                    await self.history.add_message(chat_id, "assistant", text)
-                    return text
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result, ensure_ascii=False),
-                    }
+                bypass = await self._execute_and_check(
+                    tool_call,
+                    chat_id,
+                    messages,
+                    _history_content,
                 )
+                if bypass is not None:
+                    return bypass
 
         logger.warning("Max tool rounds reached")
         return "Ich konnte die Anfrage nicht abschließen."

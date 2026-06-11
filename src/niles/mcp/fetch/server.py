@@ -40,6 +40,99 @@ def _get_config() -> tuple[int, int, str]:
     return max_chars, timeout, user_agent
 
 
+def _validate_url(url: str) -> tuple[str, str | None]:
+    """Validate and normalize a URL.
+
+    Returns (clean_url, None) on success, or ("", error_message) on failure.
+    """
+    if not url or not url.strip():
+        return "", "Fehler: Keine URL angegeben."
+
+    url = url.strip()
+    url_lower = url.lower()
+
+    for scheme in _BLOCKED_SCHEMES:
+        if url_lower.startswith(scheme):
+            return "", f"Fehler: URL-Schema '{scheme}' ist nicht erlaubt."
+
+    if not url_lower.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # SSRF protection: block private/internal IPs
+    try:
+        hostname = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+        if _is_private_host(hostname):
+            return "", "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
+    except IndexError, ValueError:
+        pass
+
+    return url, None
+
+
+async def _fetch_with_redirects(
+    url: str,
+    timeout: int,
+    user_agent: str,
+) -> tuple[str, str | None]:
+    """Follow redirects with SSRF protection at each hop.
+
+    Returns (html_text, None) on success, or ("", error_message) on failure.
+    """
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=timeout,
+            headers={"User-Agent": user_agent},
+        ) as client:
+            current_url = url
+            for _redirect_i in range(5):
+                response = await client.get(current_url)
+                if response.is_redirect:
+                    location = response.headers.get("location", "")
+                    if not location:
+                        return "", "Fehler: Redirect ohne Location-Header."
+                    # Resolve relative redirects
+                    if location.startswith("/"):
+                        parts = current_url.split("://", 1)
+                        host_part = parts[1].split("/", 1)[0] if len(parts) > 1 else ""
+                        location = f"{parts[0]}://{host_part}{location}"
+                    elif not location.lower().startswith(("http://", "https://")):
+                        return "", f"Fehler: URL-Schema in Redirect nicht erlaubt: {location}"
+                    # SSRF check on redirect target
+                    try:
+                        redir_host = location.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+                        if _is_private_host(redir_host):
+                            return "", "Fehler: Redirect zu interner Adresse blockiert."
+                    except IndexError, ValueError:
+                        return "", "Fehler: Ungueltige Redirect-URL."
+                    current_url = location
+                    continue
+                break
+            else:
+                return "", "Fehler: Zu viele Redirects (max 5)."
+            response.raise_for_status()
+
+            # Content-Type check
+            content_type = response.headers.get("content-type", "")
+            if not any(t in content_type for t in ("text/html", "text/plain", "application/xhtml")):
+                return "", f"Fehler: Unerwarteter Content-Type '{content_type}'. Nur HTML/Text wird unterstuetzt."
+
+            # Size check
+            if len(response.content) > _MAX_RESPONSE_BYTES:
+                return "", f"Fehler: Seite zu gross ({len(response.content)} Bytes, max {_MAX_RESPONSE_BYTES})."
+
+            return response.text, None
+
+    except httpx.TimeoutException:
+        return "", f"Fehler: Timeout nach {timeout} Sekunden beim Laden von {url}"
+    except httpx.HTTPStatusError as e:
+        return "", f"Fehler: HTTP {e.response.status_code} beim Laden von {url}"
+    except httpx.ConnectError:
+        return "", f"Fehler: Verbindung zu {url} fehlgeschlagen."
+    except Exception as e:
+        return "", f"Fehler: {type(e).__name__}: {e}"
+
+
 @mcp.tool()
 async def fetch_url(url: str, max_chars: int = 0) -> str:
     """Ruft den Textinhalt einer Webseite ab.
@@ -58,87 +151,15 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
     if max_chars <= 0:
         max_chars = config_max
 
-    # --- Validation ---
-    if not url or not url.strip():
-        return "Fehler: Keine URL angegeben."
+    url, err = _validate_url(url)
+    if err:
+        return err
 
-    url = url.strip()
+    html, err = await _fetch_with_redirects(url, timeout, user_agent)
+    if err:
+        return err
 
-    # Block dangerous schemes
-    url_lower = url.lower()
-    for scheme in _BLOCKED_SCHEMES:
-        if url_lower.startswith(scheme):
-            return f"Fehler: URL-Schema '{scheme}' ist nicht erlaubt."
-
-    # Ensure https:// or http://
-    if not url_lower.startswith(("http://", "https://")):
-        url = "https://" + url
-
-    # SSRF protection: block private/internal IPs
-    try:
-        hostname = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-        if _is_private_host(hostname):
-            return "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
-    except IndexError, ValueError:
-        pass
-
-    # --- Fetch (manual redirect loop for SSRF protection) ---
-    try:
-        async with httpx.AsyncClient(
-            follow_redirects=False,
-            timeout=timeout,
-            headers={"User-Agent": user_agent},
-        ) as client:
-            current_url = url
-            for _redirect_i in range(5):
-                response = await client.get(current_url)
-                if response.is_redirect:
-                    location = response.headers.get("location", "")
-                    if not location:
-                        return "Fehler: Redirect ohne Location-Header."
-                    # Resolve relative redirects
-                    if location.startswith("/"):
-                        # Same origin relative redirect
-                        parts = current_url.split("://", 1)
-                        host_part = parts[1].split("/", 1)[0] if len(parts) > 1 else ""
-                        location = f"{parts[0]}://{host_part}{location}"
-                    elif not location.lower().startswith(("http://", "https://")):
-                        return f"Fehler: URL-Schema in Redirect nicht erlaubt: {location}"
-                    # SSRF check on redirect target
-                    try:
-                        redir_host = location.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-                        if _is_private_host(redir_host):
-                            return "Fehler: Redirect zu interner Adresse blockiert."
-                    except IndexError, ValueError:
-                        return "Fehler: Ungueltige Redirect-URL."
-                    current_url = location
-                    continue
-                break
-            else:
-                return "Fehler: Zu viele Redirects (max 5)."
-            response.raise_for_status()
-
-            # Content-Type check
-            content_type = response.headers.get("content-type", "")
-            if not any(t in content_type for t in ("text/html", "text/plain", "application/xhtml")):
-                return f"Fehler: Unerwarteter Content-Type '{content_type}'. Nur HTML/Text wird unterstuetzt."
-
-            # Size check
-            if len(response.content) > _MAX_RESPONSE_BYTES:
-                return f"Fehler: Seite zu gross ({len(response.content)} Bytes, max {_MAX_RESPONSE_BYTES})."
-
-            html = response.text
-
-    except httpx.TimeoutException:
-        return f"Fehler: Timeout nach {timeout} Sekunden beim Laden von {url}"
-    except httpx.HTTPStatusError as e:
-        return f"Fehler: HTTP {e.response.status_code} beim Laden von {url}"
-    except httpx.ConnectError:
-        return f"Fehler: Verbindung zu {url} fehlgeschlagen."
-    except Exception as e:
-        return f"Fehler: {type(e).__name__}: {e}"
-
-    # --- Extract ---
+    # Extract main text content
     try:
         text = trafilatura.extract(
             html,
@@ -153,7 +174,7 @@ async def fetch_url(url: str, max_chars: int = 0) -> str:
     if not text or not text.strip():
         return f"Kein Textinhalt auf der Seite gefunden ({url})."
 
-    # --- Truncate ---
+    # Truncate to max_chars
     text = text.strip()
     if len(text) > max_chars:
         # Cut at last sentence boundary before limit

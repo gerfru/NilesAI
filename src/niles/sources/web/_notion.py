@@ -223,7 +223,7 @@ async def notion_connect(
 @router.post("/api/notion/disconnect", response_class=HTMLResponse)
 async def notion_disconnect(request: Request):
     """Remove Notion token and clear all synced data."""
-    _user, error = await _require_auth_and_csrf(request)
+    _user, error = await _require_admin(request)
     if error:
         return error
 
@@ -283,7 +283,7 @@ _notion_sync_lock = asyncio.Lock()
 @router.post("/api/notion/sync", response_class=HTMLResponse)
 async def notion_sync_trigger(request: Request):
     """Trigger a manual Notion sync + embed in the background."""
-    _user, error = await _require_auth_and_csrf(request)
+    _user, error = await _require_admin(request)
     if error:
         return error
 
@@ -329,7 +329,7 @@ async def notion_sync_trigger(request: Request):
 @router.post("/api/notion/reembed", response_class=HTMLResponse)
 async def notion_force_reembed(request: Request):
     """Force re-embedding of all Notion pages (e.g. after model/prefix change)."""
-    _user, error = await _require_auth_and_csrf(request)
+    _user, error = await _require_admin(request)
     if error:
         return error
 
