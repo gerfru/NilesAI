@@ -256,6 +256,19 @@ async def seed_contact(db_conn):
 
 
 @pytest_asyncio.fixture(loop_scope="session")
+async def seed_e2e_user(db_conn):
+    """Insert a test user and return (user_id, chat_id) for scoped tests."""
+    user_id = await db_conn.fetchval(
+        """
+        INSERT INTO users (email, display_name, auth_method, is_admin)
+        VALUES ('e2e@example.com', 'E2E User', 'password', false)
+        RETURNING id
+        """,
+    )
+    return user_id
+
+
+@pytest_asyncio.fixture(loop_scope="session")
 async def seed_calendar_source(db_conn):
     """Insert a test calendar source."""
     source_id = await db_conn.fetchval(
