@@ -1,7 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 9.0
-> **Updated:** 2026-03-13
+> **Version:** 10.0
+> **Updated:** 2026-06-11
 
 ---
 
@@ -97,7 +97,8 @@ Niles/
 ├── src/
 │   └── niles/                        # Python Backend
 │       ├── __init__.py
-│       ├── main.py                   # FastAPI + Lifespan + Middleware
+│       ├── main.py                   # FastAPI + Lifespan orchestrator + Middleware
+│       ├── startup.py                # Lifespan helper functions (DB, stores, scheduler, actions, Notion)
 │       ├── config.py                 # Pydantic Settings + apply_overrides
 │       ├── logging_config.py         # Structured JSON logging (structlog)
 │       ├── metrics.py                # Prometheus metrics definitions
@@ -116,7 +117,8 @@ Niles/
 │       ├── migrate.py               # Alembic migration runner
 │       ├── cli.py                   # CLI entrypoint
 │       ├── agent/
-│       │   ├── core.py               # NilesAgent, tool definitions, pipeline
+│       │   ├── core.py               # NilesAgent, pipeline orchestration
+│       │   ├── tool_defs.py          # TOOLS list + MAX_TOOL_ROUNDS constant
 │       │   ├── context.py            # Context assembly, user/resource resolution
 │       │   ├── text_tool_parser.py   # JSON tool-call detection (pure functions)
 │       │   ├── prompts.py            # System prompt loading/building
@@ -251,7 +253,7 @@ Niles/
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
-│   └── versions/                    # Migration files (001_baseline, ..., 007_...)
+│   └── versions/                    # Migration files (001_baseline, ..., 011_contacts_per_user)
 ├── config/
 │   ├── soul.md                       # Agent personality
 │   ├── mcp_servers.yaml              # MCP server configuration
@@ -344,28 +346,32 @@ Niles/
 
 ## 3. Components
 
-### 3.1 FastAPI Main (`src/niles/main.py`)
+### 3.1 FastAPI Main (`src/niles/main.py`) + Startup Helpers (`src/niles/startup.py`)
 
-Entry point. Manages the application lifecycle via `lifespan()`:
+Entry point. `main.py` defines the FastAPI app, middleware, and a thin `lifespan()` orchestrator that delegates to helper functions in `startup.py`:
+
+**`startup.py` helpers:**
+
+| Helper | Responsibility |
+|--------|---------------|
+| `setup_database(settings)` | asyncpg pool (min=2, max=10), FieldEncryptor, Alembic check |
+| `setup_stores(pool, encryptor, settings)` | Memory, History, UserStore, WhatsApp, Vikunja, CardDAV, CalDAV, Calendar |
+| `setup_scheduler(settings, stores)` | APScheduler + cron jobs (CardDAV 03:00, calendar 03:20, briefing, Notion) |
+| `setup_actions(settings, stores)` | Contacts, WhatsApp, Signal, Weather, Admin, Settings, Vikunja setup actions |
+| `setup_notion_rag(pool, settings, agent, scheduler)` | Notion sync/embed/retriever pipeline (when `feature_notion=true`) |
+
+**`lifespan()` orchestrator sequence:**
 
 1. Load settings (ValidationError on missing secrets -> `sys.exit(1)`)
-2. Configure structured JSON logging via structlog (level via `LOG_LEVEL` env variable)
-3. Check NILES_API_KEY (auto-generated if not set, key is not logged)
-4. Create asyncpg connection pool (min=2, max=10)
-5. Initialize MemoryStore + ConversationHistory (CREATE TABLE IF NOT EXISTS)
-6. Initialize UserStore (users table for Google OAuth)
-7. Initialize WhatsAppSessionStore (per-user WhatsApp sessions)
-8. Initialize SettingsStore (load runtime overrides from DB)
-9. Initialize CardDAV sync (+ scheduler when carddav_url configured)
-10. Initialize CalDAV sync (legacy, when caldav_url configured)
-11. Initialize CalendarSourceManager (DB schema, auto-migration from .env CalDAV config, sync scheduler)
-12. Start APScheduler (CardDAV 03:00, calendar sources 03:20)
-13. Start MCP manager
-14. Initialize GoogleTokenStore (per-user Google OAuth token CRUD)
-15. Initialize UserMCPPool (when google_client_id + google_client_secret configured): starts idle-cleanup timer, manages per-user gws subprocesses
-16. Initialize Signal (when `feature_signal=true`): SignalAction, SignalMessageStore, WebSocket listener task
-17. Instantiate actions and agent (incl. wa_store, signal, signal_store, user_mcp_pool)
-18. Save everything to `app.state`
+2. Configure structured JSON logging via structlog
+3. Call `setup_database()` — pool + Fernet encryptor
+4. Call `setup_stores()` — all data stores initialized
+5. Call `setup_scheduler()` — APScheduler + cron jobs
+6. Start MCP manager + UserMCPPool
+7. Call `setup_actions()` — action layer + agent
+8. Call `setup_notion_rag()` — Notion pipeline (optional)
+9. Start Signal WebSocket listener (when `feature_signal=true`)
+10. Save everything to `app.state`
 
 **Middleware** (execution order, outermost first):
 
@@ -444,6 +450,12 @@ class Settings(BaseSettings):
     notion_sync_interval: int = 0             # minutes between syncs (0=disabled)
     notion_embedding_model: str = "nomic-embed-text-v2-moe"
     notion_summary_model: str = ""            # LLM for summaries (falls back to llm_model)
+    notion_summary_max_input: int = 4000      # Max chars sent to LLM for summarization
+    notion_summary_max_tokens: int = 200      # Max LLM output tokens for summary
+
+    # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
+    # REQUIRED in production (LOG_LEVEL != DEBUG). App refuses to start without it.
+    credential_encryption_key: str = ""
 ```
 
 Loads from `.env` and environment variables. `extra = "ignore"`.
@@ -472,7 +484,7 @@ class NilesAgent:
 
 `process_event_stream()` is an async generator for SSE streaming. Tool calls run non-streaming (yield `{"type": "status"}`), the final response is streamed word by word (yield `{"type": "chunk"}`). At the end yield `{"type": "done"}`.
 
-**Tool handler registry (`agent/tools/`):** Tool execution logic is organized into feature-based handler modules. Each handler is registered via the `@register_tool("name")` decorator, which adds it to `TOOL_REGISTRY`. On tool call, `_execute_tool_call()` looks up the handler in the registry; if not found, falls back to the MCP handler. Tool definitions (OpenAI function calling format) remain in `core.py` as the `TOOLS` list. A `ToolContext` dataclass bundles all dependencies (config, actions, stores, helper callables) and is passed to each handler.
+**Tool handler registry (`agent/tools/`):** Tool execution logic is organized into feature-based handler modules. Each handler is registered via the `@register_tool("name")` decorator, which adds it to `TOOL_REGISTRY`. On tool call, `_execute_tool_call()` looks up the handler in the registry; if not found, falls back to the MCP handler. Tool definitions (OpenAI function calling format) are in `agent/tool_defs.py` as the `TOOLS` list (extracted from core.py for readability). A `ToolContext` dataclass bundles all dependencies (config, actions, stores, helper callables) and is passed to each handler.
 
 **Event format:**
 
@@ -1309,59 +1321,19 @@ See `.env.example` for complete documentation.
 
 ### 7.1 Dockerfile (`docker/Dockerfile.niles`)
 
-```dockerfile
-FROM python:3.14-slim
-WORKDIR /app
+Multi-stage build (Builder → gws-downloader → Runtime):
 
-# Install uv for fast dependency management
-RUN pip install uv
-
-# Install dependencies first (cached layer, only invalidated when pyproject.toml changes)
-COPY pyproject.toml .
-RUN mkdir -p src/niles && touch src/niles/__init__.py \
-    && uv pip install --system . \
-    && rm -rf src/
-
-# Copy source code
-COPY src/ ./src/
-
-# Download Tailwind standalone CLI with SHA256 verification and build CSS
-COPY tailwind.config.js .
-RUN python -c "\
-import urllib.request, hashlib; \
-urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss'); \
-digest = hashlib.sha256(open('/usr/local/bin/tailwindcss','rb').read()).hexdigest(); \
-expected = '7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4'; \
-assert digest == expected, f'SHA256 mismatch: {digest} != {expected}'" \
-    && chmod +x /usr/local/bin/tailwindcss \
-    && tailwindcss --minify \
-       -i src/niles/static/css/input.css \
-       -o src/niles/static/css/style.css
-
-# Copy config + Alembic migration infrastructure
-COPY config/ ./config/
-COPY alembic.ini .
-COPY alembic/ ./alembic/
-
-# Copy entrypoint (runs Alembic migrations, then starts uvicorn)
-COPY docker/entrypoint.sh /app/entrypoint.sh
-
-# Run as non-root user
-RUN chmod +x /app/entrypoint.sh && \
-    groupadd --gid 1000 niles && \
-    useradd --uid 1000 --gid niles --no-create-home niles && \
-    chown -R niles:niles /app
-USER niles
-
-ENV PYTHONPATH=/app/src
-ENTRYPOINT ["/app/entrypoint.sh"]
-```
+- **Builder stage:** Installs uv, runs `uv sync --frozen --no-dev` for dependency caching, builds Tailwind CSS with SHA256-verified CLI
+- **gws-downloader stage:** Fetches the gws (Google Workspace CLI) binary with SHA256 verification
+- **Runtime stage:** Base image pinned with SHA256 digest (`python:3.14-slim@sha256:...`), copies virtualenv + built assets, non-root user (`niles:1000`), HEALTHCHECK on `/health`
 
 **Key design decisions:**
 
-- `python:3.14-slim` contains neither `curl` nor `wget`. Tailwind CLI is downloaded via Python `urllib.request.urlretrieve` with SHA256 verification.
-- Dependencies are installed before copying source code (`COPY pyproject.toml` → `uv pip install` → `COPY src/`). This keeps the dependency layer cached when only source code changes.
-- `entrypoint.sh` runs Alembic migrations (`python -m niles.migrate`) before starting uvicorn. This ensures the database schema is always up to date on container start.
+- `uv sync --frozen` replaces `pip install` for reproducible builds (lockfile-based)
+- Dependencies are installed before copying source code. This keeps the dependency layer cached when only source code changes.
+- `entrypoint.sh` runs Alembic migrations (`python -m niles.migrate`) before starting uvicorn. Port is configurable via `${PORT:-8000}`.
+- Resource limits (`deploy.resources.limits`: 1 CPU, 512 MB) configured in `docker-compose.yml`
+- Named volumes for all persistent data (PostgreSQL, WhatsApp sessions, Signal config, etc.)
 
 ### 7.2 Docker Compose Services
 
