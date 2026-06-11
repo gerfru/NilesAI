@@ -180,7 +180,7 @@ class CalDAVSync:
         # Discover collections
         try:
             collections = await self._get_sync_collections()
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Collection discovery failed")
             return 0
 

@@ -2,9 +2,11 @@
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
+
+from niles.types import MemoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -56,22 +58,22 @@ class MemoryStore:
         )
         return result == "DELETE 1"
 
-    async def search(self, user_id: int, prefix: str) -> list[dict]:
+    async def search(self, user_id: int, prefix: str) -> list[MemoryEntry]:
         """Search for keys matching a prefix within a user's memory."""
         rows = await self.pool.fetch(
             "SELECT key, value FROM memory WHERE user_id = $1 AND key LIKE $2 ORDER BY key",
             user_id,
             prefix + "%",
         )
-        results = []
+        results: list[MemoryEntry] = []
         for row in rows:
             try:
-                results.append({"key": row["key"], "value": json.loads(row["value"])})
+                results.append(cast(MemoryEntry, {"key": row["key"], "value": json.loads(row["value"])}))
             except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted memory value for key: %s", row["key"])
         return results
 
-    async def list_all(self, user_id: int, *, limit: int = 200, offset: int = 0) -> list[dict]:
+    async def list_all(self, user_id: int, *, limit: int = 200, offset: int = 0) -> list[MemoryEntry]:
         """List all memory entries for a user (for system prompt context)."""
         rows = await self.pool.fetch(
             "SELECT key, value FROM memory WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3",
@@ -79,10 +81,10 @@ class MemoryStore:
             limit,
             offset,
         )
-        results = []
+        results: list[MemoryEntry] = []
         for row in rows:
             try:
-                results.append({"key": row["key"], "value": json.loads(row["value"])})
+                results.append(cast(MemoryEntry, {"key": row["key"], "value": json.loads(row["value"])}))
             except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted memory value for key: %s", row["key"])
         return results

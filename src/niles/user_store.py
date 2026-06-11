@@ -1,8 +1,11 @@
 """User management backed by PostgreSQL."""
 
 import logging
+from typing import cast
 
 import asyncpg
+
+from niles.types import UserInfo, UserListItem, UserWithHash
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +32,17 @@ class UserStore:
                 logger.info("Auto-promoted single existing user to admin")
         logger.info("User store initialized")
 
-    async def get_by_email(self, email: str) -> dict | None:
+    async def get_by_email(self, email: str) -> UserInfo | None:
         """Find an active user by email. Returns dict or None."""
         row = await self.pool.fetchrow(
             "SELECT id, email, display_name, avatar_url, is_admin FROM users WHERE email = $1 AND is_active = TRUE",
             email,
         )
         if row:
-            return dict(row)
+            return cast(UserInfo, dict(row))
         return None
 
-    async def get_with_hash(self, email: str) -> dict | None:
+    async def get_with_hash(self, email: str) -> UserWithHash | None:
         """Find an active user by email, including password_hash and auth_method."""
         row = await self.pool.fetchrow(
             "SELECT id, email, display_name, avatar_url, password_hash,"
@@ -48,7 +51,7 @@ class UserStore:
             email,
         )
         if row:
-            return dict(row)
+            return cast(UserWithHash, dict(row))
         return None
 
     async def create_or_update(
@@ -56,7 +59,7 @@ class UserStore:
         email: str,
         display_name: str,
         avatar_url: str | None = None,
-    ) -> dict | None:
+    ) -> UserInfo | None:
         """Create a new user or update last_login + profile for existing user.
 
         Used by Google OAuth flow. Sets auth_method='google'.
@@ -79,7 +82,7 @@ class UserStore:
             is_first,
         )
         if row:
-            return dict(row)
+            return cast(UserInfo, dict(row))
         return None
 
     async def create_password_user(
@@ -87,7 +90,7 @@ class UserStore:
         email: str,
         display_name: str,
         password_hash: str,
-    ) -> dict:
+    ) -> UserInfo:
         """Create a user with password authentication.
 
         First user is automatically promoted to admin.
@@ -104,16 +107,16 @@ class UserStore:
             password_hash,
             is_first,
         )
-        return dict(row)
+        return cast(UserInfo, dict(row))
 
-    async def get_by_id(self, user_id: int) -> dict | None:
+    async def get_by_id(self, user_id: int) -> UserInfo | None:
         """Find an active user by ID. Returns dict or None."""
         row = await self.pool.fetchrow(
             "SELECT id, email, display_name, avatar_url, is_admin FROM users WHERE id = $1 AND is_active = TRUE",
             user_id,
         )
         if row:
-            return dict(row)
+            return cast(UserInfo, dict(row))
         return None
 
     async def update_password(self, user_id: int, password_hash: str) -> bool:
@@ -134,7 +137,7 @@ class UserStore:
         """Set last_login to current timestamp."""
         await self.pool.execute("UPDATE users SET last_login = NOW() WHERE id = $1", user_id)
 
-    async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
+    async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[UserListItem]:
         """List all users (for admin page), with pagination."""
         rows = await self.pool.fetch(
             "SELECT id, email, display_name, auth_method, is_admin,"
@@ -143,7 +146,7 @@ class UserStore:
             limit,
             offset,
         )
-        return [dict(r) for r in rows]
+        return [cast(UserListItem, dict(r)) for r in rows]
 
     async def deactivate_user(self, user_id: int) -> bool:
         """Soft-delete: mark user as inactive. Returns True if updated."""

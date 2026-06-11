@@ -72,7 +72,7 @@ class NotionSummarizer:
             response.raise_for_status()
             text = response.json().get("response", "").strip()
             return text or None
-        except Exception:
+        except httpx.HTTPError, OSError:
             logger.exception("Summary generation failed for '%s'", title[:50])
             return None
 
