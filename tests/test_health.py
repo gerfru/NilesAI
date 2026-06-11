@@ -22,7 +22,7 @@ def _make_mock_pool():
     return pool
 
 
-@patch("niles.main.asyncpg.create_pool", new_callable=AsyncMock)
+@patch("niles.startup.asyncpg.create_pool", new_callable=AsyncMock)
 def test_health_returns_ok(mock_create_pool):
     """GET /health returns status ok with DB pool info."""
     mock_create_pool.return_value = _make_mock_pool()
