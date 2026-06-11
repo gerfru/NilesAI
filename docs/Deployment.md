@@ -1,6 +1,6 @@
 # Niles AI -- Deployment Guide
 
-> **Updated:** 2026-03-13
+> **Updated:** 2026-06-11
 
 This guide describes the complete setup of Niles AI -- from a blank machine to a running system.
 
@@ -71,7 +71,7 @@ cd Niles
 cp .env.example .env
 ```
 
-Set the two **required variables**:
+Set the three **required variables**:
 
 ```bash
 # Freely chosen -- set as DB password on first start
@@ -79,6 +79,10 @@ EVOLUTION_POSTGRES_PASSWORD=a-secure-password
 
 # Freely chosen -- authenticates Niles against Evolution API
 EVOLUTION_API_KEY=a-secure-api-key
+
+# Fernet key for column-level credential encryption (REQUIRED in production)
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CREDENTIAL_ENCRYPTION_KEY=<generated-key>
 ```
 
 ### Start homelab-gateway (prerequisite)

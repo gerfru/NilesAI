@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-03-13
+> **Updated:** 2026-06-11
 
 ---
 
@@ -67,7 +67,7 @@ Every response includes an `X-Request-ID` header for request tracing. If the cli
 
 ### Rate Limiting
 
-All endpoints (except `/health` and `/static`) are limited to 60 requests per minute per client IP. HTTP 429 is returned when exceeded.
+All endpoints (except `/health`, `/ready`, and `/static`) are limited to 60 requests per minute per client IP. HTTP 429 is returned when exceeded.
 
 Password and API key login (`POST /ui/login`) have an additional dedicated limit: max 5 attempts per IP in 5 minutes.
 
@@ -282,17 +282,7 @@ Removes a calendar source. Events from the source are automatically deleted via 
 
 Triggers a manual sync for a single calendar source. Returns the updated source list as HTML fragment.
 
-### GET /ui/api/calendar/google/connect
-
-Redirects to Google OAuth with calendar scope (requires login session). Sets a `gcal_oauth_state` cookie for CSRF protection. Only visible when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured.
-
-### GET /ui/callback/google/calendar
-
-Google OAuth callback for calendar connection. Exchanges authorization code for access + refresh tokens, stores per-user tokens in `user_google_tokens` for the gws MCP server. Redirect URI must be registered in the Google Cloud Console: `https://<HOST>/ui/callback/google/calendar`.
-
-### POST /ui/api/calendar/google/disconnect
-
-Removes stored Google tokens and stops the user's gws MCP instance. Requires CSRF token. Returns `HX-Redirect: /ui/settings`.
+**Google Calendar:** Per-user Google Calendar integration runs via the gws MCP server (Model Context Protocol). Google OAuth token management is handled through the Settings UI, not through dedicated calendar endpoints.
 
 ### POST /ui/api/settings/{key}
 
@@ -345,6 +335,34 @@ Triggers a manual CardDAV contact sync. Returns the updated status as HTML fragm
 ### GET /ui/api/caldav/calendars
 
 Returns available CalDAV calendar collections as an HTML fragment (via PROPFIND discovery).
+
+### Notion Knowledge Base (Admin-only)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/ui/api/notion/status` | GET | Session | Connection status and sync statistics |
+| `/ui/api/notion/connect` | POST | Admin | Connect Notion workspace (stores token) |
+| `/ui/api/notion/disconnect` | POST | Admin | Disconnect Notion workspace (removes token and data) |
+| `/ui/api/notion/sync` | POST | Admin | Trigger manual Notion page sync |
+| `/ui/api/notion/reembed` | POST | Admin | Force re-embedding of all Notion pages |
+| `/ui/api/notion/search` | POST | Session + CSRF | Direct semantic search over Notion knowledge base |
+
+All admin endpoints require the user to have `is_admin=true`. Non-admin users receive HTTP 403.
+
+### Signal Setup (Admin-only)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/ui/signal` | GET | Admin | Signal setup page |
+| `/ui/api/signal/status` | GET | Admin | Signal connection status |
+| `/ui/api/signal/qrcode` | GET | Admin | QR code for Signal linking |
+| `/ui/api/signal/link` | POST | Admin | Initiate Signal linking process |
+
+### Legal
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/ui/legal` | GET | None | Renders LEGAL.md content |
 
 ---
 
@@ -720,6 +738,16 @@ Web search via SearXNG meta search engine. Only available when `FEATURE_SEARCH=t
 | `time_range` | string | No | Time filter (e.g., `day`, `week`, `month`) |
 
 **Return:** Search results with title, URL, and snippet. Formatted for LLM context (low token usage).
+
+### search_notion
+
+Semantic search over the Notion knowledge base (pgvector embeddings). Only available when `FEATURE_NOTION=true` and Notion is connected. Returns the most relevant passages with page title and heading context.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Search query (natural language) |
+
+**Return:** Top matching text chunks with similarity scores, page titles, and heading context.
 
 ### mcp__gws__*
 

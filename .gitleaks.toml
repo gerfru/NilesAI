@@ -1,0 +1,8 @@
+# gitleaks configuration — exclude files that contain hashes, not secrets.
+# The .secrets.baseline file stores SHA hashes of known findings from detect-secrets.
+# These are not actual secrets but are flagged by gitleaks as generic-api-key.
+
+[allowlist]
+paths = [
+    '''.secrets.baseline''',
+]
