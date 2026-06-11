@@ -368,6 +368,14 @@ async def metrics(_key: str = Depends(require_api_key)):
     """Prometheus metrics endpoint (API-key protected)."""
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+    from .metrics import DB_POOL_FREE, DB_POOL_SIZE
+
+    # Update DB pool saturation gauges on each scrape
+    pool = getattr(app.state, "pool", None)
+    if pool is not None:
+        DB_POOL_SIZE.set(pool.get_size())
+        DB_POOL_FREE.set(pool.get_idle_size())
+
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,
