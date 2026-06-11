@@ -61,7 +61,7 @@ For technical details on architecture and development, see [Development.md](Deve
 ### Clone Repository
 
 ```bash
-git clone <repo-url> Niles
+git clone https://github.com/gerfru/NilesAI.git Niles
 cd Niles
 ```
 
