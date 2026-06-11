@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> dict:
     to = args["to"]
     text = args["text"]
-    resolved_number = None
+    resolved_number: str
 
     # 1. Contact resolution (if name instead of number)
     if not to.replace("+", "").replace(" ", "").isdigit():
@@ -33,9 +33,10 @@ async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> di
             for i, p in enumerate(phones, 1):
                 lines.append(f"{i}. 00{p['number']} ({p['type']})")
             return {"choose_phone": "\n".join(lines)}
-        if not contact.get("phone"):
+        resolved_phone = contact.get("phone")
+        if not resolved_phone:
             return {"error": f"Kontakt '{args['to']}' hat keine Telefonnummer"}
-        resolved_number = contact["phone"]
+        resolved_number = resolved_phone
     else:
         resolved_number = to
 

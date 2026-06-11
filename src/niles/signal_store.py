@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 
 import asyncpg
 
+from niles.types import SignalMessage
+
 logger = logging.getLogger(__name__)
 
 _MAX_AGE_DAYS = 30
@@ -41,7 +43,7 @@ class SignalMessageStore:
         phone: str,
         days: int = _MAX_AGE_DAYS,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[SignalMessage]:
         """Fetch messages for a phone number (last N days).
 
         Returns list of dicts with keys: from_me, text, timestamp, phone.

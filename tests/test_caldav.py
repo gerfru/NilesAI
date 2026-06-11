@@ -282,7 +282,7 @@ class TestSyncEvents:
         mock_upsert.assert_called_once()
 
     async def test_sync_returns_zero_on_discovery_failure(self, sync):
-        with patch.object(sync, "_get_sync_collections", side_effect=Exception("Network")):
+        with patch.object(sync, "_get_sync_collections", side_effect=OSError("Network")):
             count = await sync.sync_events()
 
         assert count == 0
