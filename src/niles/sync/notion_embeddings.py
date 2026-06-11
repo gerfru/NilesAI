@@ -94,6 +94,109 @@ class NotionEmbeddingPipeline:
 
         return breadcrumbs
 
+    async def _upsert_embedding(
+        self,
+        page_id: str,
+        level: int,
+        index: int,
+        chunk_text: str,
+        embedding: list[float],
+        page_title: str,
+        heading_context: str,
+    ) -> None:
+        """Insert or update a single embedding row."""
+        await self._pool.execute(
+            """
+            INSERT INTO notion_embeddings
+                (page_id, chunk_level, chunk_index,
+                 chunk_text, embedding,
+                 page_title, heading_context)
+            VALUES ($1, $2, $3, $4, $5::vector, $6, $7)
+            ON CONFLICT (page_id, chunk_level, chunk_index)
+            DO UPDATE SET
+                chunk_text = EXCLUDED.chunk_text,
+                embedding = EXCLUDED.embedding,
+                page_title = EXCLUDED.page_title,
+                heading_context = EXCLUDED.heading_context,
+                created_at = NOW()
+            """,
+            page_id,
+            level,
+            index,
+            chunk_text,
+            str(embedding),
+            page_title,
+            heading_context,
+        )
+
+    async def _embed_page(
+        self,
+        page_id: str,
+        content_text: str,
+        title: str,
+        breadcrumb: str,
+        stats: dict,
+    ) -> None:
+        """Embed a single page: generate summary + detail chunks."""
+        chunks = self._chunk_text(content_text, breadcrumb)
+        if not chunks:
+            return
+
+        # Delete old embeddings for this page (both levels)
+        await self._pool.execute("DELETE FROM notion_embeddings WHERE page_id = $1", page_id)
+
+        detail_errors = 0
+
+        # Level 0: Summary (if summarizer is available and content is long enough)
+        if self._summarizer and len(content_text.strip()) >= _MIN_CONTENT_FOR_SUMMARY:
+            summary = await self._summarizer.summarize(content_text, title)
+            if summary:
+                prefix = f"[{breadcrumb}] " if breadcrumb else ""
+                summary_text = prefix + summary
+                embedding = await self._embedder.embed(summary_text, prefix="search_document: ")
+                if embedding is not None:
+                    await self._upsert_embedding(
+                        page_id,
+                        LEVEL_SUMMARY,
+                        0,
+                        summary_text,
+                        embedding,
+                        breadcrumb,
+                        "",
+                    )
+                    stats["summaries_created"] += 1
+                else:
+                    stats["summaries_failed"] += 1
+            else:
+                stats["summaries_failed"] += 1
+
+        # Level 1: Detail chunks
+        for idx, chunk_info in enumerate(chunks):
+            embedding = await self._embedder.embed(chunk_info.text, prefix="search_document: ")
+            if embedding is None:
+                detail_errors += 1
+                stats["errors"] += 1
+                continue
+            await self._upsert_embedding(
+                page_id,
+                LEVEL_DETAIL,
+                idx,
+                chunk_info.text,
+                embedding,
+                chunk_info.page_title,
+                chunk_info.heading_context,
+            )
+            stats["chunks_created"] += 1
+
+        # Mark page as embedded when detail chunks succeeded
+        # (summary failures are non-blocking)
+        if detail_errors == 0:
+            await self._pool.execute(
+                "UPDATE notion_pages SET embedded_at = NOW() WHERE id = $1",
+                page_id,
+            )
+            stats["pages_embedded"] += 1
+
     async def embed_pending(self) -> dict:
         """Process all pages that need (re-)embedding.
 
@@ -126,97 +229,14 @@ class NotionEmbeddingPipeline:
         for row in rows:
             page_id = row["id"]
             try:
-                content_text = row["content_text"]
-                title = row["title"]
-                breadcrumb = breadcrumbs.get(page_id, title)
-
-                chunks = self._chunk_text(content_text, breadcrumb)
-                if not chunks:
-                    continue
-
-                # Delete old embeddings for this page (both levels)
-                await self._pool.execute("DELETE FROM notion_embeddings WHERE page_id = $1", page_id)
-
-                detail_errors = 0
-
-                # Level 0: Summary (if summarizer is available and content is long enough)
-                if self._summarizer and len(content_text.strip()) >= _MIN_CONTENT_FOR_SUMMARY:
-                    summary = await self._summarizer.summarize(content_text, title)
-                    if summary:
-                        prefix = f"[{breadcrumb}] " if breadcrumb else ""
-                        summary_text = prefix + summary
-                        embedding = await self._embedder.embed(summary_text, prefix="search_document: ")
-                        if embedding is not None:
-                            await self._pool.execute(
-                                """
-                                INSERT INTO notion_embeddings
-                                    (page_id, chunk_level, chunk_index,
-                                     chunk_text, embedding,
-                                     page_title, heading_context)
-                                VALUES ($1, $2, $3, $4, $5::vector, $6, $7)
-                                ON CONFLICT (page_id, chunk_level, chunk_index)
-                                DO UPDATE SET
-                                    chunk_text = EXCLUDED.chunk_text,
-                                    embedding = EXCLUDED.embedding,
-                                    page_title = EXCLUDED.page_title,
-                                    heading_context = EXCLUDED.heading_context,
-                                    created_at = NOW()
-                                """,
-                                page_id,
-                                LEVEL_SUMMARY,
-                                0,
-                                summary_text,
-                                str(embedding),
-                                breadcrumb,
-                                "",
-                            )
-                            stats["summaries_created"] += 1
-                        else:
-                            stats["summaries_failed"] += 1
-                    else:
-                        stats["summaries_failed"] += 1
-
-                # Level 1: Detail chunks
-                for idx, chunk_info in enumerate(chunks):
-                    embedding = await self._embedder.embed(chunk_info.text, prefix="search_document: ")
-                    if embedding is None:
-                        detail_errors += 1
-                        stats["errors"] += 1
-                        continue
-                    await self._pool.execute(
-                        """
-                        INSERT INTO notion_embeddings
-                            (page_id, chunk_level, chunk_index,
-                             chunk_text, embedding,
-                             page_title, heading_context)
-                        VALUES ($1, $2, $3, $4, $5::vector, $6, $7)
-                        ON CONFLICT (page_id, chunk_level, chunk_index)
-                        DO UPDATE SET
-                            chunk_text = EXCLUDED.chunk_text,
-                            embedding = EXCLUDED.embedding,
-                            page_title = EXCLUDED.page_title,
-                            heading_context = EXCLUDED.heading_context,
-                            created_at = NOW()
-                        """,
-                        page_id,
-                        LEVEL_DETAIL,
-                        idx,
-                        chunk_info.text,
-                        str(embedding),
-                        chunk_info.page_title,
-                        chunk_info.heading_context,
-                    )
-                    stats["chunks_created"] += 1
-
-                # Mark page as embedded when detail chunks succeeded
-                # (summary failures are non-blocking)
-                if detail_errors == 0:
-                    await self._pool.execute(
-                        "UPDATE notion_pages SET embedded_at = NOW() WHERE id = $1",
-                        page_id,
-                    )
-                    stats["pages_embedded"] += 1
-
+                breadcrumb = breadcrumbs.get(page_id, row["title"])
+                await self._embed_page(
+                    page_id,
+                    row["content_text"],
+                    row["title"],
+                    breadcrumb,
+                    stats,
+                )
             except Exception:
                 logger.exception("Embedding failed for page %s", page_id)
                 stats["errors"] += 1
