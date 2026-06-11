@@ -82,7 +82,7 @@ knowledge base. All processed by a local LLM. No cloud. No subscription. No data
 
 ```bash
 # 1. Clone and configure
-git clone <repo-url> Niles && cd Niles
+git clone https://github.com/gerfru/NilesAI.git Niles && cd Niles
 cp .env.example .env
 # Set: EVOLUTION_POSTGRES_PASSWORD, EVOLUTION_API_KEY, CREDENTIAL_ENCRYPTION_KEY
 
