@@ -8,6 +8,8 @@ import pytest
 from niles.memory.history import ConversationHistory
 from niles.memory.store import MemoryStore
 
+_UID = 1  # default test user_id
+
 
 class TestMemoryStore:
     @pytest.fixture
@@ -20,29 +22,29 @@ class TestMemoryStore:
 
     async def test_get_returns_value(self, store, pool):
         pool.fetchrow.return_value = {"value": json.dumps("hello")}
-        result = await store.get("test_key")
+        result = await store.get(_UID, "test_key")
         assert result == "hello"
         pool.fetchrow.assert_called_once()
 
     async def test_get_returns_none_for_missing(self, store, pool):
         pool.fetchrow.return_value = None
-        result = await store.get("missing")
+        result = await store.get(_UID, "missing")
         assert result is None
 
     async def test_set_calls_upsert(self, store, pool):
-        await store.set("key1", "value1")
+        await store.set(_UID, "key1", "value1")
         pool.execute.assert_called_once()
         sql = pool.execute.call_args[0][0]
         assert "ON CONFLICT" in sql
 
     async def test_delete_returns_true(self, store, pool):
         pool.execute.return_value = "DELETE 1"
-        result = await store.delete("key1")
+        result = await store.delete(_UID, "key1")
         assert result is True
 
     async def test_delete_returns_false_for_missing(self, store, pool):
         pool.execute.return_value = "DELETE 0"
-        result = await store.delete("missing")
+        result = await store.delete(_UID, "missing")
         assert result is False
 
     async def test_search_by_prefix(self, store, pool):
@@ -50,17 +52,18 @@ class TestMemoryStore:
             {"key": "todo_1", "value": json.dumps("Buy milk")},
             {"key": "todo_2", "value": json.dumps("Call dentist")},
         ]
-        result = await store.search("todo")
+        result = await store.search(_UID, "todo")
         assert len(result) == 2
         assert result[0]["key"] == "todo_1"
         assert result[0]["value"] == "Buy milk"
-        # Verify prefix + "%" is passed to the query
+        # Verify user_id and prefix+"%" are passed to the query
         call_args = pool.fetch.call_args[0]
-        assert call_args[1] == "todo%"
+        assert call_args[1] == _UID
+        assert call_args[2] == "todo%"
 
     async def test_get_handles_corrupted_data(self, store, pool):
         pool.fetchrow.return_value = {"value": "not-valid-json{"}
-        result = await store.get("broken")
+        result = await store.get(_UID, "broken")
         assert result is None
 
     async def test_list_all(self, store, pool):
@@ -68,9 +71,47 @@ class TestMemoryStore:
             {"key": "k1", "value": json.dumps("v1")},
             {"key": "k2", "value": json.dumps({"nested": True})},
         ]
-        result = await store.list_all()
+        result = await store.list_all(_UID)
         assert len(result) == 2
         assert result[1]["value"] == {"nested": True}
+
+
+class TestMemoryStoreCrossUser:
+    """Verify that user_id is always passed to SQL queries (isolation)."""
+
+    @pytest.fixture
+    def pool(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def store(self, pool):
+        return MemoryStore(pool)
+
+    async def test_get_passes_user_id_to_query(self, store, pool):
+        pool.fetchrow.return_value = None
+        await store.get(42, "key")
+        args = pool.fetchrow.call_args[0]
+        assert args[1] == 42  # user_id
+        assert args[2] == "key"
+
+    async def test_set_passes_user_id_to_query(self, store, pool):
+        await store.set(42, "key", "val")
+        args = pool.execute.call_args[0]
+        assert args[1] == 42  # user_id
+        assert args[2] == "key"
+
+    async def test_delete_passes_user_id_to_query(self, store, pool):
+        pool.execute.return_value = "DELETE 0"
+        await store.delete(42, "key")
+        args = pool.execute.call_args[0]
+        assert args[1] == 42
+        assert args[2] == "key"
+
+    async def test_list_all_passes_user_id_to_query(self, store, pool):
+        pool.fetch.return_value = []
+        await store.list_all(42)
+        args = pool.fetch.call_args[0]
+        assert args[1] == 42  # user_id
 
 
 class TestConversationHistory:
