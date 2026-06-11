@@ -303,6 +303,28 @@ class BriefingGenerator:
         ]
         return names[dt.weekday()]
 
+    def _filter_tasks_for_date(
+        self,
+        tasks: list[dict],
+        target_date,
+        *,
+        exclude_ids: set | None = None,
+    ) -> list[dict]:
+        """Return tasks whose due_date falls on *target_date* (local tz)."""
+        exclude = exclude_ids or set()
+        result = []
+        for t in tasks:
+            if t["id"] in exclude:
+                continue
+            if "due_date" in t:
+                try:
+                    due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
+                    if due.astimezone(self.tz).date() == target_date:
+                        result.append(t)
+                except ValueError, TypeError:
+                    pass
+        return result
+
     # -----------------------------------------------------------------
     # Briefing generation
     # -----------------------------------------------------------------
@@ -323,20 +345,8 @@ class BriefingGenerator:
         overdue = self._filter_overdue(tasks)
 
         # Tasks due today (compare in local timezone, not UTC string slicing)
-        # Exclude tasks already in overdue to avoid duplication
         overdue_ids = {t["id"] for t in overdue}
-        today_date = now.date()
-        tasks_today = []
-        for t in tasks:
-            if t["id"] in overdue_ids:
-                continue
-            if "due_date" in t:
-                try:
-                    due = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00"))
-                    if due.astimezone(self.tz).date() == today_date:
-                        tasks_today.append(t)
-                except ValueError, TypeError:
-                    pass
+        tasks_today = self._filter_tasks_for_date(tasks, now.date(), exclude_ids=overdue_ids)
 
         # --- Build message ---
         lines = [f"☀️ *Guten Morgen!* {weekday}, {date_str}", ""]

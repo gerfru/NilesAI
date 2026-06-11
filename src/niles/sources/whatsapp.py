@@ -20,6 +20,52 @@ router = APIRouter(prefix="/webhook", tags=["webhooks"])
 _echo_guard = EchoGuard(ttl=10.0)
 
 
+async def _handle_self_chat(text: str, remote_jid: str, payload: dict, request: Request) -> dict:
+    """Process a self-chat trigger message (fromMe=True with Niles trigger)."""
+    if not is_niles_trigger(text):
+        return {"status": "ignored", "reason": "own message without trigger"}
+
+    clean_text = strip_trigger(text) or "Hallo!"
+    sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
+    logger.info("Self-chat trigger from %s: %s", sender, clean_text[:100])
+
+    chat_id = f"wa-self-{sender}"
+    structlog.contextvars.bind_contextvars(chat_id=chat_id, source="whatsapp")
+
+    instance_for_reply = payload.get("instance")
+    agent = request.app.state.agent
+    event = {
+        "type": "whatsapp",
+        "from": chat_id,
+        "content": clean_text,
+        "metadata": {
+            "jid": remote_jid,
+            "sender": sender,
+            "self_chat": True,
+        },
+    }
+
+    try:
+        response_text = await agent.process_event(event)
+        if response_text:
+            whatsapp_action = request.app.state.whatsapp_action
+            result = await whatsapp_action.send_message(
+                to=remote_jid,
+                text=response_text,
+                instance=instance_for_reply,
+            )
+            sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
+            if sent_id:
+                _echo_guard.record(sent_id)
+                logger.info("Self-chat reply sent to %s", remote_jid)
+            else:
+                logger.warning("No message ID in send_message response — echo guard not armed")
+    except Exception:
+        logger.exception("Failed to process self-chat message")
+
+    return {"status": "processed", "trigger": "self-chat"}
+
+
 @router.post("/whatsapp")
 async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     """
@@ -73,58 +119,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
 
     # --- Self-Chat Trigger Logic ---
     if is_from_me:
-        if not is_niles_trigger(text):
-            return {"status": "ignored", "reason": "own message without trigger"}
-
-        # Trigger recognised — strip trigger phrase
-        clean_text = strip_trigger(text)
-        if not clean_text:
-            # Just "Hey Niles" without content → greeting
-            clean_text = "Hallo!"
-
-        sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-        logger.info("Self-chat trigger from %s: %s", sender, clean_text[:100])
-
-        # Self-Chat uses its own chat_id for separate history
-        chat_id = f"wa-self-{sender}"
-        structlog.contextvars.bind_contextvars(chat_id=chat_id, source="whatsapp")
-
-        # Resolve per-user instance (for multi-user setups)
-        instance_name = payload.get("instance")
-        instance_for_reply = instance_name
-
-        agent = request.app.state.agent
-        event = {
-            "type": "whatsapp",
-            "from": chat_id,
-            "content": clean_text,
-            "metadata": {
-                "jid": remote_jid,
-                "sender": sender,
-                "self_chat": True,
-            },
-        }
-
-        try:
-            response_text = await agent.process_event(event)
-            if response_text:
-                whatsapp_action = request.app.state.whatsapp_action
-                result = await whatsapp_action.send_message(
-                    to=remote_jid,
-                    text=response_text,
-                    instance=instance_for_reply,
-                )
-                # Record sent message ID so the echoed webhook is skipped
-                sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
-                if sent_id:
-                    _echo_guard.record(sent_id)
-                    logger.info("Self-chat reply sent to %s", remote_jid)
-                else:
-                    logger.warning("No message ID in send_message response — echo guard not armed")
-        except Exception:
-            logger.exception("Failed to process self-chat message")
-
-        return {"status": "processed", "trigger": "self-chat"}
+        return await _handle_self_chat(text, remote_jid, payload, request)
 
     # --- Group messages: ignore (not supported yet) ---
     if remote_jid.endswith("@g.us"):

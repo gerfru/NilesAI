@@ -11,6 +11,52 @@ from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
+# Media type → placeholder text for messages without caption
+_MEDIA_PLACEHOLDERS = {
+    "imageMessage": "[Bild]",
+    "videoMessage": "[Video]",
+    "audioMessage": "[Sprachnachricht]",
+    "pttMessage": "[Sprachnachricht]",
+    "stickerMessage": "[Sticker]",
+    "documentMessage": "[Dokument]",
+    "contactMessage": "[Kontakt]",
+    "locationMessage": "[Standort]",
+}
+
+
+def _filter_and_parse_messages(records: list, cutoff: int) -> list[dict]:
+    """Filter records by cutoff timestamp, extract text, return sorted list."""
+    messages = []
+    for rec in records:
+        try:
+            ts = int(rec.get("messageTimestamp", 0))
+        except ValueError, TypeError:
+            continue
+        if ts < cutoff:
+            continue
+        msg = rec.get("message", {})
+        text = (
+            msg.get("conversation")
+            or msg.get("extendedTextMessage", {}).get("text")
+            or msg.get("imageMessage", {}).get("caption")
+            or msg.get("videoMessage", {}).get("caption")
+            or msg.get("documentMessage", {}).get("caption")
+        )
+        if not text:
+            text = next((v for k, v in _MEDIA_PLACEHOLDERS.items() if k in msg), None)
+            if not text:
+                continue
+        messages.append(
+            {
+                "from_me": rec.get("key", {}).get("fromMe", False),
+                "text": text,
+                "timestamp": ts,
+                "push_name": rec.get("pushName", ""),
+            }
+        )
+    messages.sort(key=lambda m: m["timestamp"])
+    return messages
+
 
 class WhatsAppAction:
     """Sends messages and manages instances via Evolution API."""
@@ -117,54 +163,8 @@ class WhatsAppAction:
             logger.error("Failed to fetch messages from %s: %s", inst, e)
             return []
 
-        # Belt-and-suspenders: re-apply 30-day cutoff on the client side
-        # in case Evolution API returns stale records outside the requested window.
         cutoff = int(time.time()) - (self._MAX_AGE_DAYS * 86400)
-        messages = []
-        for rec in records:
-            try:
-                ts = int(rec.get("messageTimestamp", 0))
-            except ValueError, TypeError:
-                continue
-            if ts < cutoff:
-                continue
-            msg = rec.get("message", {})
-            text = (
-                msg.get("conversation")
-                or msg.get("extendedTextMessage", {}).get("text")
-                or msg.get("imageMessage", {}).get("caption")
-                or msg.get("videoMessage", {}).get("caption")
-                or msg.get("documentMessage", {}).get("caption")
-            )
-            # For media without caption, add a placeholder so the LLM
-            # sees the conversation flow (who sent what, when)
-            if not text:
-                if "imageMessage" in msg:
-                    text = "[Bild]"
-                elif "videoMessage" in msg:
-                    text = "[Video]"
-                elif "audioMessage" in msg or "pttMessage" in msg:
-                    text = "[Sprachnachricht]"
-                elif "stickerMessage" in msg:
-                    text = "[Sticker]"
-                elif "documentMessage" in msg:
-                    text = "[Dokument]"
-                elif "contactMessage" in msg:
-                    text = "[Kontakt]"
-                elif "locationMessage" in msg:
-                    text = "[Standort]"
-                else:
-                    continue
-            messages.append(
-                {
-                    "from_me": rec.get("key", {}).get("fromMe", False),
-                    "text": text,
-                    "timestamp": ts,
-                    "push_name": rec.get("pushName", ""),
-                }
-            )
-        # Sort chronologically (oldest first)
-        messages.sort(key=lambda m: m["timestamp"])
+        messages = _filter_and_parse_messages(records, cutoff)
         return messages
 
     async def create_instance(
