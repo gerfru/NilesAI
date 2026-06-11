@@ -132,7 +132,7 @@ python_version = "3.14"
 warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
-check_untyped_defs = false
+check_untyped_defs = true
 
 # Type overrides — tightened incrementally; see docs/Quality-Assessment.md Phase 1
 # Removed: niles.sources.web (typed AppState eliminates union-attr)
