@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from typing import Any
 from urllib.parse import urlparse
 
 import structlog
@@ -67,7 +68,7 @@ async def signal_listener(
             backoff = min(backoff * 2, max_backoff)
 
 
-async def _handle_envelope(app_state, data: dict) -> None:
+async def _handle_envelope(app_state: Any, data: dict) -> None:
     """Process a single Signal WebSocket envelope."""
     # signal-cli sends exceptions for Note-to-Self messages (linked device bug)
     if "exception" in data:
