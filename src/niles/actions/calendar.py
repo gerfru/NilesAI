@@ -122,6 +122,35 @@ class CalendarAction:
         )
         return row["id"] if row else None
 
+    @staticmethod
+    def _day_boundary(dt: datetime, end_of_day: bool) -> datetime:
+        """Snap *dt* to start-of-day (00:00) or end-of-day (23:59:59)."""
+        dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        if end_of_day:
+            dt = dt.replace(hour=23, minute=59, second=59)
+        return dt
+
+    def _parse_relative(self, value: str, now: datetime, end_of_day: bool) -> datetime | None:
+        """Resolve relative terms (heute/today/morgen/tomorrow/...) to datetime."""
+        _RELATIVE_OFFSETS = {
+            "heute": 0,
+            "today": 0,
+            "morgen": 1,
+            "tomorrow": 1,
+            "übermorgen": 2,
+            "uebermorgen": 2,
+        }
+        offset = _RELATIVE_OFFSETS.get(value)
+        if offset is not None:
+            return self._day_boundary(now + timedelta(days=offset), end_of_day)
+
+        target_wd = _WEEKDAY_MAP.get(value)
+        if target_wd is not None:
+            days_ahead = (target_wd - now.weekday()) % 7 or 7
+            return self._day_boundary(now + timedelta(days=days_ahead), end_of_day)
+
+        return None
+
     def _parse_date(self, value: str, end_of_day: bool = False) -> datetime | None:
         """Parse an ISO date string or relative term to a timezone-aware datetime."""
         # Small LLMs sometimes wrap dates in dicts: "{'date': '2026-02-24'}"
@@ -137,41 +166,12 @@ class CalendarAction:
                 )
                 value = match.group()
 
-        # Handle relative date terms (small LLMs sometimes send these)
         now = datetime.now(tz=self.tz)
         relative = value.strip().lower()
-        if relative in ("heute", "today"):
-            dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            if end_of_day:
-                dt = dt.replace(hour=23, minute=59, second=59)
-            return dt
-        if relative in ("morgen", "tomorrow"):
-            dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            if end_of_day:
-                dt = dt.replace(hour=23, minute=59, second=59)
-            return dt
-        if relative in ("übermorgen", "uebermorgen"):
-            dt = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
-            if end_of_day:
-                dt = dt.replace(hour=23, minute=59, second=59)
-            return dt
 
-        # Weekday names → next occurrence of that day
-        if relative in _WEEKDAY_MAP:
-            target_wd = _WEEKDAY_MAP[relative]
-            current_wd = now.weekday()
-            days_ahead = (target_wd - current_wd) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # same weekday = next week
-            dt = (now + timedelta(days=days_ahead)).replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-            if end_of_day:
-                dt = dt.replace(hour=23, minute=59, second=59)
-            return dt
+        result = self._parse_relative(relative, now, end_of_day)
+        if result is not None:
+            return result
 
         try:
             dt = datetime.fromisoformat(value)
