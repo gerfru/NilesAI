@@ -62,6 +62,16 @@ async def lifespan(app: FastAPI):
     # Reconfigure logging with settings
     setup_logging(settings.log_level)
 
+    # Optional Sentry error tracking (set SENTRY_DSN to enable)
+    if settings.sentry_dsn:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+        )
+        logger.info("Sentry error tracking enabled")
+
     # Warn if API key was auto-generated (do not log the key itself)
     if not os.environ.get("NILES_API_KEY"):
         logger.info("NILES_API_KEY auto-generated. Retrieve with: docker exec niles_core printenv NILES_API_KEY")

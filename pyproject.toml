@@ -70,6 +70,9 @@ dependencies = [
 
     # Column-level credential encryption (Fernet AES-128-CBC + HMAC)
     "cryptography>=44.0",
+
+    # Error tracking (opt-in via SENTRY_DSN)
+    "sentry-sdk[fastapi]>=2.0.0",
 ]
 
 [project.optional-dependencies]
