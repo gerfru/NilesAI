@@ -137,8 +137,8 @@ class ContextBuilder:
         uid = await self.resolve_user_id(chat_id)
         if uid is not None and self.wa_store:
             session = await self.wa_store.get_session(uid)
-            if session and session.get("phone_number"):
-                return session["phone_number"].replace("+", "").replace(" ", "")
+            if session and (phone := session.get("phone_number")):
+                return phone.replace("+", "").replace(" ", "")
         return None
 
     async def resolve_vikunja_tasks(self, chat_id: str) -> TasksAction | None:

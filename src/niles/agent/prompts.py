@@ -1,9 +1,15 @@
 """System prompt loading and building."""
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from niles.types import MemoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +33,7 @@ def load_system_prompt(path: str | None = None) -> str:
 
 def build_system_prompt(
     base_prompt: str,
-    memories: list[dict],
+    memories: list[MemoryEntry],
     timezone: str = "Europe/Vienna",
     calendar_sources: list[str] | None = None,
 ) -> str:
@@ -101,7 +107,7 @@ _NOTION_RAG_PROMPT = (
 
 
 def build_notion_rag_prompt(
-    memories: list[dict] | None = None,
+    memories: list[MemoryEntry] | None = None,
     timezone: str = "Europe/Vienna",
 ) -> str:
     """Build a minimal system prompt for Notion RAG mode.

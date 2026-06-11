@@ -4,6 +4,8 @@ import logging
 
 import asyncpg
 
+from niles.types import ConversationMessage
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +32,7 @@ class ConversationHistory:
         chat_id: str,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[dict]:
+    ) -> list[ConversationMessage]:
         """Get the most recent messages for a chat (with optional offset for pagination)."""
         rows = await self.pool.fetch(
             """
