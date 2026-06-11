@@ -194,14 +194,14 @@ class TestParseTime:
     """Test _parse_briefing_time helper."""
 
     def test_valid_time(self):
-        from niles.main import _parse_briefing_time
+        from niles.startup import _parse_briefing_time
 
         assert _parse_briefing_time("07:30") == (7, 30)
         assert _parse_briefing_time("23:59") == (23, 59)
         assert _parse_briefing_time("00:00") == (0, 0)
 
     def test_invalid_time_fallback(self):
-        from niles.main import _parse_briefing_time
+        from niles.startup import _parse_briefing_time
 
         assert _parse_briefing_time("25:00") == (7, 30)
         assert _parse_briefing_time("abc") == (7, 30)
