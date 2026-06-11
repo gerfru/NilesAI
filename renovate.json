@@ -47,10 +47,11 @@
       "labels": ["dependencies", "review-needed"]
     },
     {
-      "description": "Docker Digest-Updates (gleiche Version, neuer Digest): sicher, automatisch mergen",
+      "description": "Docker Digest-Updates (gleiche Version, neuer Digest): monatlich gebatcht, automatisch mergen",
       "matchManagers": ["docker-compose", "dockerfile"],
       "matchUpdateTypes": ["digest"],
-      "automerge": true
+      "automerge": true,
+      "schedule": ["before 6am on the first day of the month"]
     },
     {
       "description": "Docker minor/major-Updates: manueller Review",
