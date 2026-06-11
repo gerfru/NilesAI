@@ -143,12 +143,27 @@ The LLM can invoke these tools during conversations:
 
 Additional MCP tools from external servers are automatically discovered and added.
 
+## Security
+
+Self-hosting your AI butler only helps if the app itself is hard to break into. Niles ships
+with Argon2id password hashing, rate-limited auth, CSRF protection, signed httpOnly session
+cookies (`SameSite=Lax`), Fernet-encrypted per-user credentials, parameterized queries
+(asyncpg), a strict nonce-based CSP (`'strict-dynamic'`), and SAST/SCA/container scanning
+in CI (bandit, semgrep, pip-audit, Trivy, gitleaks, detect-secrets).
+
+→ Vulnerability reports: [SECURITY.md](SECURITY.md)
+
 ## Development
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-python -m pytest tests/ -v
+# Install dependencies (requires uv: https://docs.astral.sh/uv/)
+uv sync --frozen --extra dev
+
+# Run tests
+uv run pytest tests/ -v
+
+# Run pre-commit hooks
+pre-commit run --all-files
 ```
 
 See [Development Guide](docs/Development.md) for details on testing, Docker workflow, and conventions.
