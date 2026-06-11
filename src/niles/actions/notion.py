@@ -175,6 +175,72 @@ def _extract_keywords(query: str) -> list[str]:
     return [t for t in tokens if t not in _STOP_WORDS and len(t) >= 2]
 
 
+def _score_candidates(
+    rows: list,
+    keywords: list[str],
+    page_detail_counts: dict[str, int],
+) -> list[dict]:
+    """Score raw DB rows with auto-merge + keyword boosts, return sorted candidates."""
+    candidates = []
+    for row in rows:
+        pid = row["page_id"]
+        base_sim = float(row["similarity"])
+        boost = 0.0
+
+        if page_detail_counts[pid] >= 2:
+            boost += _MULTI_HIT_BOOST
+        if row["chunk_level"] == 0 and page_detail_counts[pid] >= 1:
+            boost += _SUMMARY_BOOST
+        if keywords:
+            meta_lower = (row["meta_title"] or "").lower()
+            heading_lower = (row["heading_context"] or "").lower()
+            if any(kw in meta_lower for kw in keywords):
+                boost += _TITLE_KEYWORD_BOOST
+            if any(kw in heading_lower for kw in keywords):
+                boost += _HEADING_KEYWORD_BOOST
+
+        candidates.append(
+            {
+                "chunk_text": row["chunk_text"],
+                "page_title": row["page_title"],
+                "page_url": row["page_url"],
+                "similarity": round(min(base_sim + boost, 1.0), 4),
+                "_chunk_level": row["chunk_level"],
+                "_page_id": pid,
+            }
+        )
+    candidates.sort(key=lambda r: r["similarity"], reverse=True)
+    return candidates
+
+
+def _deduplicate(candidates: list[dict], max_results: int) -> list[dict]:
+    """Limit per-page summaries/details and strip internal fields."""
+    seen: dict[str, dict[int, int]] = {}
+    results = []
+    for c in candidates:
+        pid = c["_page_id"]
+        level = c["_chunk_level"]
+        if pid not in seen:
+            seen[pid] = {0: 0, 1: 0}
+
+        max_per_level = _MAX_SUMMARIES_PER_PAGE if level == 0 else _MAX_DETAILS_PER_PAGE
+        if seen[pid][level] >= max_per_level:
+            continue
+        seen[pid][level] += 1
+
+        results.append(
+            {
+                "chunk_text": c["chunk_text"],
+                "page_title": c["page_title"],
+                "page_url": c["page_url"],
+                "similarity": c["similarity"],
+            }
+        )
+        if len(results) >= max_results:
+            break
+    return results
+
+
 class NotionRetriever:
     """Retrieves relevant Notion chunks via pgvector similarity search.
 
@@ -242,70 +308,10 @@ class NotionRetriever:
             if row["chunk_level"] == 1:
                 page_detail_counts[row["page_id"]] += 1
 
-        # 4. Score and build candidates (with keyword boost)
+        # 4-6. Score, sort, deduplicate
         keywords = _extract_keywords(query)
-        candidates = []
-        for row in rows:
-            pid = row["page_id"]
-            base_sim = float(row["similarity"])
-            boost = 0.0
-
-            # Multi-hit boost: 2+ detail chunks from same page
-            if page_detail_counts[pid] >= 2:
-                boost += _MULTI_HIT_BOOST
-
-            # Summary boost: summary chunk has detail hits from same page
-            if row["chunk_level"] == 0 and page_detail_counts[pid] >= 1:
-                boost += _SUMMARY_BOOST
-
-            # Keyword boost: query keywords in page title or heading
-            if keywords:
-                meta_lower = (row["meta_title"] or "").lower()
-                heading_lower = (row["heading_context"] or "").lower()
-                if any(kw in meta_lower for kw in keywords):
-                    boost += _TITLE_KEYWORD_BOOST
-                if any(kw in heading_lower for kw in keywords):
-                    boost += _HEADING_KEYWORD_BOOST
-
-            candidates.append(
-                {
-                    "chunk_text": row["chunk_text"],
-                    "page_title": row["page_title"],
-                    "page_url": row["page_url"],
-                    "similarity": round(min(base_sim + boost, 1.0), 4),
-                    "_chunk_level": row["chunk_level"],
-                    "_page_id": pid,
-                }
-            )
-
-        # 5. Sort by adjusted similarity
-        candidates.sort(key=lambda r: r["similarity"], reverse=True)
-
-        # 6. Deduplicate: max summaries + details per page
-        seen: dict[str, dict[int, int]] = {}
-        results = []
-        for c in candidates:
-            pid = c["_page_id"]
-            level = c["_chunk_level"]
-            if pid not in seen:
-                seen[pid] = {0: 0, 1: 0}
-
-            max_per_level = _MAX_SUMMARIES_PER_PAGE if level == 0 else _MAX_DETAILS_PER_PAGE
-            if seen[pid][level] >= max_per_level:
-                continue
-            seen[pid][level] += 1
-
-            # Strip internal fields before returning
-            results.append(
-                {
-                    "chunk_text": c["chunk_text"],
-                    "page_title": c["page_title"],
-                    "page_url": c["page_url"],
-                    "similarity": c["similarity"],
-                }
-            )
-            if len(results) >= max_results:
-                break
+        candidates = _score_candidates(rows, keywords, page_detail_counts)
+        results = _deduplicate(candidates, max_results)
 
         logger.info(
             "Notion search for '%s': %d results (threshold %.2f, candidates %d)",
