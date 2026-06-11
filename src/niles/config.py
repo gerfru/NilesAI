@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     credential_encryption_key: str = ""
 
+    # Error tracking (opt-in)
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1
+
     # Briefing / Digest
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
