@@ -4,6 +4,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
+
 from niles.agent.core import MAX_TOOL_ROUNDS, NilesAgent
 from niles.config import Settings
 
@@ -151,7 +153,7 @@ class TestProcessEventStream:
 
         agent.llm = AsyncMock()
         agent.llm.chat.completions.create = AsyncMock(
-            side_effect=RuntimeError("LLM down"),
+            side_effect=httpx.ConnectError("LLM down"),
         )
 
         event = {"type": "web", "from": "test-chat", "content": "Hello"}
