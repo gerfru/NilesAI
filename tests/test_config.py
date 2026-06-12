@@ -61,27 +61,41 @@ def test_settings_missing_api_key(monkeypatch):
         Settings(_env_file=None)
 
 
-def test_production_requires_encryption_key(monkeypatch):
-    """Production mode (non-DEBUG) requires CREDENTIAL_ENCRYPTION_KEY."""
-    monkeypatch.setenv("LOG_LEVEL", "INFO")
+def test_requires_encryption_key_by_default(monkeypatch):
+    """Without opt-out, CREDENTIAL_ENCRYPTION_KEY is required."""
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_OPTIONAL", "false")
     with pytest.raises(ValidationError, match="CREDENTIAL_ENCRYPTION_KEY"):
         Settings(
             _env_file=None,
             postgres_password="test",
             evolution_api_key="test",
-            log_level="INFO",
             credential_encryption_key="",
+            credential_encryption_optional=False,
         )
 
 
-def test_debug_allows_empty_encryption_key(monkeypatch):
-    """Development mode (DEBUG) allows empty encryption key."""
+def test_debug_still_requires_encryption_key(monkeypatch):
+    """LOG_LEVEL=DEBUG no longer bypasses encryption requirement."""
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_OPTIONAL", "false")
+    with pytest.raises(ValidationError, match="CREDENTIAL_ENCRYPTION_KEY"):
+        Settings(
+            _env_file=None,
+            postgres_password="test",
+            evolution_api_key="test",
+            log_level="DEBUG",
+            credential_encryption_key="",
+            credential_encryption_optional=False,
+        )
+
+
+def test_encryption_optional_allows_empty_key(monkeypatch):
+    """CREDENTIAL_ENCRYPTION_OPTIONAL=true allows empty encryption key."""
     settings = Settings(
         _env_file=None,
         postgres_password="test",
         evolution_api_key="test",
-        log_level="DEBUG",
+        credential_encryption_optional=True,
         credential_encryption_key="",
     )
     assert settings.credential_encryption_key == ""

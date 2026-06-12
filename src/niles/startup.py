@@ -148,7 +148,8 @@ def setup_encryptor(settings: Settings) -> FieldEncryptor | None:
 
     logger.warning(
         "CREDENTIAL_ENCRYPTION_KEY not set — credentials stored in plaintext. "
-        'Generate with: python -c "from niles.crypto import FieldEncryptor; '
+        "This is only allowed because CREDENTIAL_ENCRYPTION_OPTIONAL=true. "
+        'Generate a key: python -c "from niles.crypto import FieldEncryptor; '
         'print(FieldEncryptor.generate_key())"'
     )
     return None
