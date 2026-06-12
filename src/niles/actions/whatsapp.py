@@ -8,6 +8,7 @@ import httpx
 
 from ..actions.contacts import normalize_phone
 from ..config import Settings
+from ..errors import sanitize_error
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class WhatsAppAction:
             return result
         except (httpx.HTTPError, ValueError) as e:
             logger.error("Failed to send message to %s: %s", to, e)
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     _MAX_AGE_DAYS = 30
 
@@ -201,7 +202,7 @@ class WhatsAppAction:
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.error("Failed to create instance %s: %s", instance_name, e)
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     async def get_connection_state(self, instance_name: str) -> str:
         """
@@ -242,7 +243,7 @@ class WhatsAppAction:
                 instance_name,
                 e,
             )
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     async def get_owner_jid(self, instance_name: str) -> str | None:
         """Get the ownerJid (phone@s.whatsapp.net) for a connected instance."""
@@ -279,7 +280,7 @@ class WhatsAppAction:
                 instance_name,
                 e,
             )
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     async def delete_instance(self, instance_name: str) -> dict:
         """Delete an Evolution API instance."""
@@ -295,4 +296,4 @@ class WhatsAppAction:
                 instance_name,
                 e,
             )
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}

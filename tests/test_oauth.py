@@ -20,6 +20,7 @@ def _make_settings(**overrides):
         google_client_id="cid",
         google_client_secret="csec",  # pragma: allowlist secret
         google_allowed_emails="allowed@test.com",
+        base_url="https://niles.example.ts.net",
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -85,6 +86,16 @@ class TestCallbackGoogleErrors:
         request = _make_request(cookies={})
         resp = await callback_google(request, code="abc", state="some-state", error="")
         assert "OAuth-State" in resp.context["error"]
+
+    async def test_callback_without_base_url_returns_error(self):
+        """OAuth callback without BASE_URL shows config error."""
+        request = _make_request(
+            cookies={"oauth_state": "valid-state"},
+            settings=_make_settings(base_url=""),
+        )
+        resp = await callback_google(request, code="code", state="valid-state", error="")
+        assert resp.status_code == 200
+        assert "BASE_URL" in resp.context["error"]
 
 
 class TestCallbackGoogleTokenExchange:
