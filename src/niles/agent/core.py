@@ -1,5 +1,6 @@
 """Niles agent core – event processing with LLM tool-call loop."""
 
+import asyncio
 import json
 import logging
 import time
@@ -75,6 +76,7 @@ class NilesAgent:
         http_client: httpx.AsyncClient | None = None,
     ):
         self.notion_retriever: object | None = None
+        self._llm_lock = asyncio.Lock()
         self.llm = AsyncOpenAI(
             base_url=config.llm_base_url,
             api_key="not-needed",
@@ -96,6 +98,18 @@ class NilesAgent:
             signal_store=signal_store,
             http_client=http_client,
         )
+
+    async def update_llm(self, *, base_url: str | None = None, model: str | None = None) -> None:
+        """Atomically update LLM client and/or model under lock.
+
+        Prevents concurrent LLM calls from seeing inconsistent state
+        when settings are hot-reloaded.
+        """
+        async with self._llm_lock:
+            if base_url is not None:
+                self.llm = AsyncOpenAI(base_url=base_url, api_key="not-needed")
+            if model is not None:
+                self.model = model
 
     def __getattr__(self, name: str):
         """Delegate attribute access to ContextBuilder for backward compat.
