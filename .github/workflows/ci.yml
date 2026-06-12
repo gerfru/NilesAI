@@ -129,9 +129,9 @@ jobs:
 
       - name: Run tests with coverage
         env:
-          EVOLUTION_POSTGRES_PASSWORD: test-password
-          EVOLUTION_API_KEY: test-api-key
-          NILES_API_KEY: test-niles-key
+          EVOLUTION_POSTGRES_PASSWORD: test-password  # pragma: allowlist secret
+          EVOLUTION_API_KEY: test-api-key  # pragma: allowlist secret
+          NILES_API_KEY: test-niles-key  # pragma: allowlist secret
           LOG_LEVEL: DEBUG
         run: uv run --extra dev pytest --cov --cov-report=term-missing --cov-report=xml
 
