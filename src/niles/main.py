@@ -384,17 +384,8 @@ async def metrics(_key: str = Depends(require_api_key)):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint with DB pool status."""
-    pool = app.state.pool
-    return {
-        "status": "ok",
-        "db_pool": {
-            "size": pool.get_size(),
-            "free": pool.get_idle_size(),
-            "min": pool.get_min_size(),
-            "max": pool.get_max_size(),
-        },
-    }
+    """Liveness probe. Pool stats are available via /metrics (API-key protected)."""
+    return {"status": "ok"}
 
 
 @app.get("/ready")
