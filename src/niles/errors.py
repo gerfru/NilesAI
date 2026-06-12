@@ -1,8 +1,17 @@
 """Unified JSON error response helper per CLAUDE.md spec."""
 
+import re
 from typing import Any
 
 from fastapi.responses import JSONResponse
+
+_URL_PATTERN = re.compile(r"https?://[^\s,)]+")
+
+
+def sanitize_error(exc: Exception) -> str:
+    """Return a safe error string with internal URLs stripped."""
+    msg = str(exc)
+    return _URL_PATTERN.sub("<internal-service>", msg)
 
 
 def error_response(

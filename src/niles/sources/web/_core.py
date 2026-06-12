@@ -284,17 +284,15 @@ def _google_configured(request: Request) -> bool:
 
 
 def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> str:
-    """Build Google OAuth redirect URI. Uses base_url if configured, else request headers."""
+    """Build Google OAuth redirect URI from configured base_url.
+
+    Raises ValueError if base_url is not configured — OAuth requires a
+    stable redirect URI and trusting X-Forwarded-Host is unsafe.
+    """
     base_url = request.app.state.settings.base_url
-    if base_url:
-        return f"{base_url.rstrip('/')}{path}"
-    # Fallback: derive from request headers (less secure behind reverse proxy)
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get(
-        "x-forwarded-host",
-        request.headers.get("host", "localhost"),
-    )
-    return f"{scheme}://{host}{path}"  # nosemgrep: directly-returned-format-string
+    if not base_url:
+        raise ValueError("BASE_URL must be configured for OAuth")
+    return f"{base_url.rstrip('/')}{path}"
 
 
 def _safe_settings_dict(settings) -> dict:
