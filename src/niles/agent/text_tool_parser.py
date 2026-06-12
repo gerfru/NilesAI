@@ -79,7 +79,7 @@ def parse_json_tool_call(
         try:
             from json_repair import repair_json
 
-            obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]
+            obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]  # repair_json returns str | Any
         except Exception:
             return None
 
@@ -139,7 +139,7 @@ def is_rejected_tool_call(text: str) -> str | None:
         try:
             from json_repair import repair_json
 
-            obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]
+            obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]  # repair_json returns str | Any
         except Exception:
             return None
 

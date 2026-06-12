@@ -13,6 +13,7 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import asyncpg
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -422,7 +423,7 @@ async def readiness():
 
     try:
         await pool.fetchval("SELECT 1")
-    except Exception as exc:
+    except asyncpg.PostgresError as exc:
         logger.debug("Readiness probe DB check failed: %s", exc)
         errors.append("db: unreachable")
 
@@ -430,7 +431,7 @@ async def readiness():
         version = await pool.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
         if version is None:
             errors.append("alembic: no version found")
-    except Exception as exc:
+    except asyncpg.PostgresError as exc:
         logger.debug("Readiness probe alembic check failed: %s", exc)
         errors.append("alembic: unreachable")
 
@@ -452,7 +453,7 @@ async def csp_report(request: Request) -> Response:
     """
     try:
         body = await request.json()
-    except Exception:
+    except ValueError, UnicodeDecodeError:
         return Response(status_code=204)
 
     report = body.get("csp-report", body)

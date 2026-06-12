@@ -22,7 +22,7 @@ router = APIRouter(prefix="/ui", tags=["web-ui"])
 
 def _state(request: Request) -> AppState:
     """Return typed app.state for mypy attribute resolution."""
-    return request.app.state  # type: ignore[return-value]
+    return request.app.state  # type: ignore[return-value]  # AppState protocol not recognized by mypy
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
@@ -45,7 +45,7 @@ _ASSET_VERSION = _asset_hash()
 class _NilesTemplates(Jinja2Templates):
     """Jinja2Templates with automatic CSP nonce injection."""
 
-    def TemplateResponse(self, request, name, context=None, **kwargs):  # type: ignore[override]
+    def TemplateResponse(self, request, name, context=None, **kwargs):  # type: ignore[override]  # Starlette TemplateResponse signature
         ctx = context or {}
         ctx.setdefault("csp_nonce", getattr(request.state, "csp_nonce", ""))
         ctx.setdefault("v", _ASSET_VERSION)

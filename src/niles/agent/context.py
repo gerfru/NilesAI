@@ -182,7 +182,7 @@ class ContextBuilder:
             self._source_names_ts[user_id] = now
             # Evict oldest entries if cache grows too large
             if len(self._source_names_ts) > self._SOURCE_CACHE_MAX_USERS:
-                oldest = min(self._source_names_ts, key=self._source_names_ts.get)  # type: ignore[arg-type]
+                oldest = min(self._source_names_ts, key=self._source_names_ts.get)  # type: ignore[arg-type]  # min() key: dict.get may return None
                 self._source_names_cache.pop(oldest, None)
                 self._source_names_ts.pop(oldest, None)
         except Exception:

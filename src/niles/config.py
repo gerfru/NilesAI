@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""  # e.g. +436601234567
     feature_signal_send_others: bool = False
+    feature_signal: bool = False
 
     # Trusted reverse proxy CIDR for X-Forwarded-For (e.g. "172.18.0.0/16")
     # Empty = disabled; rate limiter uses direct connection IP.
