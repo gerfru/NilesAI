@@ -336,6 +336,21 @@ async def setup_scheduler(app_state: Any, settings: Settings, stores: dict[str, 
         )
         logger.info("Weekly briefing scheduled Mon at %02d:%02d", hour, minute)
 
+    # Conversation history pruning (weekly, Sunday 04:00)
+    history = stores["history"]
+    scheduler.add_job(
+        history.prune,
+        "cron",
+        kwargs={"retention_days": settings.history_retention_days},
+        day_of_week="sun",
+        hour=4,
+        minute=0,
+        id="history_pruning",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+    logger.info("History pruning scheduled (Sun 04:00, retention=%d days)", settings.history_retention_days)
+
     scheduler.start()
 
     return {
@@ -363,7 +378,9 @@ async def setup_mcp_and_actions(
 
     http_clients = stores["http_clients"]
 
-    contacts = ContactsAction(pool, carddav_manager=stores["carddav_manager"])
+    contacts = ContactsAction(
+        pool, carddav_manager=stores["carddav_manager"], phone_country_code=settings.phone_country_code
+    )
     vikunja_setup = VikunjaSetupAction(
         stores["vikunja_store"],
         http_client=http_clients.general,

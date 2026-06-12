@@ -11,15 +11,15 @@ from niles.types import ContactInfo
 logger = logging.getLogger(__name__)
 
 
-def normalize_phone(phone: str) -> str:
+def normalize_phone(phone: str, country_code: str = "43") -> str:
     """
     Normalize phone number for WhatsApp.
 
     - Remove +, spaces, dashes, parentheses, dots
     - Remove leading 00
-    - Convert leading 0 to 43 (Austria)
+    - Convert leading 0 to country_code (default: 43/Austria)
 
-    Examples:
+    Examples (country_code="43"):
         "+43 660 587 5573" -> "436605875573"
         "0660 587 5573"    -> "436605875573"
         "00436605875573"   -> "436605875573"
@@ -29,7 +29,7 @@ def normalize_phone(phone: str) -> str:
     if phone.startswith("00"):
         phone = phone[2:]
     if phone.startswith("0"):
-        phone = "43" + phone[1:]
+        phone = country_code + phone[1:]
     return phone
 
 
@@ -41,9 +41,11 @@ class ContactsAction:
         pool: asyncpg.Pool,
         *,
         carddav_manager=None,
+        phone_country_code: str = "43",
     ):
         self.pool = pool
         self.carddav_manager = carddav_manager
+        self.phone_country_code = phone_country_code
 
     async def get_sync_status(self, user_id: int | None = None) -> dict:
         """Return contact count and last sync timestamp, optionally per user."""
@@ -226,7 +228,8 @@ class ContactsAction:
             contact_id,
         )
 
-        phones = [{"type": p["type"], "number": normalize_phone(p["number"])} for p in phone_rows]
+        cc = self.phone_country_code
+        phones = [{"type": p["type"], "number": normalize_phone(p["number"], cc)} for p in phone_rows]
 
         # Preferred phone: first from sorted list (mobile > home > work > other)
         preferred = phones[0]["number"] if phones else None
@@ -234,7 +237,7 @@ class ContactsAction:
         # Fallback to legacy columns if contact_phones is empty (pre-migration)
         if not phones:
             raw_phone = row["phone_mobile"] or row["phone_primary"] or row["phone_work"]
-            preferred = normalize_phone(raw_phone) if raw_phone else None
+            preferred = normalize_phone(raw_phone, cc) if raw_phone else None
 
         return cast(
             ContactInfo,
