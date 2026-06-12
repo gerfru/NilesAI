@@ -50,13 +50,13 @@ class CalendarSourceManager:
         self,
         pool: asyncpg.Pool,
         settings,
-        client: httpx.AsyncClient | None = None,
+        client: httpx.AsyncClient,
         *,
         encryptor: FieldEncryptor | None = None,
     ):
         self.pool = pool
         self.settings = settings
-        self._client = client or httpx.AsyncClient(timeout=10)
+        self._client = client
         self._enc = encryptor
 
     async def initialize(self) -> None:

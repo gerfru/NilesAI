@@ -58,12 +58,13 @@ class BriefingGenerator:
     def __init__(
         self,
         pool: asyncpg.Pool,
+        *,
+        weather_client: httpx.AsyncClient,
+        vikunja_client: httpx.AsyncClient,
         timezone: str = "Europe/Vienna",
         vikunja_store=None,
         weather_latitude: str = "",
         weather_longitude: str = "",
-        weather_client: httpx.AsyncClient | None = None,
-        vikunja_client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.tz = ZoneInfo(timezone)
@@ -71,8 +72,8 @@ class BriefingGenerator:
         self.vikunja_store = vikunja_store
         self.weather_latitude = weather_latitude
         self.weather_longitude = weather_longitude
-        self._weather_client = weather_client or httpx.AsyncClient(timeout=10)
-        self._vikunja_client = vikunja_client or httpx.AsyncClient(timeout=10)
+        self._weather_client = weather_client
+        self._vikunja_client = vikunja_client
 
     # -----------------------------------------------------------------
     # Data queries
