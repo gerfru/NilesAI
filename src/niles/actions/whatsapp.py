@@ -64,6 +64,7 @@ class WhatsAppAction:
     def __init__(self, config: Settings, client: httpx.AsyncClient | None = None):
         self.base_url = config.evolution_api_url
         self.instance = config.evolution_instance
+        self._phone_country_code = config.phone_country_code
         self._client = client or httpx.AsyncClient(headers={"apikey": config.evolution_api_key}, timeout=30)
 
     async def send_message(
@@ -83,7 +84,7 @@ class WhatsAppAction:
         """
         # Normalize and ensure JID format if plain number
         if "@" not in to:
-            to = f"{normalize_phone(to)}@s.whatsapp.net"
+            to = f"{normalize_phone(to, self._phone_country_code)}@s.whatsapp.net"
 
         inst = instance or self.instance
         url = f"{self.base_url}/message/sendText/{inst}"

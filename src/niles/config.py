@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Timezone (used by CalDAV sync and calendar actions)
     timezone: str = "Europe/Vienna"
 
+    # Phone normalization: default country code (without +) for local numbers
+    phone_country_code: str = "43"  # Austria
+
     # Weather (configured via Settings UI, stored as strings for env-var pass-through)
     weather_latitude: str = ""
     weather_longitude: str = ""
