@@ -61,3 +61,16 @@ class ConversationHistory:
         # Result is like "DELETE 5"
         count = int(result.split()[-1])
         return count
+
+    async def prune(self, retention_days: int = 90) -> int:
+        """Delete conversation messages older than retention_days.
+
+        Returns the number of deleted rows.
+        """
+        result = await self.pool.execute(
+            "DELETE FROM conversations WHERE created_at < NOW() - $1 * INTERVAL '1 day'",
+            retention_days,
+        )
+        count = int(result.split()[-1])
+        logger.info("Pruned %d conversation messages older than %d days", count, retention_days)
+        return count

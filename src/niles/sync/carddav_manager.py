@@ -32,11 +32,11 @@ class CardDAVSourceManager:
         pool: asyncpg.Pool,
         *,
         encryptor: FieldEncryptor | None = None,
-        client: httpx.AsyncClient | None = None,
+        client: httpx.AsyncClient,
     ):
         self.pool = pool
         self._enc = encryptor
-        self._client = client or httpx.AsyncClient(timeout=30)
+        self._client = client
 
     async def initialize(self) -> None:
         """Run post-migration business logic."""
