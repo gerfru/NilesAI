@@ -8,7 +8,7 @@ import re
 import secrets
 import sys
 import time
-from collections import defaultdict
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .logging_config import generate_request_id, setup_logging
@@ -48,6 +48,17 @@ setup_logging()
 async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info("Niles Core starting up...")
+
+    # Guard: in-memory state (rate limiter, pending confirmations, echo guard)
+    # requires a single worker process. Fail fast if misconfigured.
+    workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    if workers > 1:
+        logger.error(
+            "WEB_CONCURRENCY=%d but Niles requires a single worker (in-memory state). "
+            "Remove WEB_CONCURRENCY or set it to 1.",
+            workers,
+        )
+        sys.exit(1)
 
     try:
         settings = Settings()
@@ -184,21 +195,17 @@ async def lifespan(app: FastAPI):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple in-memory rate limiter per client IP."""
+    """Simple in-memory rate limiter per client IP.
+
+    Uses OrderedDict so eviction is O(1) via popitem(last=False).
+    """
 
     MAX_TRACKED_IPS = 10_000
 
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.rpm = requests_per_minute
-        self._hits: dict[str, list[float]] = defaultdict(list)
-
-    def _evict_oldest(self) -> None:
-        """Remove the oldest IP entry when the tracking table is full."""
-        if len(self._hits) <= self.MAX_TRACKED_IPS:
-            return
-        oldest_ip = min(self._hits, key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0)
-        del self._hits[oldest_ip]
+        self._hits: OrderedDict[str, list[float]] = OrderedDict()
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and static files
@@ -210,12 +217,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window = now - 60.0
 
         # Prune old entries and append current
-        hits = self._hits[client_ip]
+        hits = self._hits.get(client_ip, [])
         self._hits[client_ip] = [t for t in hits if t > window]
         self._hits[client_ip].append(now)
+        self._hits.move_to_end(client_ip)
 
-        # Evict oldest IP if tracking table grows too large
-        self._evict_oldest()
+        # Evict least-recently-seen IP if tracking table grows too large
+        while len(self._hits) > self.MAX_TRACKED_IPS:
+            self._hits.popitem(last=False)
 
         if len(self._hits[client_ip]) > self.rpm:
             logger.warning("Rate limit exceeded for %s", client_ip)
@@ -384,17 +393,8 @@ async def metrics(_key: str = Depends(require_api_key)):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint with DB pool status."""
-    pool = app.state.pool
-    return {
-        "status": "ok",
-        "db_pool": {
-            "size": pool.get_size(),
-            "free": pool.get_idle_size(),
-            "min": pool.get_min_size(),
-            "max": pool.get_max_size(),
-        },
-    }
+    """Liveness probe. Pool stats are available via /metrics (API-key protected)."""
+    return {"status": "ok"}
 
 
 @app.get("/ready")
@@ -449,16 +449,18 @@ async def csp_report(request: Request) -> Response:
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=2000)
+    user_id: int | None = None
 
 
 @app.post("/chat")
 async def chat(request: ChatRequest, _key: str = Depends(require_api_key)):
     """Direct chat endpoint for testing (no WhatsApp)."""
+    chat_id = f"web-user-{request.user_id}" if request.user_id else "api"
     agent = app.state.agent
     event = {
         "type": "chat",
-        "from": "api",
+        "from": chat_id,
         "content": request.message,
         "metadata": {},
     }

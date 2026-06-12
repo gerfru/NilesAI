@@ -29,7 +29,7 @@ def pool():
 
 @pytest.fixture
 def manager(pool, settings):
-    return CalendarSourceManager(pool, settings)
+    return CalendarSourceManager(pool, settings, client=AsyncMock())
 
 
 class TestSplitVevents:
@@ -446,7 +446,7 @@ class TestMigrateEnvSource:
             caldav_user="",
             caldav_password="",
         )
-        mgr = CalendarSourceManager(pool, settings)
+        mgr = CalendarSourceManager(pool, settings, client=AsyncMock())
         pool.fetchval.return_value = 0
 
         await mgr._migrate_env_source()

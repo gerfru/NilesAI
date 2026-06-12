@@ -30,7 +30,7 @@ class CardDAVSync:
         auth: tuple[str, str],
         user_id: int | None = None,
         source_id: int | None = None,
-        client: httpx.AsyncClient | None = None,
+        client: httpx.AsyncClient,
     ):
         self.pool = pool
         self.carddav_url = carddav_url
@@ -40,7 +40,7 @@ class CardDAVSync:
         # Base URL for fetching individual vCards (scheme + host)
         match = re.match(r"https?://[^/]+", carddav_url)
         self._base_url = match.group(0) if match else ""
-        self._client = client or httpx.AsyncClient(timeout=30)
+        self._client = client
 
     async def test_connection(self) -> tuple[bool, str]:
         """Test CardDAV connection with current credentials. Returns (ok, message)."""

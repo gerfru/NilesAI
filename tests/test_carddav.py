@@ -70,6 +70,7 @@ def sync(pool):
         pool,
         carddav_url="https://dav.example.com/carddav/32",
         auth=("testuser", "testpass"),
+        client=AsyncMock(),
     )
 
 
