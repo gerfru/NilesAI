@@ -68,7 +68,7 @@ class TestCalendarManagerSSRF:
         pool = AsyncMock()
         settings = AsyncMock()
         settings.caldav_url = ""
-        mgr = CalendarSourceManager(pool, settings)
+        mgr = CalendarSourceManager(pool, settings, client=AsyncMock())
 
         with pytest.raises(ValueError, match="Interne Adressen"):
             await mgr.add_source(
@@ -82,7 +82,7 @@ class TestCalendarManagerSSRF:
         pool = AsyncMock()
         settings = AsyncMock()
         settings.caldav_url = ""
-        mgr = CalendarSourceManager(pool, settings)
+        mgr = CalendarSourceManager(pool, settings, client=AsyncMock())
 
         with pytest.raises(ValueError, match="Interne Adressen"):
             await mgr.add_source(
@@ -96,7 +96,7 @@ class TestCalendarManagerSSRF:
         pool = AsyncMock()
         settings = AsyncMock()
         settings.caldav_url = ""
-        mgr = CalendarSourceManager(pool, settings)
+        mgr = CalendarSourceManager(pool, settings, client=AsyncMock())
 
         with pytest.raises(ValueError, match="HTTPS"):
             await mgr.add_source(
@@ -112,7 +112,7 @@ class TestCardDAVManagerSSRF:
         from niles.sync.carddav_manager import CardDAVSourceManager
 
         pool = AsyncMock()
-        mgr = CardDAVSourceManager(pool)
+        mgr = CardDAVSourceManager(pool, client=AsyncMock())
 
         with patch("niles.sync.carddav_manager.is_private_host", return_value=True):
             with pytest.raises(ValueError, match="Interne Adressen"):
@@ -123,7 +123,7 @@ class TestCardDAVManagerSSRF:
 
         pool = AsyncMock()
         pool.fetchrow = AsyncMock(return_value={"id": 1, "url": "https://dav.example.com"})
-        mgr = CardDAVSourceManager(pool)
+        mgr = CardDAVSourceManager(pool, client=AsyncMock())
 
         with patch("niles.sync.carddav_manager.is_private_host", return_value=False):
             result = await mgr.add_source("https://dav.example.com/contacts", "user", "pass")
