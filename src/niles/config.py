@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Evolution API (WhatsApp)
     evolution_api_url: str = "http://evolution_api:8080"
-    evolution_api_key: str  # Via EVOLUTION_API_KEY
+    evolution_api_key: str = Field(min_length=1, validation_alias="EVOLUTION_API_KEY")
     evolution_instance: str = "niles-whatsapp"
 
     # Internal base URL for webhooks (Evolution API → Niles Core, Docker-internal)
@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""  # e.g. +4366012345678
     feature_signal_send_others: bool = False
+
+    # Trusted reverse proxy CIDR for X-Forwarded-For (e.g. "172.18.0.0/16")
+    # Empty = disabled; rate limiter uses direct connection IP.
+    trusted_proxy: str = ""
 
     # Web Search (SearXNG)
     feature_search: bool = False

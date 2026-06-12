@@ -180,9 +180,8 @@ services:
     restart: unless-stopped
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
-      # Set SEARXNG_SECRET_KEY in .env for production (openssl rand -hex 32).
-      # Fallback is safe: SearXNG is only reachable inside the Docker network.
-      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-niles-local-only}
+      # Required: generate with `openssl rand -hex 32` and set in .env.
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:?SEARXNG_SECRET_KEY must be set (openssl rand -hex 32)}
     volumes:
       - searxng_data:/etc/searxng
       - ../config/searxng/settings.yml:/etc/searxng/settings.yml:ro
