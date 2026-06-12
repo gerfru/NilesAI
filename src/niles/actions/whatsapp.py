@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """WhatsApp message sending and instance management via Evolution API."""
 
 import logging

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Web Fetch MCP server — extracts clean text from URLs.
 
 Provides one tool:

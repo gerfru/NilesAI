@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion RAG search tool."""
 
 from . import ToolContext, register_tool

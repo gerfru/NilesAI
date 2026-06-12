@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """System prompt loading and building."""
 
 from __future__ import annotations

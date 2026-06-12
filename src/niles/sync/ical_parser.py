@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared iCalendar parsing utilities (RFC 5545).
 
 Used by both CalDAV sync and ICS subscription sync.

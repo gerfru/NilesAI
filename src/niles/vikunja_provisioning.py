@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Auto-provision Vikunja accounts for Niles users.
 
 On first login, registers a Vikunja user, obtains a JWT,

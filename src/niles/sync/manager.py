@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Calendar source manager – unified CRUD, sync, and .env migration."""
 
 from __future__ import annotations

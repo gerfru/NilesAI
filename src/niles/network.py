@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared network security utilities (SSRF protection).
 
 Extracted from mcp/fetch/server.py for reuse across the application.

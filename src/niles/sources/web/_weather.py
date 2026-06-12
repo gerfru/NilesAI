@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Weather location routes: search, set, remove."""
 
 import html as _html

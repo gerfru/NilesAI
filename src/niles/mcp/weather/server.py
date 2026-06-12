@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Weather MCP server using Open-Meteo API (ECMWF IFS data).
 
 Provides two tools:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Signal WebSocket listener for signal-cli-rest-api."""
 
 import asyncio

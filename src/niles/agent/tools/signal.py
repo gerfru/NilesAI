@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Signal tools: send_signal and get_signal_messages."""
 
 import logging

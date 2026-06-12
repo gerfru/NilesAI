@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Per-user Vikunja credential management backed by PostgreSQL."""
 
 from __future__ import annotations

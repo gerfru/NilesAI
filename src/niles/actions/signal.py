@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Signal message sending and status via signal-cli-rest-api."""
 
 import logging

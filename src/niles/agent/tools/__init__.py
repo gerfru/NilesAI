@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Tool handler registry for NilesAgent.
 
 Each handler module registers its functions via @register_tool.

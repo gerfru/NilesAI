@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Application-layer field encryption for sensitive database columns.
 
 Uses Fernet (AES-128-CBC + HMAC-SHA256) from the ``cryptography`` package.

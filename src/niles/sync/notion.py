@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion workspace sync — fetches pages and converts to plaintext."""
 
 import hashlib

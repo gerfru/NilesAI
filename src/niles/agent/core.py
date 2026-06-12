@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Niles agent core – event processing with LLM tool-call loop."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """WhatsApp instance setup and teardown for the Settings UI."""
 
 import logging

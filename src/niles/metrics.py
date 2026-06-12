@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Prometheus metrics for Niles AI."""
 
 from prometheus_client import Counter, Gauge, Histogram

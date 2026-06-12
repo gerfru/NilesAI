@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared message transcript formatting for WhatsApp and Signal handlers."""
 
 from __future__ import annotations

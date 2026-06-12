@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Web GUI shared infrastructure — router, templates, auth guards, helpers.
 
 UI language: German (de) -- intentional design choice for the target user.

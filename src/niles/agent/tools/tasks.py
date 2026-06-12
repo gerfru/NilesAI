@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Vikunja task tools: list_tasks, create_task, complete_task."""
 
 from . import ToolContext, register_tool

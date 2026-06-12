@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared Ollama embedding client with persistent HTTP connection."""
 
 import logging

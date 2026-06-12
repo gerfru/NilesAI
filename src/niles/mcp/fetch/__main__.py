@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Entry point for ``python -m niles.mcp.fetch``."""
 
 from .server import mcp

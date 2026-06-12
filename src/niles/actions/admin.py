@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Admin user management: create, password reset, deactivate."""
 
 from __future__ import annotations

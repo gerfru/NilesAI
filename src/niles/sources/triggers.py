@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared trigger-phrase detection for messaging sources (WhatsApp, Signal)."""
 
 TRIGGER_PHRASES = ("hey niles", "hi niles", "hallo niles", "niles")
