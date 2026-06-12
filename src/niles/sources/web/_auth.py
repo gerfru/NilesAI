@@ -152,7 +152,18 @@ async def login_google(request: Request):
         return RedirectResponse(url="/ui/login", status_code=303)
 
     state = secrets.token_urlsafe(32)
-    redirect_uri = _build_redirect_uri(request)
+    try:
+        redirect_uri = _build_redirect_uri(request)
+    except ValueError:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "BASE_URL muss konfiguriert sein fuer Google OAuth.",
+                "google_configured": False,
+                "password_users_exist": True,
+            },
+        )
     settings = request.app.state.settings
 
     params = {
@@ -217,7 +228,18 @@ async def callback_google(
         )
 
     settings = request.app.state.settings
-    redirect_uri = _build_redirect_uri(request)
+    try:
+        redirect_uri = _build_redirect_uri(request)
+    except ValueError:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "BASE_URL muss konfiguriert sein fuer Google OAuth.",
+                "google_configured": False,
+                "password_users_exist": True,
+            },
+        )
 
     try:
         google_client = request.app.state.http_clients.google_oauth

@@ -82,6 +82,8 @@ EVOLUTION_API_KEY=a-secure-api-key
 
 # Fernet key for column-level credential encryption (REQUIRED in production)
 # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# WARNING: Changing this key makes all existing encrypted credentials unreadable.
+#          There is no key rotation support yet — back up the old key before replacing.
 CREDENTIAL_ENCRYPTION_KEY=<generated-key>
 ```
 
