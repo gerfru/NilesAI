@@ -3,6 +3,7 @@
   "extends": ["config:recommended"],
   "pinDigests": true,
   "platformAutomerge": true,
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
       "description": "Python dev-dep patch-Updates: sicher, automatisch mergen",
