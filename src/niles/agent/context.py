@@ -82,6 +82,14 @@ class ContextBuilder:
         # Generic pending confirmations: chat_id → {action, params, display, expires_at}
         self._pending_confirmations: dict[str, dict] = {}
 
+    def cleanup_expired_pending(self) -> None:
+        """Remove expired entries from pending confirmations and phone choices."""
+        now = time.monotonic()
+        for store in (self._pending_phone_choices, self._pending_confirmations):
+            expired = [k for k, v in store.items() if now > v.get("expires_at", float("inf"))]
+            for k in expired:
+                del store[k]
+
     async def resolve_user_id(self, chat_id: str) -> int | None:
         """Extract user_id from chat_id, resolving phone lookups as needed.
 
@@ -110,7 +118,9 @@ class ContextBuilder:
                 return session["instance_name"]
         return None
 
-    async def resolve_contact_phone(self, name_or_number: str) -> tuple[str | None, dict | None]:
+    async def resolve_contact_phone(
+        self, name_or_number: str, *, user_id: int | None = None
+    ) -> tuple[str | None, dict | None]:
         """Resolve a contact name or phone number to a normalized phone string.
 
         Returns (phone, None) on success or (None, error_dict) on failure.
@@ -119,9 +129,9 @@ class ContextBuilder:
         raw = name_or_number.strip().lstrip("@")
         if raw.replace("+", "").replace(" ", "").isdigit():
             clean = raw.replace(" ", "").lstrip("+")
-            return normalize_phone(clean), None
+            return normalize_phone(clean, self.config.phone_country_code), None
         # Name lookup
-        contact = await self.contacts.find_by_name(raw)
+        contact = await self.contacts.find_by_name(raw, user_id=user_id)
         if not contact or not contact.get("phone"):
             return None, {"error": f"Kontakt '{name_or_number}' nicht gefunden"}
         return contact["phone"], None
@@ -291,6 +301,9 @@ class ContextBuilder:
 
         Returns (chat_id, messages, filtered_tools).
         """
+        # Lazy cleanup of expired pending state on each request
+        self.cleanup_expired_pending()
+
         chat_id = event["from"]
         notion_search = event.get("metadata", {}).get("notion_search", False)
 

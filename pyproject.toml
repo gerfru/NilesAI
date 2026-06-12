@@ -73,6 +73,9 @@ dependencies = [
 
     # Error tracking (opt-in via SENTRY_DSN)
     "sentry-sdk[fastapi]>=2.0.0",
+
+    # Safe XML parsing (XXE protection for CalDAV responses)
+    "defusedxml>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -122,8 +125,7 @@ ignore = ["E501"]  # Line length handled by ruff format
 "src/niles/sources/web/_settings.py" = ["S101"]
 "src/niles/sources/web/_vikunja.py" = ["S101"]
 "src/niles/sources/web/_whatsapp.py" = ["S101"]
-# CalDAV: XML parsing from authenticated internal CalDAV servers (not untrusted)
-"src/niles/sync/caldav.py" = ["S314"]
+# CalDAV: uses defusedxml (S314 no longer needed)
 # Dynamic SQL uses parameterized queries (where_clause built from internal logic, not user input)
 "src/niles/actions/contacts.py" = ["S608"]
 
