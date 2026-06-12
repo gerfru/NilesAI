@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .logging_config import generate_request_id, setup_logging
@@ -449,16 +449,18 @@ async def csp_report(request: Request) -> Response:
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=2000)
+    user_id: int | None = None
 
 
 @app.post("/chat")
 async def chat(request: ChatRequest, _key: str = Depends(require_api_key)):
     """Direct chat endpoint for testing (no WhatsApp)."""
+    chat_id = f"web-user-{request.user_id}" if request.user_id else "api"
     agent = app.state.agent
     event = {
         "type": "chat",
-        "from": "api",
+        "from": chat_id,
         "content": request.message,
         "metadata": {},
     }
