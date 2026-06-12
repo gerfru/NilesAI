@@ -7,6 +7,7 @@ import asyncpg
 import httpx
 
 from niles.http_retry import retry_http
+from niles.network import is_private_host
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,15 @@ class CardDAVSync:
     async def _fetch_vcard(self, url: str) -> str | None:
         """Fetch a single vCard by URL."""
         full_url = self._base_url + url if not url.startswith("http") else url
+
+        try:
+            hostname = full_url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+        except IndexError:
+            logger.warning("SSRF blocked in _fetch_vcard: malformed URL %s", full_url)
+            return None
+        if is_private_host(hostname):
+            logger.warning("SSRF blocked in _fetch_vcard: private host %s", hostname)
+            return None
 
         response = await self._client.get(
             full_url,
