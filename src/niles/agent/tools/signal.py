@@ -15,7 +15,7 @@ async def handle_send_signal(args: dict, chat_id: str, ctx: ToolContext) -> dict
     text = args["text"]
 
     # 1. Contact resolution (if name instead of number)
-    phone, err = await ctx.resolve_contact_phone(to)
+    phone, err = await ctx.resolve_contact_phone(to, user_id=ctx.user_id)
     if err:
         return err
     resolved_number = f"+{phone}"
@@ -62,7 +62,7 @@ async def handle_get_signal_messages(args: dict, chat_id: str, ctx: ToolContext)
     if not contact_arg:
         return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
 
-    phone, err = await ctx.resolve_contact_phone(contact_arg)
+    phone, err = await ctx.resolve_contact_phone(contact_arg, user_id=ctx.user_id)
     if err:
         return err
     phone = f"+{phone}"
