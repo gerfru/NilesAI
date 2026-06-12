@@ -37,8 +37,8 @@ fi
 if ! docker network inspect proxy >/dev/null 2>&1; then
     echo "Error: 'proxy' Docker network not found!"
     echo ""
-    echo "Start homelab-gateway first:"
-    echo "  cd ~/Documents/homelab-gateway && make up"
+    echo "Start homelab-gateway first (see docs/Deployment.md):"
+    echo "  cd <path-to-homelab-gateway> && make up"
     echo ""
     exit 1
 fi
