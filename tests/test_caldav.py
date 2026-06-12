@@ -108,6 +108,7 @@ def sync(pool):
         caldav_url="https://dav.example.com/caldav/123/",
         auth=httpx.BasicAuth("testuser", "testpass"),
         timezone="Europe/Vienna",
+        client=AsyncMock(),
     )
 
 
@@ -117,6 +118,7 @@ def _make_root_sync(pool, caldav_calendars=""):
         caldav_url="https://dav.example.com/caldav/",
         auth=httpx.BasicAuth("testuser", "testpass"),
         timezone="Europe/Vienna",
+        client=AsyncMock(),
         caldav_calendars=caldav_calendars,
     )
 
@@ -214,6 +216,7 @@ class TestUpsertEvent:
             caldav_url="https://dav.example.com/caldav/",
             auth=httpx.BasicAuth("u", "p"),
             timezone="Europe/Vienna",
+            client=AsyncMock(),
             source_id=42,
         )
         event = {
