@@ -461,6 +461,10 @@ Ask in chat: "What's on my todo list?" -- Niles calls `list_tasks` with the user
 
 The nav bar shows a "Vikunja" link when `VIKUNJA_PUBLIC_URL` is set. Users can manage tasks directly in the Vikunja web UI using the same credentials that Niles auto-provisioned.
 
+### Known Limitations
+
+**Vikunja runs as root:** The official Vikunja Docker image requires root (tracked upstream in [go-vikunja/vikunja#2205](https://github.com/go-vikunja/vikunja/issues/2205)). The `docker-compose.yml` applies mitigations: `read_only: true`, `no-new-privileges: true`, and isolated `tmpfs` mounts for writable paths.
+
 ---
 
 ## 10. Briefing (Daily/Weekly)
