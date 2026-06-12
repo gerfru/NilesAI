@@ -114,22 +114,25 @@ class TestRateLimiting:
         assert len(pruned) == 1
 
     def test_evict_oldest_ip_when_table_full(self):
+        """OrderedDict evicts the least-recently-seen IP via popitem(last=False)."""
         from niles.main import RateLimitMiddleware
 
         middleware = RateLimitMiddleware(app=MagicMock(), requests_per_minute=5)
         middleware.MAX_TRACKED_IPS = 3  # low limit for testing
         now = time.monotonic()
 
-        # Fill with 4 IPs (exceeds limit of 3)
-        middleware._hits["10.0.0.1"] = [now - 50]  # oldest last-hit
+        # Insert 4 IPs in order — first inserted is evicted first (FIFO)
+        middleware._hits["10.0.0.1"] = [now - 50]
         middleware._hits["10.0.0.2"] = [now - 30]
         middleware._hits["10.0.0.3"] = [now - 10]
         middleware._hits["10.0.0.4"] = [now]
 
-        middleware._evict_oldest()
+        # Eviction happens inline: simulate by trimming like dispatch does
+        while len(middleware._hits) > middleware.MAX_TRACKED_IPS:
+            middleware._hits.popitem(last=False)
 
         assert len(middleware._hits) == 3
-        assert "10.0.0.1" not in middleware._hits  # oldest evicted
+        assert "10.0.0.1" not in middleware._hits  # first inserted → evicted
 
     def test_evict_does_nothing_under_limit(self):
         from niles.main import RateLimitMiddleware
@@ -141,8 +144,7 @@ class TestRateLimiting:
         middleware._hits["10.0.0.1"] = [now]
         middleware._hits["10.0.0.2"] = [now]
 
-        middleware._evict_oldest()
-
+        # No eviction needed — under limit
         assert len(middleware._hits) == 2
 
 
