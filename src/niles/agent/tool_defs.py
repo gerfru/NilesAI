@@ -30,7 +30,7 @@ TOOLS = [
                 "properties": {
                     "to": {
                         "type": "string",
-                        "description": "Telefonnummer (z.B. '436601234567') oder Kontaktname",
+                        "description": "Telefonnummer (z.B. '435000000000') oder Kontaktname",
                     },
                     "text": {
                         "type": "string",
@@ -79,7 +79,7 @@ TOOLS = [
                 "properties": {
                     "to": {
                         "type": "string",
-                        "description": "Telefonnummer (z.B. '+436601234567') oder Kontaktname",
+                        "description": "Telefonnummer (z.B. '+435000000000') oder Kontaktname",
                     },
                     "text": {
                         "type": "string",

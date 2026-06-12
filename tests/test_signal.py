@@ -25,7 +25,7 @@ class TestSignalAction:
             postgres_password="test",
             evolution_api_key="test",
             signal_api_url="http://signal_api:8080",
-            signal_phone_number="+436601234567",
+            signal_phone_number="+435000000000",
         )
         return SignalAction(config)
 
@@ -64,7 +64,7 @@ class TestSignalAction:
     async def test_get_status_success(self):
         action = self._make_action()
         mock_response = MagicMock()
-        mock_response.json.return_value = {"number": "+436601234567"}
+        mock_response.json.return_value = {"number": "+435000000000"}
         mock_response.raise_for_status = MagicMock()
 
         action._client = AsyncMock()
@@ -72,7 +72,7 @@ class TestSignalAction:
 
         result = await action.get_status()
 
-        assert result == {"number": "+436601234567"}
+        assert result == {"number": "+435000000000"}
 
     @pytest.mark.asyncio
     async def test_get_qr_link_returns_png(self):
@@ -97,14 +97,14 @@ class TestSignalAction:
 
         action._client = AsyncMock()
         action._client.delete = AsyncMock(return_value=mock_response)
-        action.phone = "+436601234567"
+        action.phone = "+435000000000"
 
         result = await action.unlink()
 
         assert result is True
         action._client.delete.assert_called_once()
         call_args = action._client.delete.call_args
-        assert "+436601234567" in call_args[0][0]
+        assert "+435000000000" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_unlink_no_phone(self):
@@ -124,7 +124,7 @@ class TestSignalAction:
 
         action._client = AsyncMock()
         action._client.delete = AsyncMock(return_value=mock_response)
-        action.phone = "+436601234567"
+        action.phone = "+435000000000"
 
         result = await action.unlink()
 
@@ -137,7 +137,7 @@ class TestSignalAction:
 
         action._client = AsyncMock()
         action._client.delete = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-        action.phone = "+436601234567"
+        action.phone = "+435000000000"
 
         result = await action.unlink()
 
@@ -173,7 +173,7 @@ class TestEchoGuard:
 class TestHandleEnvelope:
     @pytest.fixture
     def app_state(self):
-        settings = SimpleNamespace(signal_phone_number="+436601234567")
+        settings = SimpleNamespace(signal_phone_number="+435000000000")
         signal_store = AsyncMock()
         signal_action = AsyncMock()
         agent = AsyncMock()
@@ -206,11 +206,11 @@ class TestHandleEnvelope:
         app_state.agent.process_event = AsyncMock(return_value="Agent reply")
         data = {
             "envelope": {
-                "source": "+436601234567",
+                "source": "+435000000000",
                 "syncMessage": {
                     "sentMessage": {
                         "message": "Hey Niles, was steht an?",
-                        "destination": "+436601234567",
+                        "destination": "+435000000000",
                     }
                 },
             }
@@ -234,11 +234,11 @@ class TestHandleEnvelope:
         """Self-chat without trigger phrase is stored but not processed."""
         data = {
             "envelope": {
-                "source": "+436601234567",
+                "source": "+435000000000",
                 "syncMessage": {
                     "sentMessage": {
                         "message": "Einkaufsliste fuer morgen",
-                        "destination": "+436601234567",
+                        "destination": "+435000000000",
                     }
                 },
             }
@@ -254,11 +254,11 @@ class TestHandleEnvelope:
         _echo_guard.record("Niles hier: du hast 2 Termine")
         data = {
             "envelope": {
-                "source": "+436601234567",
+                "source": "+435000000000",
                 "syncMessage": {
                     "sentMessage": {
                         "message": "Niles hier: du hast 2 Termine",
-                        "destination": "+436601234567",
+                        "destination": "+435000000000",
                     }
                 },
             }

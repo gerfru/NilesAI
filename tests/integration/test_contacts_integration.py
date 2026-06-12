@@ -13,7 +13,7 @@ class TestFindContact:
         result = await action.find_by_name("Max Mustermann")
         assert result is not None
         assert result["full_name"] == "Max Mustermann"
-        assert result["phone"] == "436601234567"
+        assert result["phone"] == "435000000000"
         assert result["email"] == "max@example.com"
 
     async def test_find_by_partial_name(self, pool_in_tx, seed_contact):

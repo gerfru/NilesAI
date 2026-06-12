@@ -70,7 +70,7 @@ class TestWhatsAppSessionStore:
             user_id=seed_user,
             instance_name="test-instance",
             status="connected",
-            phone_number="436601234567",
+            phone_number="435000000000",
         )
         session = await store.get_session(seed_user)
         assert session is not None

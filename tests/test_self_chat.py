@@ -101,7 +101,7 @@ class TestSelfChatWebhook:
             "instance": "niles-wa-1",
             "data": {
                 "key": {
-                    "remoteJid": "436601234567@s.whatsapp.net",
+                    "remoteJid": "435000000000@s.whatsapp.net",
                     "fromMe": True,
                 },
                 "message": {
@@ -126,11 +126,11 @@ class TestSelfChatWebhook:
 
         event = mock_app.state.agent.process_event.call_args[0][0]
         assert event["content"] == "was steht morgen an?"
-        assert event["from"] == "wa-self-436601234567"
+        assert event["from"] == "wa-self-435000000000"
         assert event["metadata"]["self_chat"] is True
 
         mock_app.state.whatsapp_action.send_message.assert_called_once_with(
-            to="436601234567@s.whatsapp.net",
+            to="435000000000@s.whatsapp.net",
             text="Morgen hast du 2 Termine.",
             instance="niles-wa-1",
         )
@@ -202,7 +202,7 @@ class TestSelfChatWebhook:
             "instance": "niles-wa-1",
             "data": {
                 "key": {
-                    "remoteJid": "436601234567@s.whatsapp.net",
+                    "remoteJid": "435000000000@s.whatsapp.net",
                     "fromMe": True,
                     "id": "ABCDEF123",
                 },

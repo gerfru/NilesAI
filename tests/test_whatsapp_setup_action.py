@@ -42,7 +42,7 @@ class TestGetStatus:
         store = AsyncMock()
         store.get_session.return_value = {
             "instance_name": "niles-wa-1",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
         wa = AsyncMock()
@@ -52,7 +52,7 @@ class TestGetStatus:
         ctx = await action.get_status(1)
 
         assert ctx["wa_status"] == "connected"
-        assert ctx["wa_phone"] == "436601234567"
+        assert ctx["wa_phone"] == "435000000000"
         # Should NOT call get_owner_jid when phone is already known and connected
         wa.get_owner_jid.assert_not_awaited()
 
@@ -65,15 +65,15 @@ class TestGetStatus:
         }
         wa = AsyncMock()
         wa.get_connection_state.return_value = "open"
-        wa.get_owner_jid.return_value = "436601234567@s.whatsapp.net"
+        wa.get_owner_jid.return_value = "435000000000@s.whatsapp.net"
         action = _make_action(wa_store=store, whatsapp_action=wa)
 
         ctx = await action.get_status(1)
 
         assert ctx["wa_status"] == "connected"
-        assert ctx["wa_phone"] == "436601234567"
+        assert ctx["wa_phone"] == "435000000000"
         wa.get_owner_jid.assert_awaited_once_with("niles-wa-1")
-        store.update_status.assert_awaited_once_with(1, "connected", phone_number="436601234567")
+        store.update_status.assert_awaited_once_with(1, "connected", phone_number="435000000000")
 
     async def test_connecting_returns_qr_code(self):
         store = AsyncMock()
@@ -98,7 +98,7 @@ class TestGetStatus:
         store = AsyncMock()
         store.get_session.return_value = {
             "instance_name": "niles-wa-3",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
         wa = AsyncMock()
@@ -187,7 +187,7 @@ class TestDisconnect:
         store = AsyncMock()
         store.get_session.return_value = {
             "instance_name": "niles-wa-10",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
         wa = AsyncMock()

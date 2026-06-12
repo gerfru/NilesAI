@@ -71,7 +71,7 @@ class TestSendWhatsAppOthersFlag:
         tool_call = MagicMock()
         tool_call.id = "call_123"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Hi"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Hi"})
 
         result = await agent._execute_tool_call(tool_call)
 
@@ -96,13 +96,13 @@ class TestSendWhatsAppOthersFlag:
         tool_call = MagicMock()
         tool_call.id = "call_123"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Hi"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Hi"})
 
         result = await agent._execute_tool_call(tool_call)
 
         # Now returns confirmation prompt instead of sending directly
         assert "confirm" in result
-        assert "436601234567" in result["confirm"]
+        assert "435000000000" in result["confirm"]
         whatsapp_mock.send_message.assert_not_called()
 
     async def test_send_to_self_always_allowed(self, disabled_config):
@@ -116,7 +116,7 @@ class TestSendWhatsAppOthersFlag:
         wa_store.get_session.return_value = {
             "user_id": 1,
             "instance_name": "niles-wa-1",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
 
@@ -132,12 +132,12 @@ class TestSendWhatsAppOthersFlag:
         tool_call = MagicMock()
         tool_call.id = "call_123"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Reminder"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Reminder"})
 
         # chat_id = web-user-1 so _get_own_phone_number can look up the session
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
-        assert result == {"status": "sent", "to": "436601234567"}
+        assert result == {"status": "sent", "to": "435000000000"}
         whatsapp_mock.send_message.assert_called_once()
 
     async def test_send_to_self_via_self_chat_id(self, disabled_config):
@@ -158,11 +158,11 @@ class TestSendWhatsAppOthersFlag:
         tool_call = MagicMock()
         tool_call.id = "call_123"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Note"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Note"})
 
-        result = await agent._execute_tool_call(tool_call, chat_id="wa-self-436601234567")
+        result = await agent._execute_tool_call(tool_call, chat_id="wa-self-435000000000")
 
-        assert result == {"status": "sent", "to": "436601234567"}
+        assert result == {"status": "sent", "to": "435000000000"}
         whatsapp_mock.send_message.assert_called_once()
 
 
@@ -189,7 +189,7 @@ class TestWebhookAuth:
             "event": "messages.upsert",
             "data": {
                 "key": {
-                    "remoteJid": "436601234567@s.whatsapp.net",
+                    "remoteJid": "435000000000@s.whatsapp.net",
                     "fromMe": False,
                 },
                 "message": {
