@@ -174,8 +174,10 @@ jobs:
     needs: [check-pr-size, lint, security, typecheck, test, trivy]
     steps:
       - name: All checks passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs.*.result) }}
         run: |
-          if echo '${{ toJSON(needs.*.result) }}' | grep -qE '"failure"|"cancelled"'; then
+          if echo "$NEEDS_JSON" | grep -qE '"failure"|"cancelled"'; then
             echo "One or more required jobs failed or were cancelled."
             exit 1
           fi
