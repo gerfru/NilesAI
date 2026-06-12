@@ -5,7 +5,7 @@ import logging
 import secrets
 import time
 import urllib.parse
-from collections import defaultdict
+from collections import OrderedDict
 
 import httpx
 from argon2 import PasswordHasher
@@ -35,26 +35,33 @@ logger = logging.getLogger(__name__)
 _ph = PasswordHasher()
 
 # --- Login rate limiting ---
-_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_attempts: OrderedDict[str, list[float]] = OrderedDict()
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW = 300.0  # 5 minutes
+_MAX_LOGIN_IPS = 10_000
 
 
 def _check_login_rate(client_ip: str) -> bool:
     """Return True if the client is within the login rate limit."""
     now = time.monotonic()
     window = now - _LOGIN_WINDOW
-    attempts = _login_attempts[client_ip]
+    attempts = _login_attempts.get(client_ip, [])
     recent = [t for t in attempts if t > window]
     if recent:
         _login_attempts[client_ip] = recent
+        _login_attempts.move_to_end(client_ip)
     else:
         _login_attempts.pop(client_ip, None)
     return len(recent) < _LOGIN_MAX_ATTEMPTS
 
 
 def _record_login_attempt(client_ip: str) -> None:
-    _login_attempts[client_ip].append(time.monotonic())
+    attempts = _login_attempts.get(client_ip, [])
+    attempts.append(time.monotonic())
+    _login_attempts[client_ip] = attempts
+    _login_attempts.move_to_end(client_ip)
+    while len(_login_attempts) > _MAX_LOGIN_IPS:
+        _login_attempts.popitem(last=False)
 
 
 # --- Routes ---
