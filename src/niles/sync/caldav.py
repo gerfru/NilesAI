@@ -209,7 +209,7 @@ class CalDAVSync:
                         for occ in expanded:
                             await self._upsert_event(occ)
                             count += 1
-            except Exception:
+            except httpx.HTTPError, OSError, ValueError, asyncpg.PostgresError:
                 logger.exception("REPORT failed for %s", col_url)
 
         logger.info("Synced %d events (range: %s to %s)", count, start_str, end_str)
