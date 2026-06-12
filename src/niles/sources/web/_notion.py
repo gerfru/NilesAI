@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion RAG routes: status, connect, disconnect, sync, search."""
 
 import asyncio

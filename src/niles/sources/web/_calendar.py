@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Calendar routes: CalDAV discovery and calendar source management."""
 
 import logging

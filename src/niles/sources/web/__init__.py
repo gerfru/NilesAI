@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Web GUI package — re-exports for backward compatibility.
 
 All public names previously importable from ``niles.sources.web`` remain

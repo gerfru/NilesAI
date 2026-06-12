@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Database migration bootstrap — runs before uvicorn.
 
 Detects whether the database is a fresh install or an existing one

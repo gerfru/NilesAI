@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Niles AI Core – Startup helpers extracted from lifespan()."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Structured JSON logging configuration for Niles AI (12-factor XI)."""
 
 import logging

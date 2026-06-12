@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Settings routes: settings page, update_setting, ollama_models."""
 
 import html as _html

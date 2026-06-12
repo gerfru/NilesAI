@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Legal notices page — serves docs/LEGAL.md content."""
 
 from pathlib import Path

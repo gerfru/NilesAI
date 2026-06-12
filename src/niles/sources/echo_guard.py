@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """TTL-based echo-loop guard for messaging sources.
 
 Prevents infinite loops when outgoing messages are echoed back by the

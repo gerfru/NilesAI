@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Memory tools: remember and recall."""
 
 from . import ToolContext, register_tool

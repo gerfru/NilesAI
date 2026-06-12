@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Text-based tool-call detection for local LLMs.
 
 Local models (e.g. llama3.1 via Ollama) sometimes output tool calls as

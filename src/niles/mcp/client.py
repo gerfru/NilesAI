@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """MCP client manager -- starts MCP servers and exposes their tools."""
 
 import asyncio

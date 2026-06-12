@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Chat routes: page, history, send, stream, clear."""
 
 import json

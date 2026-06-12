@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Context building and resolution helpers for NilesAgent.
 
 Extracts context assembly (system prompt, memory, calendar sources)

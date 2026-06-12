@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion embedding pipeline — chunks pages and generates embeddings."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """WhatsApp tools: send_whatsapp and get_whatsapp_messages."""
 
 import logging

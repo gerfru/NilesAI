@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """CardDAV contact sync to PostgreSQL."""
 
 import logging

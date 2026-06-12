@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Vikunja (per-user task management) routes."""
 
 import logging

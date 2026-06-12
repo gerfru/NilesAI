@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion pages and embeddings data access."""
 
 import logging

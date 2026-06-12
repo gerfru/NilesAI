@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Signal management routes: status, QR code, link, disconnect."""
 
 import asyncio
