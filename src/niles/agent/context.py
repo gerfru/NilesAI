@@ -82,6 +82,14 @@ class ContextBuilder:
         # Generic pending confirmations: chat_id → {action, params, display, expires_at}
         self._pending_confirmations: dict[str, dict] = {}
 
+    def cleanup_expired_pending(self) -> None:
+        """Remove expired entries from pending confirmations and phone choices."""
+        now = time.monotonic()
+        for store in (self._pending_phone_choices, self._pending_confirmations):
+            expired = [k for k, v in store.items() if now > v.get("expires_at", float("inf"))]
+            for k in expired:
+                del store[k]
+
     async def resolve_user_id(self, chat_id: str) -> int | None:
         """Extract user_id from chat_id, resolving phone lookups as needed.
 
@@ -293,6 +301,9 @@ class ContextBuilder:
 
         Returns (chat_id, messages, filtered_tools).
         """
+        # Lazy cleanup of expired pending state on each request
+        self.cleanup_expired_pending()
+
         chat_id = event["from"]
         notion_search = event.get("metadata", {}).get("notion_search", False)
 
