@@ -27,7 +27,7 @@ from niles.sources.web import (
     settings_page,
     update_setting,
 )
-from niles.sources.web._auth import _login_attempts
+from niles.sources.web._auth import _login_attempts, _record_login_attempt
 from niles.sources.web._chat import _CHAT_PAGE_SIZE
 from niles.sources.web._core import _verify_csrf
 
@@ -257,6 +257,19 @@ class TestWebAuth:
             # 6th attempt should be rate-limited
             response = await login_submit(request, email="x@x.com", password="wrong")
         assert response.status_code == 429
+        _login_attempts.clear()
+
+    def test_login_rate_limiter_evicts_oldest_ips(self):
+        """Eviction removes oldest IPs when cap is exceeded."""
+        _login_attempts.clear()
+        with patch("niles.sources.web._auth._MAX_LOGIN_IPS", 3):
+            for i in range(5):
+                _record_login_attempt(f"10.0.0.{i}")
+            # Only the last 3 IPs should remain
+            assert len(_login_attempts) == 3
+            assert "10.0.0.0" not in _login_attempts
+            assert "10.0.0.1" not in _login_attempts
+            assert "10.0.0.4" in _login_attempts
         _login_attempts.clear()
 
     async def test_logout_redirects_via_htmx(self):
