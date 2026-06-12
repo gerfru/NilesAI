@@ -128,3 +128,22 @@ class TestCardDAVManagerSSRF:
         with patch("niles.sync.carddav_manager.is_private_host", return_value=False):
             result = await mgr.add_source("https://dav.example.com/contacts", "user", "pass")
             assert result is not None
+
+    async def test_test_connection_rejects_non_https(self):
+        from niles.sync.carddav_manager import CardDAVSourceManager
+
+        pool = AsyncMock()
+        mgr = CardDAVSourceManager(pool, client=AsyncMock())
+
+        with pytest.raises(ValueError, match="HTTPS"):
+            await mgr.test_connection("http://dav.example.com/contacts", "user", "pass")
+
+    async def test_test_connection_rejects_private_host(self):
+        from niles.sync.carddav_manager import CardDAVSourceManager
+
+        pool = AsyncMock()
+        mgr = CardDAVSourceManager(pool, client=AsyncMock())
+
+        with patch("niles.sync.carddav_manager.is_private_host", return_value=True):
+            with pytest.raises(ValueError, match="Interne Adressen"):
+                await mgr.test_connection("https://192.168.1.x/contacts", "user", "pass")

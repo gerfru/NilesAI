@@ -137,6 +137,12 @@ class CardDAVSourceManager:
 
     async def test_connection(self, url: str, auth_user: str, auth_password: str) -> tuple[bool, str]:
         """Test a CardDAV connection before saving."""
+        if not url.startswith("https://"):
+            raise ValueError("Nur HTTPS-URLs sind erlaubt")
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        if is_private_host(hostname):
+            raise ValueError("Interne Adressen sind nicht erlaubt")
         sync = CardDAVSync(
             self.pool,
             carddav_url=url,
