@@ -485,7 +485,7 @@ class TestAgentGetWhatsAppMessages:
         assert result["date_range"]  # non-empty
         assert "hinweis" in result
         assert "1 Nachrichten" in result["hinweis"]
-        contacts_mock.find_by_name.assert_called_once_with("Max")
+        contacts_mock.find_by_name.assert_called_once_with("Max", user_id=1)
         whatsapp_mock.fetch_messages.assert_called_once_with(
             remote_jid="436601234567@s.whatsapp.net",
             instance=None,
@@ -591,7 +591,7 @@ class TestAgentGetWhatsAppMessages:
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
         assert result["count"] == 1
-        contacts_mock.find_by_name.assert_called_once_with("Chrissi")
+        contacts_mock.find_by_name.assert_called_once_with("Chrissi", user_id=1)
 
     async def test_get_messages_unknown_contact(self):
         """Unknown contact name returns error."""
