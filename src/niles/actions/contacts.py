@@ -20,9 +20,9 @@ def normalize_phone(phone: str, country_code: str = "43") -> str:
     - Convert leading 0 to country_code (default: 43/Austria)
 
     Examples (country_code="43"):
-        "+43 660 587 5573" -> "436605875573"
-        "0660 587 5573"    -> "436605875573"
-        "00436605875573"   -> "436605875573"
+        "+43 660 123 4567" -> "436601234567"
+        "0660 123 4567"    -> "436601234567"
+        "00436601234567"   -> "436601234567"
     """
     phone = re.sub(r"[\s\-\(\)\.]", "", phone)
     phone = phone.lstrip("+")
