@@ -126,7 +126,7 @@ async def setup_database(settings: Settings) -> asyncpg.Pool:
 
     try:
         alembic_version = await pool.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
-    except Exception:
+    except asyncpg.PostgresError:
         alembic_version = None
     if alembic_version is None:
         logger.error(

@@ -7,7 +7,7 @@ import time
 from types import SimpleNamespace
 
 import httpx
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAIError
 
 from ..actions.calendar import CalendarAction
 from ..actions.contacts import ContactsAction
@@ -246,7 +246,7 @@ class NilesAgent:
                     stream=True,
                     stream_options={"include_usage": True},
                 )
-            except Exception as e:
+            except (httpx.HTTPError, OpenAIError) as e:
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 yield {
@@ -435,7 +435,7 @@ class NilesAgent:
                     temperature=_temperature,
                 )
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
-            except Exception as e:
+            except (httpx.HTTPError, OpenAIError) as e:
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
                 logger.error("LLM call failed: %s", e)
                 return "Entschuldigung, ich konnte die Anfrage nicht verarbeiten."
