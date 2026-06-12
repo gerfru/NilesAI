@@ -306,7 +306,7 @@ class TestWebhookIncoming:
             "data": {
                 "key": {
                     "remoteJid": "201846417309877@lid",
-                    "remoteJidAlt": "4366012345678@s.whatsapp.net",
+                    "remoteJidAlt": "436601234567@s.whatsapp.net",
                     "fromMe": True,
                     "id": "MSG_SELF_LID",
                     "addressingMode": "lid",
@@ -321,7 +321,7 @@ class TestWebhookIncoming:
         # Reply should use phone-based JID, not LID
         send_call = mock_app.state.whatsapp_action.send_message
         send_call.assert_called_once()
-        assert send_call.call_args[1]["to"] == "4366012345678@s.whatsapp.net"
+        assert send_call.call_args[1]["to"] == "436601234567@s.whatsapp.net"
 
     async def test_incoming_never_auto_replies(self, mock_app, webhook_payload):
         """Incoming messages: no LLM call, no reply."""

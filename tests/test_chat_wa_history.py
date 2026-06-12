@@ -171,6 +171,6 @@ class TestFetchWaHistory:
     @pytest.mark.asyncio
     async def test_jid_construction(self, wa_action):
         """Phone number should be formatted as JID for Evolution API."""
-        await _fetch_wa_history(wa_action, "4366012345678", "niles-wa-1")
+        await _fetch_wa_history(wa_action, "436601234567", "niles-wa-1")
 
-        wa_action.fetch_messages.assert_awaited_once_with("4366012345678@s.whatsapp.net", instance="niles-wa-1")
+        wa_action.fetch_messages.assert_awaited_once_with("436601234567@s.whatsapp.net", instance="niles-wa-1")
