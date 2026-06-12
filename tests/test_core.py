@@ -248,12 +248,12 @@ class TestTextToolCallParsing:
     _TOOLS = frozenset(["create_task", "list_tasks", "find_contact", "recall"])
 
     def test_valid_tool_call(self):
-        text = '{"name": "create_task", "parameters": {"title": "Gerald", "due_date": "2026-02-24"}}'
+        text = '{"name": "create_task", "parameters": {"title": "Alice", "due_date": "2026-02-24"}}'
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is not None
         assert result["name"] == "create_task"
         args = json.loads(result["arguments"])
-        assert args["title"] == "Gerald"
+        assert args["title"] == "Alice"
         assert args["due_date"] == "2026-02-24"
 
     def test_valid_with_code_fence(self):
@@ -296,7 +296,7 @@ class TestTextToolCallParsing:
         assert result is None
 
     def test_json_without_name_returns_none(self):
-        text = '{"title": "Gerald", "due_date": "2026-02-24"}'
+        text = '{"title": "Alice", "due_date": "2026-02-24"}'
         result = NilesAgent._try_parse_text_tool_call(text, self._TOOLS)
         assert result is None
 
@@ -675,11 +675,11 @@ class TestFindEventGuard:
         return agent, calendar_mock
 
     async def test_calendar_filter_dropped_when_query_empty(self):
-        """calendar='Gerald' without query should be dropped."""
+        """calendar='Alice' without query should be dropped."""
         agent, cal = self._make_agent_with_calendar()
         cal.find_by_query = AsyncMock(return_value=[{"summary": "Meeting"}])
 
-        tc = self._make_tool_call({"calendar": "Gerald", "date_from": "2026-02-25"})
+        tc = self._make_tool_call({"calendar": "Alice", "date_from": "2026-02-25"})
         result = await agent._execute_tool_call(tc)
 
         # calendar should have been passed as "" (dropped)
