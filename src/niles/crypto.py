@@ -14,6 +14,11 @@ _PREFIX = f"{_KEY_VERSION}:"
 class FieldEncryptor:
     """Encrypt/decrypt individual field values for database storage.
 
+    Currently single-key only.  Changing CREDENTIAL_ENCRYPTION_KEY makes
+    all existing encrypted values unreadable — there is no MultiFernet
+    key-rotation support yet.  The ``v1:`` prefix is reserved for a
+    future migration to multi-key decryption.
+
     Usage::
 
         encryptor = FieldEncryptor(key)

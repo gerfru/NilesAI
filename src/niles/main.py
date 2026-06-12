@@ -423,7 +423,7 @@ async def readiness():
             content={"status": "not_ready", "errors": errors},
         )
 
-    return {"status": "ready", "alembic_version": version}
+    return {"status": "ready"}
 
 
 @app.post("/csp-report", status_code=204)

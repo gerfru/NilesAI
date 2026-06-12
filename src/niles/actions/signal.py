@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from ..config import Settings
+from ..errors import sanitize_error
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class SignalAction:
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.error("Failed to send Signal message to %s: %s", to, e)
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     async def get_status(self) -> dict:
         """Check signal-cli registration status via GET /v1/about."""
@@ -51,7 +52,7 @@ class SignalAction:
             return response.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.error("Failed to get Signal status: %s", e)
-            return {"error": str(e)}
+            return {"error": sanitize_error(e)}
 
     async def get_accounts(self) -> list[str]:
         """List registered/linked Signal account phone numbers.
