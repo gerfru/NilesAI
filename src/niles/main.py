@@ -49,6 +49,17 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info("Niles Core starting up...")
 
+    # Guard: in-memory state (rate limiter, pending confirmations, echo guard)
+    # requires a single worker process. Fail fast if misconfigured.
+    workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    if workers > 1:
+        logger.error(
+            "WEB_CONCURRENCY=%d but Niles requires a single worker (in-memory state). "
+            "Remove WEB_CONCURRENCY or set it to 1.",
+            workers,
+        )
+        sys.exit(1)
+
     try:
         settings = Settings()
     except ValidationError as exc:
