@@ -118,7 +118,9 @@ class ContextBuilder:
                 return session["instance_name"]
         return None
 
-    async def resolve_contact_phone(self, name_or_number: str) -> tuple[str | None, dict | None]:
+    async def resolve_contact_phone(
+        self, name_or_number: str, *, user_id: int | None = None
+    ) -> tuple[str | None, dict | None]:
         """Resolve a contact name or phone number to a normalized phone string.
 
         Returns (phone, None) on success or (None, error_dict) on failure.
@@ -129,7 +131,7 @@ class ContextBuilder:
             clean = raw.replace(" ", "").lstrip("+")
             return normalize_phone(clean), None
         # Name lookup
-        contact = await self.contacts.find_by_name(raw)
+        contact = await self.contacts.find_by_name(raw, user_id=user_id)
         if not contact or not contact.get("phone"):
             return None, {"error": f"Kontakt '{name_or_number}' nicht gefunden"}
         return contact["phone"], None
