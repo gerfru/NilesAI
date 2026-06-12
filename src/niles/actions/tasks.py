@@ -20,6 +20,8 @@ class TasksAction:
         self.api_url = api_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_token}"}
         self._default_project_id: int | None = None
+        # TasksAction is created per-request with user-specific credentials,
+        # so a fallback client is acceptable here (short-lived, not leaked).
         self._client = client or httpx.AsyncClient(timeout=10)
 
     async def _get_default_project_id(self) -> int | None:

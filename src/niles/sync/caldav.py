@@ -143,9 +143,9 @@ class CalDAVSync:
         caldav_url: str,
         auth: httpx.Auth,
         timezone: str,
+        client: httpx.AsyncClient,
         caldav_calendars: str = "",
         source_id: int | None = None,
-        client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.caldav_url = caldav_url
@@ -156,7 +156,7 @@ class CalDAVSync:
         # Base URL for fetching individual .ics files (scheme + host)
         match = re.match(r"https?://[^/]+", caldav_url)
         self._base_url = match.group(0) if match else ""
-        self._client = client or httpx.AsyncClient(timeout=60)
+        self._client = client
         # Cache for discover_collections (avoids PROPFIND on every settings page load)
         self._collections_cache: list[dict] | None = None
         self._collections_cache_time: float = 0
