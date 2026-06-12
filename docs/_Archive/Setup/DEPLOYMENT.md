@@ -40,7 +40,7 @@ Niles/
 
 ```bash
 # Falls Git-Repo:
-git clone <repo-url> ~/Documents/Niles
+git clone https://github.com/gerfru/NilesAI.git ~/Documents/Niles
 cd ~/Documents/Niles
 
 # Falls lokale Kopie:
