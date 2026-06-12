@@ -73,7 +73,9 @@ cat > "$BACKUP_PATH/restore.sh" << 'RESTORE_EOF'
 
 set -e
 
-echo "Restoring Niles AI backup..."
+NILES_DIR="${NILES_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+echo "Restoring Niles AI backup (target: $NILES_DIR)..."
 echo ""
 
 BACKUP_DIR="$(dirname "$0")"
@@ -90,15 +92,15 @@ fi
 if [ -d "$BACKUP_DIR/docker" ]; then
     echo ""
     echo "Restoring configuration..."
-    cp -r "$BACKUP_DIR/docker" ~/Documents/Niles/
+    cp -r "$BACKUP_DIR/docker" \$NILES_DIR/
     if [ -d "$BACKUP_DIR/config" ]; then
-        cp -r "$BACKUP_DIR/config" ~/Documents/Niles/
+        cp -r "$BACKUP_DIR/config" \$NILES_DIR/
     fi
     if [ -d "$BACKUP_DIR/scripts" ]; then
-        cp -r "$BACKUP_DIR/scripts" ~/Documents/Niles/
+        cp -r "$BACKUP_DIR/scripts" \$NILES_DIR/
     fi
     if [ -f "$BACKUP_DIR/.env" ]; then
-        cp "$BACKUP_DIR/.env" ~/Documents/Niles/
+        cp "$BACKUP_DIR/.env" \$NILES_DIR/
     fi
     echo "Configuration restored"
 fi
@@ -123,7 +125,7 @@ echo ""
 echo "Restore complete."
 echo ""
 echo "Next steps:"
-echo "  1. cd ~/Documents/Niles"
+echo "  1. cd \$NILES_DIR"
 echo "  2. ./scripts/start.sh"
 echo "  3. Start Ollama (ollama serve)"
 RESTORE_EOF

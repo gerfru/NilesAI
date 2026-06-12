@@ -56,6 +56,17 @@ yarn-error.log*
 *.bak
 *.backup
 
+# Test coverage
+.coverage
+htmlcov/
+
+# Secrets / certificates (never commit)
+*.pem
+*.key
+*.p12
+credentials.json
+service_account.json
+
 # Tailwind CSS standalone CLI binary (local dev)
 tailwindcss
 tailwindcss-*

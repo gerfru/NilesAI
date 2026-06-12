@@ -37,7 +37,7 @@
         {% if not google_configured and not password_users_exist %}
         <p class="text-sm text-zinc-500 dark:text-zinc-400 text-center">
             Kein Login moeglich. Erstelle einen User:<br>
-            <code class="bg-zinc-100 dark:bg-zinc-700 px-1 py-0.5 rounded text-xs mt-2 block">docker exec -it niles_core python -m niles.cli create-user --email admin@example.com --name Admin --password geheim</code>
+            <code class="bg-zinc-100 dark:bg-zinc-700 px-1 py-0.5 rounded text-xs mt-2 block">docker exec -it niles_core python -m niles.cli create-user --email admin@example.com --name Admin --password 'mein-sicheres-passwort'</code>
         </p>
         {% endif %}
     </div>
