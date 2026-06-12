@@ -20,6 +20,8 @@ async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
             return {"result": result_text}
         except Exception as e:
             logger.error("MCP tool call failed [%s]: %s", name, e)
-            return {"error": f"MCP tool error: {e}"}
+            from niles.errors import sanitize_error
+
+            return {"error": f"MCP tool error: {sanitize_error(e)}"}
 
     return {"error": f"Unknown tool: {name}"}
