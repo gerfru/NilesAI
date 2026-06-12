@@ -24,13 +24,11 @@ def _make_mock_pool():
 
 @patch("niles.startup.asyncpg.create_pool", new_callable=AsyncMock)
 def test_health_returns_ok(mock_create_pool):
-    """GET /health returns status ok with DB pool info."""
+    """GET /health returns status ok (no pool stats exposed)."""
     mock_create_pool.return_value = _make_mock_pool()
 
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
-        assert data["db_pool"]["size"] == 2
-        assert data["db_pool"]["max"] == 10
+        assert data == {"status": "ok"}
