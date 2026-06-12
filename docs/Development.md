@@ -24,7 +24,7 @@ Additionally for development:
 ### Clone Repository
 
 ```bash
-git clone <repo-url> Niles
+git clone https://github.com/gerfru/NilesAI.git Niles
 cd Niles
 ```
 
