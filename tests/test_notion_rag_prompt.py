@@ -90,6 +90,8 @@ def _make_ctx():
     ctx.mcp = None
     ctx.signal = None
     ctx.notion_retriever = None
+    ctx._pending_phone_choices = {}
+    ctx._pending_confirmations = {}
     return ctx
 
 
