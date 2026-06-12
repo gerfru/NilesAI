@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """WhatsApp webhook handler for Evolution API."""
 
 import hmac

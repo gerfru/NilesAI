@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared type definitions for Niles Core.
 
 Provides TypedDicts for store return types and a typed Protocol for app.state

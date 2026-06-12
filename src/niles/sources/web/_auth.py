@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Authentication routes: login, Google OAuth, logout."""
 
 import hmac

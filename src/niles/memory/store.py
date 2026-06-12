@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Key-value memory store backed by PostgreSQL."""
 
 import json

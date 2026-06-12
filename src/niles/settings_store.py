@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Runtime settings overrides backed by PostgreSQL.
 
 NOTE: JSON serialisation in get_all/set is synchronous (json.loads/dumps).

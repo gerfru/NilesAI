@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Contact lookup and CardDAV connection management."""
 
 import logging

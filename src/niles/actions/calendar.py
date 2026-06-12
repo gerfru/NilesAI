@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Calendar event lookup in PostgreSQL."""
 
 import logging

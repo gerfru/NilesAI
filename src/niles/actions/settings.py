@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Runtime settings validation, coercion, and persistence."""
 
 import httpx

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """CalDAV calendar sync from mailbox.org to PostgreSQL."""
 
 import logging

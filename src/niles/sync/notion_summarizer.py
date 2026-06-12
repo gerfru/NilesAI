@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Generate page summaries via Ollama LLM for hierarchical chunking."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Notion RAG retrieval — semantic search over embedded Notion content.
 
 Supports hierarchical chunking with auto-merge:

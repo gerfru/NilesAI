@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """CardDAV contacts routes: status, connect, disconnect, sync."""
 
 import logging

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Shared httpx.AsyncClient instances for connection pooling."""
 
 import httpx

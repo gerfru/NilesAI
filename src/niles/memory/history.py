@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Conversation history backed by PostgreSQL."""
 
 import logging

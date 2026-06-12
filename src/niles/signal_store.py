@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Signal message storage backed by PostgreSQL.
 
 signal-cli-rest-api has no message history API (unlike Evolution API's findMessages),

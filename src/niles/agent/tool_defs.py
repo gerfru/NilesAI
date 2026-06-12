@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Tool definitions for the Niles agent in OpenAI function-calling format."""
 
 # Tool definitions in OpenAI function-calling format

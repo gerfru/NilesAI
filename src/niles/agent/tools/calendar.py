@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Calendar tools: find_event and create_event."""
 
 import logging

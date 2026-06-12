@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """SearXNG Web Search MCP server.
 
 Provides one tool:
