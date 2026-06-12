@@ -26,6 +26,20 @@ def _state(request: Request) -> AppState:
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+_STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+
+
+def _asset_hash() -> str:
+    """Content hash of style.css for cache-busting query param."""
+    css = _STATIC_DIR / "css" / "style.css"
+    if css.exists():
+        import hashlib
+
+        return hashlib.sha256(css.read_bytes()).hexdigest()[:8]
+    return "0"
+
+
+_ASSET_VERSION = _asset_hash()
 
 
 class _NilesTemplates(Jinja2Templates):
@@ -34,6 +48,7 @@ class _NilesTemplates(Jinja2Templates):
     def TemplateResponse(self, request, name, context=None, **kwargs):  # type: ignore[override]
         ctx = context or {}
         ctx.setdefault("csp_nonce", getattr(request.state, "csp_nonce", ""))
+        ctx.setdefault("v", _ASSET_VERSION)
         return super().TemplateResponse(request, name, ctx, **kwargs)
 
 

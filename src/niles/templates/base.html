@@ -5,8 +5,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Niles AI{% endblock %}</title>
-    <script nonce="{{ csp_nonce }}" src="/static/js/theme.js"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <script nonce="{{ csp_nonce }}" src="/static/js/theme.js?v={{ v }}"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v={{ v }}">
     <script nonce="{{ csp_nonce }}" src="https://unpkg.com/htmx.org@2.0.4"
             integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
             crossorigin="anonymous"></script>
@@ -60,6 +60,6 @@
         · <a href="/ui/legal#8-ai-disclosure-eu-ai-act-art-52" class="underline hover:text-zinc-600 dark:hover:text-zinc-400">KI-gesteuert</a>
     </footer>
     {% endblock %}
-    <script nonce="{{ csp_nonce }}" src="/static/js/app.js"></script>
+    <script nonce="{{ csp_nonce }}" src="/static/js/app.js?v={{ v }}"></script>
 </body>
 </html>
