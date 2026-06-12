@@ -119,7 +119,7 @@ class ContextBuilder:
         raw = name_or_number.strip().lstrip("@")
         if raw.replace("+", "").replace(" ", "").isdigit():
             clean = raw.replace(" ", "").lstrip("+")
-            return normalize_phone(clean), None
+            return normalize_phone(clean, self.config.phone_country_code), None
         # Name lookup
         contact = await self.contacts.find_by_name(raw)
         if not contact or not contact.get("phone"):

@@ -363,7 +363,9 @@ async def setup_mcp_and_actions(
 
     http_clients = stores["http_clients"]
 
-    contacts = ContactsAction(pool, carddav_manager=stores["carddav_manager"])
+    contacts = ContactsAction(
+        pool, carddav_manager=stores["carddav_manager"], phone_country_code=settings.phone_country_code
+    )
     vikunja_setup = VikunjaSetupAction(
         stores["vikunja_store"],
         http_client=http_clients.general,
