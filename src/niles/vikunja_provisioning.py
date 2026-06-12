@@ -4,6 +4,7 @@ On first login, registers a Vikunja user, obtains a JWT,
 creates a persistent API token, and stores it in vikunja_credentials.
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -37,6 +38,7 @@ class VikunjaProvisioner:
         self._secret = session_secret.encode()
         self.store = store
         self._in_flight: set[int] = set()
+        self._lock = asyncio.Lock()
 
     async def ensure_provisioned(self, user_id: int, email: str) -> bool:
         """Ensure the user has a Vikunja account and API token.
@@ -49,14 +51,16 @@ class VikunjaProvisioner:
         if creds and creds["api_token"]:
             return True
 
-        if user_id in self._in_flight:
-            return False
+        async with self._lock:
+            if user_id in self._in_flight:
+                return False
+            self._in_flight.add(user_id)
 
-        self._in_flight.add(user_id)
         try:
             return await self._provision(user_id, email)
         finally:
-            self._in_flight.discard(user_id)
+            async with self._lock:
+                self._in_flight.discard(user_id)
 
     async def _provision(self, user_id: int, email: str) -> bool:
         """Run the full provisioning flow with a shared HTTP client."""
@@ -154,17 +158,19 @@ class VikunjaProvisioner:
 
         Returns True on success. Never raises.
         """
-        if user_id in self._in_flight:
-            return False
+        async with self._lock:
+            if user_id in self._in_flight:
+                return False
+            self._in_flight.add(user_id)
 
-        self._in_flight.add(user_id)
         try:
             return await self._sync_password(user_id, email, plaintext_password)
         except Exception:
             logger.exception("Vikunja password sync failed for user_id=%d", user_id)
             return False
         finally:
-            self._in_flight.discard(user_id)
+            async with self._lock:
+                self._in_flight.discard(user_id)
 
     async def _sync_password(self, user_id: int, email: str, plaintext_password: str) -> bool:
         """Internal password sync logic."""
