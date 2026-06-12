@@ -27,7 +27,7 @@ class SignalAction:
         """Send a Signal message.
 
         Args:
-            to: Phone number with + prefix (e.g. "+436601234567")
+            to: Phone number with + prefix (e.g. "+435000000000")
             text: Message text
         """
         url = f"{self.api_url}/v2/send"
@@ -58,7 +58,7 @@ class SignalAction:
     async def get_accounts(self) -> list[str]:
         """List registered/linked Signal account phone numbers.
 
-        Returns e.g. ["+436601234567"] or [] if none linked.
+        Returns e.g. ["+435000000000"] or [] if none linked.
         """
         url = f"{self.api_url}/v1/accounts"
         try:

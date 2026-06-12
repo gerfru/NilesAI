@@ -418,7 +418,7 @@ class TestSendBriefingReturnValue:
         pool = AsyncMock()
         pool.fetchrow = AsyncMock(
             return_value={
-                "phone_number": "436601234567",
+                "phone_number": "435000000000",
                 "instance_name": "niles-wa-1",
                 "user_id": 1,
             }
@@ -436,7 +436,7 @@ class TestSendBriefingReturnValue:
         result = await send_daily_briefing(app_state)
         assert result is True
         whatsapp.send_message.assert_called_once_with(
-            to="436601234567",
+            to="435000000000",
             text="Test briefing",
             instance="niles-wa-1",
         )
@@ -468,7 +468,7 @@ class TestSendBriefingReturnValue:
         signal_action = AsyncMock()
         settings = SimpleNamespace(
             briefing_channel="signal",
-            signal_phone_number="+436601234567",
+            signal_phone_number="+435000000000",
             weather_latitude="",
             weather_longitude="",
         )
@@ -482,7 +482,7 @@ class TestSendBriefingReturnValue:
 
         result = await send_daily_briefing(app_state)
         assert result is True
-        signal_action.send_message.assert_called_once_with(to="+436601234567", text="Signal briefing")
+        signal_action.send_message.assert_called_once_with(to="+435000000000", text="Signal briefing")
 
     @pytest.mark.asyncio
     async def test_both_channels(self):
@@ -492,7 +492,7 @@ class TestSendBriefingReturnValue:
         pool = AsyncMock()
         pool.fetchrow = AsyncMock(
             return_value={
-                "phone_number": "436601234567",
+                "phone_number": "435000000000",
                 "instance_name": "niles-wa-1",
                 "user_id": 1,
             }
@@ -503,7 +503,7 @@ class TestSendBriefingReturnValue:
         signal_action = AsyncMock()
         settings = SimpleNamespace(
             briefing_channel="both",
-            signal_phone_number="+436601234567",
+            signal_phone_number="+435000000000",
             weather_latitude="",
             weather_longitude="",
         )

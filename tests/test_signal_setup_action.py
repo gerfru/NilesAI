@@ -33,13 +33,13 @@ def _make_action(signal_action=None, settings_store=None):
 
 class TestGetStatus:
     async def test_known_phone_returns_connected(self):
-        settings = _make_settings(signal_phone_number="+436601234567")
+        settings = _make_settings(signal_phone_number="+435000000000")
         action = _make_action()
 
         ctx = await action.get_status(settings)
 
         assert ctx["signal_status"] == "connected"
-        assert ctx["signal_phone"] == "+436601234567"
+        assert ctx["signal_phone"] == "+435000000000"
         assert ctx["phone_discovered"] is None
 
     async def test_disabled_returns_disconnected_no_discovery(self):
@@ -57,16 +57,16 @@ class TestGetStatus:
     async def test_auto_discovers_phone(self):
         settings = _make_settings()
         sa = AsyncMock()
-        sa.get_accounts.return_value = ["+436601234567"]
+        sa.get_accounts.return_value = ["+435000000000"]
         store = AsyncMock()
         action = _make_action(signal_action=sa, settings_store=store)
 
         ctx = await action.get_status(settings)
 
         assert ctx["signal_status"] == "connected"
-        assert ctx["signal_phone"] == "+436601234567"
-        assert ctx["phone_discovered"] == "+436601234567"
-        store.set.assert_awaited_once_with("signal_phone_number", "+436601234567")
+        assert ctx["signal_phone"] == "+435000000000"
+        assert ctx["phone_discovered"] == "+435000000000"
+        store.set.assert_awaited_once_with("signal_phone_number", "+435000000000")
 
     async def test_empty_accounts_returns_disconnected(self):
         settings = _make_settings()
@@ -121,9 +121,9 @@ class TestDisconnect:
         store = AsyncMock()
         action = _make_action(signal_action=sa, settings_store=store)
 
-        await action.disconnect("+436601234567")
+        await action.disconnect("+435000000000")
 
-        sa.unlink.assert_awaited_once_with("+436601234567")
+        sa.unlink.assert_awaited_once_with("+435000000000")
         store.delete.assert_awaited_once_with("signal_phone_number")
         store.set.assert_awaited_once_with("signal_disabled", "true")
 

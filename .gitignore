@@ -78,3 +78,7 @@ tailwindcss-*
 src/niles/static/css/style.css
 .claude/skills/refactor-service/checklist.md
 .claude/skills/refactor-service/SKILL.md
+.claude/settings.local.json
+
+# Internal audit/review documents (machine-local)
+review-app-report.md

@@ -113,7 +113,7 @@ services:
       VIKUNJA_DATABASE_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
       VIKUNJA_DATABASE_DATABASE: vikunja_db
       VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_PUBLIC_URL:-https://localhost:3457}
-      VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: "true"  # Set to "false" after initial account setup
       VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET}
       VIKUNJA_CORS_ENABLE: "false"
     # No port exposed -- access via gateway-caddy reverse proxy
@@ -150,6 +150,8 @@ services:
     container_name: niles_signal_api
     image: bbernhard/signal-cli-rest-api@sha256:419d08b18db00ecabd30386765662330fda85bdacc7c302f0cd541244895aeb5  # 1771797934-ci
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       - MODE=json-rpc
     volumes:
@@ -243,7 +245,7 @@ services:
       - FEATURE_NOTION=${FEATURE_NOTION:-false}
       - NOTION_TOKEN=${NOTION_TOKEN:-}
       - NOTION_SYNC_INTERVAL=${NOTION_SYNC_INTERVAL:-30}
-      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}
+      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}  # WARNING: empty = credentials stored unencrypted
     volumes:
       - ../config:/app/config:ro
     networks:

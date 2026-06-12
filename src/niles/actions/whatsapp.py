@@ -79,8 +79,8 @@ class WhatsAppAction:
         Send a WhatsApp message.
 
         Args:
-            to: Phone number (e.g. "436601234567") or JID
-               (e.g. "436601234567@s.whatsapp.net" or "120363xxx@g.us")
+            to: Phone number (e.g. "435000000000") or JID
+               (e.g. "435000000000@s.whatsapp.net" or "120363xxx@g.us")
             text: Message text
             instance: Evolution API instance name (defaults to global instance)
         """
@@ -112,7 +112,7 @@ class WhatsAppAction:
         """Fetch message history from Evolution API (last 30 days).
 
         Args:
-            remote_jid: WhatsApp JID (e.g. "436601234567@s.whatsapp.net")
+            remote_jid: WhatsApp JID (e.g. "435000000000@s.whatsapp.net")
             instance: Evolution API instance (defaults to global)
 
         Returns:

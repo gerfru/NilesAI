@@ -44,11 +44,11 @@ class TestBuildNotionRagPrompt:
     def test_includes_memories(self):
         memories = [
             {"key": "Lieblingsessen", "value": "Schnitzel"},
-            {"key": "Name", "value": "Gerald"},
+            {"key": "Name", "value": "Alice"},
         ]
         prompt = build_notion_rag_prompt(memories=memories)
         assert "Schnitzel" in prompt
-        assert "Gerald" in prompt
+        assert "Alice" in prompt
         assert "Gedaechtnis" in prompt
 
     def test_no_memories_when_empty(self):

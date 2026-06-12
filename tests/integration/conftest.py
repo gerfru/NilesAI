@@ -249,7 +249,7 @@ async def seed_contact(db_conn):
         """,
         contact_id,
     )
-    return {"id": contact_id, "full_name": "Max Mustermann", "phone": "436601234567"}
+    return {"id": contact_id, "full_name": "Max Mustermann", "phone": "435000000000"}
 
 
 @pytest_asyncio.fixture(loop_scope="session")

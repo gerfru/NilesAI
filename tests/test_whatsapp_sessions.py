@@ -46,7 +46,7 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         result = await action.send_message(
-            to="436601234567",
+            to="435000000000",
             text="Hi",
             instance="niles-wa-5",
         )
@@ -67,7 +67,7 @@ class TestWhatsAppAction:
                         "key": {
                             "id": "MSG001",
                             "fromMe": False,
-                            "remoteJid": "436601234567@s.whatsapp.net",
+                            "remoteJid": "435000000000@s.whatsapp.net",
                         },
                         "pushName": "Max",
                         "message": {"conversation": "Hallo!"},
@@ -83,7 +83,7 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         result = await action.fetch_messages(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
             instance="niles-wa-1",
         )
 
@@ -106,7 +106,7 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         await action.fetch_messages(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
         )
 
         payload = mock_client.post.call_args[1]["json"]
@@ -144,7 +144,7 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         result = await action.fetch_messages(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
         )
 
         assert len(result) == 1
@@ -173,7 +173,7 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         result = await action.fetch_messages(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
         )
 
         assert len(result) == 1
@@ -191,13 +191,13 @@ class TestWhatsAppAction:
         action._client = mock_client
 
         await action.fetch_messages(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
         )
 
         payload = mock_client.post.call_args[1]["json"]
         key_filter = payload["where"]["key"]
-        assert key_filter["remoteJid"] == "436601234567@s.whatsapp.net"
-        assert key_filter["remoteJidAlt"] == "436601234567@s.whatsapp.net"
+        assert key_filter["remoteJid"] == "435000000000@s.whatsapp.net"
+        assert key_filter["remoteJidAlt"] == "435000000000@s.whatsapp.net"
 
 
 class TestWebhookIncoming:
@@ -219,7 +219,7 @@ class TestWebhookIncoming:
             "instance": "niles-wa-42",
             "data": {
                 "key": {
-                    "remoteJid": "436601234567@s.whatsapp.net",
+                    "remoteJid": "435000000000@s.whatsapp.net",
                     "fromMe": False,
                     "id": "MSG001",
                 },
@@ -239,7 +239,7 @@ class TestWebhookIncoming:
 
         result = await whatsapp_webhook(request, token=VALID_TOKEN)
 
-        assert result == {"status": "received", "sender": "436601234567"}
+        assert result == {"status": "received", "sender": "435000000000"}
 
     async def test_group_message_ignored(self, mock_app):
         """Group messages (JID ending in @g.us) are ignored."""
@@ -277,7 +277,7 @@ class TestWebhookIncoming:
             "data": {
                 "key": {
                     "remoteJid": "201846417309877@lid",
-                    "remoteJidAlt": "436601234567@s.whatsapp.net",
+                    "remoteJidAlt": "435000000000@s.whatsapp.net",
                     "fromMe": False,
                     "id": "MSG_LID",
                     "addressingMode": "lid",
@@ -289,7 +289,7 @@ class TestWebhookIncoming:
         result = await whatsapp_webhook(request, token=VALID_TOKEN)
 
         # Should use phone from remoteJidAlt, not the LID
-        assert result == {"status": "received", "sender": "436601234567"}
+        assert result == {"status": "received", "sender": "435000000000"}
 
     async def test_webhook_lid_self_chat(self, mock_app):
         """Self-chat with LID JID uses remoteJidAlt for reply."""
@@ -306,7 +306,7 @@ class TestWebhookIncoming:
             "data": {
                 "key": {
                     "remoteJid": "201846417309877@lid",
-                    "remoteJidAlt": "436601234567@s.whatsapp.net",
+                    "remoteJidAlt": "435000000000@s.whatsapp.net",
                     "fromMe": True,
                     "id": "MSG_SELF_LID",
                     "addressingMode": "lid",
@@ -321,7 +321,7 @@ class TestWebhookIncoming:
         # Reply should use phone-based JID, not LID
         send_call = mock_app.state.whatsapp_action.send_message
         send_call.assert_called_once()
-        assert send_call.call_args[1]["to"] == "436601234567@s.whatsapp.net"
+        assert send_call.call_args[1]["to"] == "435000000000@s.whatsapp.net"
 
     async def test_incoming_never_auto_replies(self, mock_app, webhook_payload):
         """Incoming messages: no LLM call, no reply."""
@@ -346,7 +346,7 @@ class TestAgentPerUserInstance:
         store.get_session.return_value = {
             "user_id": 5,
             "instance_name": "niles-wa-5",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
         return store
@@ -369,13 +369,13 @@ class TestAgentPerUserInstance:
         tool_call = MagicMock()
         tool_call.id = "call_123"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Hi"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Hi"})
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-5")
 
-        assert result == {"status": "sent", "to": "436601234567"}
+        assert result == {"status": "sent", "to": "435000000000"}
         whatsapp_mock.send_message.assert_called_once_with(
-            to="436601234567",
+            to="435000000000",
             text="Hi",
             instance="niles-wa-5",
         )
@@ -401,7 +401,7 @@ class TestAgentPerUserInstance:
         tool_call = MagicMock()
         tool_call.id = "call_456"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Hi"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Hi"})
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-99")
 
@@ -427,7 +427,7 @@ class TestAgentPerUserInstance:
         tool_call = MagicMock()
         tool_call.id = "call_789"
         tool_call.function.name = "send_whatsapp"
-        tool_call.function.arguments = json.dumps({"to": "436601234567", "text": "Hi"})
+        tool_call.function.arguments = json.dumps({"to": "435000000000", "text": "Hi"})
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
@@ -446,8 +446,8 @@ class TestAgentGetWhatsAppMessages:
         contacts_mock = AsyncMock()
         contacts_mock.find_by_name.return_value = {
             "full_name": "Max Mustermann",
-            "phone": "436601234567",
-            "phones": [{"type": "mobile", "number": "436601234567"}],
+            "phone": "435000000000",
+            "phones": [{"type": "mobile", "number": "435000000000"}],
             "email": None,
         }
 
@@ -487,7 +487,7 @@ class TestAgentGetWhatsAppMessages:
         assert "1 Nachrichten" in result["hinweis"]
         contacts_mock.find_by_name.assert_called_once_with("Max", user_id=1)
         whatsapp_mock.fetch_messages.assert_called_once_with(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
             instance=None,
         )
 
@@ -517,14 +517,14 @@ class TestAgentGetWhatsAppMessages:
         tool_call = MagicMock()
         tool_call.id = "call_msg_2"
         tool_call.function.name = "get_whatsapp_messages"
-        tool_call.function.arguments = json.dumps({"contact": "436601234567"})
+        tool_call.function.arguments = json.dumps({"contact": "435000000000"})
 
         result = await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
         assert result["count"] == 1
         contacts_mock.find_by_name.assert_not_called()
         whatsapp_mock.fetch_messages.assert_called_once_with(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
             instance=None,
         )
 
@@ -549,12 +549,12 @@ class TestAgentGetWhatsAppMessages:
         tool_call = MagicMock()
         tool_call.id = "call_msg_norm"
         tool_call.function.name = "get_whatsapp_messages"
-        tool_call.function.arguments = json.dumps({"contact": "+43 660 123 4567"})
+        tool_call.function.arguments = json.dumps({"contact": "+43 500 000 0000"})
 
         await agent._execute_tool_call(tool_call, chat_id="web-user-1")
 
         whatsapp_mock.fetch_messages.assert_called_once_with(
-            remote_jid="436601234567@s.whatsapp.net",
+            remote_jid="435000000000@s.whatsapp.net",
             instance=None,
         )
 
@@ -647,7 +647,7 @@ class TestAgentGetWhatsAppMessages:
         wa_store_mock.get_session.return_value = {
             "user_id": 5,
             "instance_name": "niles-wa-5",
-            "phone_number": "436601234567",
+            "phone_number": "435000000000",
             "status": "connected",
         }
 
@@ -777,7 +777,7 @@ class TestAgentGetWhatsAppMessages:
         contacts_mock = AsyncMock()
         contacts_mock.find_by_name.return_value = {
             "full_name": "Max",
-            "phone": "436601234567",
+            "phone": "435000000000",
             "phones": [],
             "email": None,
         }

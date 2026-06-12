@@ -215,7 +215,7 @@ class TestAgentPerUserVikunja:
             vikunja_store=vikunja_store,
         )
 
-        result = await agent._resolve_vikunja_tasks("wa-436601234567")
+        result = await agent._resolve_vikunja_tasks("wa-435000000000")
         assert result is None
         # vikunja_store should NOT be queried for wa-* chat_ids
         vikunja_store.get_credentials.assert_not_called()
