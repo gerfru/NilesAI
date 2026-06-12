@@ -105,9 +105,12 @@ class Settings(BaseSettings):
     feature_notion: bool = False
 
     # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
-    # REQUIRED in production (LOG_LEVEL != DEBUG). App refuses to start without it.
+    # REQUIRED by default. App refuses to start without it.
     # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     credential_encryption_key: str = ""
+
+    # Set to true to allow starting without CREDENTIAL_ENCRYPTION_KEY (dev only)
+    credential_encryption_optional: bool = False
 
     # Error tracking (opt-in)
     sentry_dsn: str = ""
@@ -125,11 +128,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_production_encryption_key(self) -> "Settings":
-        """In production (non-DEBUG), CREDENTIAL_ENCRYPTION_KEY is required."""
-        if self.log_level.upper() != "DEBUG" and not self.credential_encryption_key:
+        """CREDENTIAL_ENCRYPTION_KEY is required unless explicitly opted out."""
+        if not self.credential_encryption_optional and not self.credential_encryption_key:
             raise ValueError(
-                "CREDENTIAL_ENCRYPTION_KEY is required in production "
-                "(set LOG_LEVEL=DEBUG to bypass for development). "
+                "CREDENTIAL_ENCRYPTION_KEY is required "
+                "(set CREDENTIAL_ENCRYPTION_OPTIONAL=true for development). "
                 'Generate: python -c "from cryptography.fernet import Fernet; '
                 'print(Fernet.generate_key().decode())"'
             )

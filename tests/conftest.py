@@ -10,10 +10,10 @@ def _set_test_env(monkeypatch):
     monkeypatch.setenv("EVOLUTION_POSTGRES_PASSWORD", "test-password")
     monkeypatch.setenv("EVOLUTION_API_KEY", "test-api-key")
     monkeypatch.setenv("NILES_API_KEY", "test-niles-key")
-    # Tests run in development mode (no encryption key required)
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-    # Clear encryption key to prevent invalid values from host env leaking in
+    # Tests run without encryption (opt-in via CREDENTIAL_ENCRYPTION_OPTIONAL)
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", "")
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_OPTIONAL", "true")
 
 
 @pytest.fixture(autouse=True)
