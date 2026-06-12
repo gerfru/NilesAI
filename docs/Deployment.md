@@ -92,7 +92,7 @@ CREDENTIAL_ENCRYPTION_KEY=<generated-key>
 Niles requires the [homelab-gateway](../../homelab-gateway) for HTTPS routing. Start it first:
 
 ```bash
-cd ~/Documents/homelab-gateway
+cd <path-to-homelab-gateway>
 cp .env.example .env          # set TAILSCALE_IP (tailscale ip -4)
 make generate                 # generate DNS config from templates
 make up                       # start CoreDNS + Caddy
