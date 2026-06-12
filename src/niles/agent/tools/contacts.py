@@ -14,7 +14,7 @@ async def handle_find_contact(args: dict, chat_id: str, ctx: ToolContext) -> dic
                 break
     if not query:
         return {"error": "Kein Name angegeben"}
-    contact = await ctx.contacts.find_by_name(query)
+    contact = await ctx.contacts.find_by_name(query, user_id=ctx.user_id)
     if contact:
         return contact  # type: ignore[return-value]  # ContactInfo (TypedDict) is a dict
     return {"error": f"Kontakt '{query}' nicht gefunden"}

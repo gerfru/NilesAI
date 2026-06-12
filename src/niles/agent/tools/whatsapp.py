@@ -17,7 +17,7 @@ async def handle_send_whatsapp(args: dict, chat_id: str, ctx: ToolContext) -> di
 
     # 1. Contact resolution (if name instead of number)
     if not to.replace("+", "").replace(" ", "").isdigit():
-        contact = await ctx.contacts.find_by_name(to)
+        contact = await ctx.contacts.find_by_name(to, user_id=ctx.user_id)
         if not contact:
             return {"error": f"Kontakt '{args['to']}' nicht gefunden"}
         phones = contact.get("phones", [])
@@ -88,7 +88,7 @@ async def handle_get_whatsapp_messages(args: dict, chat_id: str, ctx: ToolContex
     if not contact_arg:
         return {"error": "Bitte Kontaktname oder Telefonnummer angeben"}
 
-    phone, err = await ctx.resolve_contact_phone(contact_arg)
+    phone, err = await ctx.resolve_contact_phone(contact_arg, user_id=ctx.user_id)
     if err:
         return err
 
