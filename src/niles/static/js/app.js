@@ -277,26 +277,27 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-/* Web search toggle button (CSP-safe, event delegation).
-   Visual state is driven by CSS via [aria-pressed="true"] (see input.css). */
-document.body.addEventListener("click", function(evt) {
-    var btn = evt.target.closest("[data-search-toggle]");
+/* Toggle buttons: direct listeners (aria-pressed + inline style for immediate feedback). */
+var TOGGLE_COLORS = {
+    "web_search":    {on: "#3b82f6", bg: "#dbeafe"},
+    "notion_search": {on: "#a855f7", bg: "#f3e8ff"}
+};
+function initToggle(selector, hiddenName) {
+    var btn = document.querySelector(selector);
     if (!btn) return;
-    var next = btn.getAttribute("aria-pressed") !== "true";
-    btn.setAttribute("aria-pressed", String(next));
-    var hidden = btn.closest("form").querySelector("[name='web_search']");
-    if (hidden) hidden.value = next ? "true" : "false";
-});
-
-/* Notion search toggle button (CSP-safe, event delegation) */
-document.body.addEventListener("click", function(evt) {
-    var btn = evt.target.closest("[data-notion-toggle]");
-    if (!btn) return;
-    var next = btn.getAttribute("aria-pressed") !== "true";
-    btn.setAttribute("aria-pressed", String(next));
-    var hidden = btn.closest("form").querySelector("[name='notion_search']");
-    if (hidden) hidden.value = next ? "true" : "false";
-});
+    var colors = TOGGLE_COLORS[hiddenName] || {on: "#3b82f6", bg: "#dbeafe"};
+    btn.addEventListener("click", function(e) {
+        e.preventDefault();
+        var next = btn.getAttribute("aria-pressed") !== "true";
+        btn.setAttribute("aria-pressed", String(next));
+        btn.style.color = next ? colors.on : "";
+        btn.style.backgroundColor = next ? colors.bg : "";
+        var hidden = btn.closest("form").querySelector("[name='" + hiddenName + "']");
+        if (hidden) hidden.value = next ? "true" : "false";
+    });
+}
+initToggle("[data-search-toggle]", "web_search");
+initToggle("[data-notion-toggle]", "notion_search");
 
 /* Dark mode toggle button (CSP-safe, event delegation) */
 document.body.addEventListener("click", function(evt) {
