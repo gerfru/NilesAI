@@ -4,7 +4,7 @@ import logging
 import re
 import time
 import uuid
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -143,9 +143,9 @@ class CalDAVSync:
         caldav_url: str,
         auth: httpx.Auth,
         timezone: str,
+        client: httpx.AsyncClient,
         caldav_calendars: str = "",
         source_id: int | None = None,
-        client: httpx.AsyncClient | None = None,
     ):
         self.pool = pool
         self.caldav_url = caldav_url
@@ -156,7 +156,7 @@ class CalDAVSync:
         # Base URL for fetching individual .ics files (scheme + host)
         match = re.match(r"https?://[^/]+", caldav_url)
         self._base_url = match.group(0) if match else ""
-        self._client = client or httpx.AsyncClient(timeout=60)
+        self._client = client
         # Cache for discover_collections (avoids PROPFIND on every settings page load)
         self._collections_cache: list[dict] | None = None
         self._collections_cache_time: float = 0
@@ -209,7 +209,7 @@ class CalDAVSync:
                         for occ in expanded:
                             await self._upsert_event(occ)
                             count += 1
-            except Exception:
+            except httpx.HTTPError, OSError, ValueError, asyncpg.PostgresError:
                 logger.exception("REPORT failed for %s", col_url)
 
         logger.info("Synced %d events (range: %s to %s)", count, start_str, end_str)
