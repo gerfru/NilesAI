@@ -57,7 +57,7 @@ def test_settings_missing_api_key(monkeypatch):
     monkeypatch.setenv("EVOLUTION_POSTGRES_PASSWORD", "test-pw")
     monkeypatch.delenv("EVOLUTION_API_KEY", raising=False)
 
-    with pytest.raises(ValidationError, match="evolution_api_key"):
+    with pytest.raises(ValidationError, match="EVOLUTION_API_KEY"):
         Settings(_env_file=None)
 
 

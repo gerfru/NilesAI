@@ -13,7 +13,7 @@ search:
 
 server:
   port: 8080
-  bind_address: "0.0.0.0"
+  bind_address: "127.0.0.1"
   secret_key: "${SEARXNG_SECRET_KEY}"
 
 doi_resolvers:

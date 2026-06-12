@@ -2,6 +2,7 @@
 
 import asyncio
 import hmac
+import ipaddress
 import logging
 import os
 import re
@@ -194,6 +195,20 @@ async def lifespan(app: FastAPI):
     logger.info("Niles Core shut down.")
 
 
+def _get_client_ip(request: Request, trusted_proxy: str) -> str:
+    """Return the real client IP, honouring X-Forwarded-For only from a trusted proxy CIDR."""
+    remote = request.client.host if request.client else None
+    if trusted_proxy and remote:
+        try:
+            if ipaddress.ip_address(remote) in ipaddress.ip_network(trusted_proxy, strict=False):
+                forwarded = request.headers.get("X-Forwarded-For", "")
+                if forwarded:
+                    return forwarded.split(",")[0].strip()
+        except ValueError:
+            pass
+    return remote or "unknown"
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Simple in-memory rate limiter per client IP.
 
@@ -212,7 +227,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/health", "/ready") or request.url.path.startswith("/static"):
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        trusted_proxy = getattr(request.app.state, "settings", None)
+        trusted_proxy = trusted_proxy.trusted_proxy if trusted_proxy else ""
+        client_ip = _get_client_ip(request, trusted_proxy)
         now = time.monotonic()
         window = now - 60.0
 

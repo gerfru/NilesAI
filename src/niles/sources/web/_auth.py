@@ -217,7 +217,7 @@ async def callback_google(
 
     # Verify state parameter (CSRF protection for OAuth)
     stored_state = request.cookies.get("oauth_state", "")
-    if not state or not stored_state or not hmac.compare_digest(state, stored_state):
+    if not state or len(state) > 512 or not stored_state or not hmac.compare_digest(state, stored_state):
         return templates.TemplateResponse(
             request,
             "login.html",
