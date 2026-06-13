@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Ollama (runs natively on the host for full GPU performance)
     llm_base_url: str = "http://host.docker.internal:11434/v1"
     llm_model: str = "llama3.1:8b"
+    llm_temperature_tools: float = 0.35  # temperature when tools are available
+    llm_temperature_chat: float = 0.3  # temperature for pure chat (no tools)
+    llm_max_tokens: int = 4096  # max completion tokens per LLM call
 
     # PostgreSQL (bestehende Verbindung)
     postgres_host: str = "evolution_postgres"
@@ -117,6 +120,11 @@ class Settings(BaseSettings):
 
     # Set to true to allow starting without CREDENTIAL_ENCRYPTION_KEY (dev only)
     credential_encryption_optional: bool = False
+
+    # LLM Tracing (Langfuse, opt-in — requires langfuse package)
+    langfuse_host: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
 
     # Error tracking (opt-in)
     sentry_dsn: str = ""

@@ -669,7 +669,7 @@ Creates a new task in Vikunja. Only available when the user has Vikunja credenti
 
 ### complete_task
 
-Marks a task as done. Searches by title among open tasks. Only available when the user has Vikunja credentials (auto-provisioned on login).
+Finds an open task by title and asks the user to confirm before marking it as done. Only available when the user has Vikunja credentials (auto-provisioned on login).
 
 **Parameters:**
 
@@ -677,22 +677,24 @@ Marks a task as done. Searches by title among open tasks. Only available when th
 | ---- | ---- | -------- | ----------- |
 | `title` | string | Yes | Title or partial title of the task |
 
-**Return (success):**
+**Return (confirmation required):**
 
 ```json
-{"completed": true, "title": "Buy milk"}
+{"confirm": "Aufgabe 'Buy milk' als erledigt markieren — ok?"}
 ```
+
+The user must reply with `ja`/`yes`/`ok` to confirm or `nein`/`no`/`abbrechen` to cancel within 5 minutes.
 
 **Return (error -- not found):**
 
 ```json
-{"error": "No open task found: 'Nonexistent'"}
+{"error": "Keine offene Aufgabe gefunden: 'Nonexistent'"}
 ```
 
 **Return (error -- ambiguous):**
 
 ```json
-{"error": "Multiple tasks found. Which one do you mean?", "matches": ["Shopping", "Write email"]}
+{"error": "Mehrere Aufgaben gefunden. Welche meinst du?", "matches": ["Shopping", "Write email"]}
 ```
 
 ---

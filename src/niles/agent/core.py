@@ -78,11 +78,25 @@ class NilesAgent:
     ):
         self.notion_retriever: object | None = None
         self._llm_lock = asyncio.Lock()
-        self.llm = AsyncOpenAI(
-            base_url=config.llm_base_url,
-            api_key="not-needed",
-        )
+        self._OpenAI = AsyncOpenAI
+        if config.langfuse_host and config.langfuse_public_key and config.langfuse_secret_key:
+            try:
+                import os as _os
+
+                _os.environ.setdefault("LANGFUSE_HOST", config.langfuse_host)
+                _os.environ.setdefault("LANGFUSE_PUBLIC_KEY", config.langfuse_public_key)
+                _os.environ.setdefault("LANGFUSE_SECRET_KEY", config.langfuse_secret_key)
+                from langfuse.openai import AsyncOpenAI as _TracedOpenAI  # type: ignore[import]
+
+                self._OpenAI = _TracedOpenAI
+                logger.info("LLM tracing enabled via Langfuse (%s)", config.langfuse_host)
+            except ImportError:
+                logger.warning("langfuse package not installed; LLM tracing disabled. Install: uv add langfuse")
+        self.llm = self._OpenAI(base_url=config.llm_base_url, api_key="not-needed")
         self.model = config.llm_model
+        self.llm_temperature_tools = config.llm_temperature_tools
+        self.llm_temperature_chat = config.llm_temperature_chat
+        self.llm_max_tokens = config.llm_max_tokens
         self._ctx = ContextBuilder(
             config=config,
             contacts=contacts,
@@ -108,9 +122,25 @@ class NilesAgent:
         """
         async with self._llm_lock:
             if base_url is not None:
-                self.llm = AsyncOpenAI(base_url=base_url, api_key="not-needed")
+                self.llm = self._OpenAI(base_url=base_url, api_key="not-needed")
             if model is not None:
                 self.model = model
+
+    async def _llm_create(self, **kwargs):
+        """Call self.llm.chat.completions.create with retry on transient errors.
+
+        Retries ConnectError / TimeoutException (Ollama restart, momentary lag)
+        twice with short backoff.  Auth / rate-limit errors raise immediately.
+        """
+        delays = (0.5, 2.0)
+        for i, delay in enumerate((*delays, None)):
+            try:
+                return await self.llm.chat.completions.create(**kwargs)
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                if delay is None:
+                    raise
+                logger.warning("LLM call failed (attempt %d), retrying in %.1fs: %s", i + 1, delay, e)
+                await asyncio.sleep(delay)
 
     def __getattr__(self, name: str):
         """Delegate attribute access to ContextBuilder for backward compat.
@@ -219,7 +249,7 @@ class NilesAgent:
             return
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
-        _temperature = 0.3 if not all_tools else 0.7
+        _temperature = self.llm_temperature_chat if not all_tools else self.llm_temperature_tools
 
         # Force search tool on first round when Recherche-Modus is active
         _web_search = event.get("metadata", {}).get("web_search", False)
@@ -238,12 +268,13 @@ class NilesAgent:
 
             try:
                 _llm_start = time.monotonic()
-                stream = await self.llm.chat.completions.create(
+                stream = await self._llm_create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools or None,
                     tool_choice=_tool_choice,
                     temperature=_temperature,
+                    max_tokens=self.llm_max_tokens,
                     stream=True,
                     stream_options={"include_usage": True},
                 )
@@ -409,7 +440,7 @@ class NilesAgent:
             return reply
 
         chat_id, messages, all_tools = await self._prepare_messages(event)
-        _temperature = 0.3 if not all_tools else 0.7
+        _temperature = self.llm_temperature_chat if not all_tools else self.llm_temperature_tools
 
         # Force search tool on first round when Recherche-Modus is active
         _web_search = event.get("metadata", {}).get("web_search", False)
@@ -428,12 +459,13 @@ class NilesAgent:
 
             try:
                 _llm_start = time.monotonic()
-                response = await self.llm.chat.completions.create(
+                response = await self._llm_create(
                     model=self.model,
                     messages=messages,
                     tools=all_tools or None,
                     tool_choice=_tool_choice,
                     temperature=_temperature,
+                    max_tokens=self.llm_max_tokens,
                 )
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
             except (httpx.HTTPError, OpenAIError) as e:

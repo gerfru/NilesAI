@@ -202,6 +202,45 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Langfuse (LLM Tracing, opt-in) — activate with: docker compose --profile langfuse up -d
+  # Access: http://localhost:3000  |  Credentials: set via LANGFUSE_* env vars
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: niles_langfuse
+    restart: unless-stopped
+    profiles:
+      - langfuse
+    environment:
+      DATABASE_URL: postgresql://evolution:${EVOLUTION_POSTGRES_PASSWORD}@evolution_postgres:5432/langfuse_db
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-}
+      SALT: ${LANGFUSE_SALT:-}
+      NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3000}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - niles_network
+    depends_on:
+      evolution_postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/public/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Niles AI Core
   niles_core:
     container_name: niles_core
@@ -246,6 +285,9 @@ services:
       - NOTION_TOKEN=${NOTION_TOKEN:-}
       - NOTION_SYNC_INTERVAL=${NOTION_SYNC_INTERVAL:-30}
       - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}  # WARNING: empty = credentials stored unencrypted
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
     volumes:
       - ../config:/app/config:ro
     networks:

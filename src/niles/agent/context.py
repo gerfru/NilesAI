@@ -291,6 +291,15 @@ class ContextBuilder:
                     return f"Fehler: {result['error']}"
                 return "Termin erstellt."
 
+            if action == "complete_task":
+                tasks_action = await self.resolve_vikunja_tasks(chat_id)
+                if not tasks_action:
+                    return "Aufgaben nicht konfiguriert."
+                result = await tasks_action.complete_task(title=params["title"])
+                if result.get("completed"):
+                    return f"Aufgabe '{result['title']}' erledigt ✓"
+                return f"Fehler: {result.get('error', 'Unbekannter Fehler')}"
+
             logger.warning("Unknown confirmed action: %s", action)
             return "Unbekannte Aktion."
         except Exception:

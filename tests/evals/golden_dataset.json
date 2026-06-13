@@ -1,0 +1,144 @@
+[
+  {
+    "id": "whatsapp-send-contact",
+    "input": "Schick Anna eine WhatsApp: Ich komme um 19 Uhr.",
+    "expect_tool_called": "send_whatsapp",
+    "expect_no_tool": false,
+    "note": "LLM must pick send_whatsapp without a separate find_contact call first (soul.md rule)"
+  },
+  {
+    "id": "calendar-query-tomorrow",
+    "input": "Was habe ich morgen?",
+    "expect_tool_called": "find_event",
+    "expect_no_tool": false,
+    "note": "Most common calendar query — must not hallucinate events"
+  },
+  {
+    "id": "contact-lookup-number",
+    "input": "Wie lautet die Telefonnummer von Thomas?",
+    "expect_tool_called": "find_contact",
+    "expect_no_tool": false,
+    "note": "Direct contact lookup — must use tool, not invent a number"
+  },
+  {
+    "id": "task-list-open",
+    "input": "Was steht noch auf meiner To-do-Liste?",
+    "expect_tool_called": "list_tasks",
+    "expect_no_tool": false,
+    "note": "Unambiguous task list query"
+  },
+  {
+    "id": "create-task-simple",
+    "input": "Erstell eine Aufgabe: Rechnung für April bezahlen.",
+    "expect_tool_called": "create_task",
+    "expect_no_tool": false,
+    "note": "Simple task creation without due date"
+  },
+  {
+    "id": "complete-task",
+    "input": "Markiere die Aufgabe 'Arzt anrufen' als erledigt.",
+    "expect_tool_called": "complete_task",
+    "expect_no_tool": false,
+    "note": "Task completion — now requires confirmation (B1 finding)"
+  },
+  {
+    "id": "memory-store",
+    "input": "Merke dir: Mein Auto ist ein schwarzer VW Golf.",
+    "expect_tool_called": "remember",
+    "expect_no_tool": false,
+    "note": "Explicit memory store request"
+  },
+  {
+    "id": "memory-recall",
+    "input": "Was hast du dir über mein Auto gemerkt?",
+    "expect_tool_called": "recall",
+    "expect_no_tool": false,
+    "note": "Memory recall request"
+  },
+  {
+    "id": "create-calendar-event",
+    "input": "Erstell einen Termin: Zahnarzt am Freitag um 10 Uhr.",
+    "expect_tool_called": "create_event",
+    "expect_no_tool": false,
+    "note": "Calendar event creation with relative date — LLM must not invent the date"
+  },
+  {
+    "id": "whatsapp-read-messages",
+    "input": "Habe ich neue WhatsApp-Nachrichten von Maria?",
+    "expect_tool_called": "get_whatsapp_messages",
+    "expect_no_tool": false,
+    "note": "Reading WA messages for a contact"
+  },
+  {
+    "id": "calendar-next-week",
+    "input": "Zeig mir meine Termine für nächste Woche.",
+    "expect_tool_called": "find_event",
+    "expect_no_tool": false,
+    "note": "Calendar range query — needs find_event with correct date range"
+  },
+  {
+    "id": "whatsapp-to-explicit-number",
+    "input": "Schick die Nachricht 'Ich bin unterwegs' an +4366412345678.",
+    "expect_tool_called": "send_whatsapp",
+    "expect_no_tool": false,
+    "note": "Send WA to explicit phone number"
+  },
+  {
+    "id": "create-task-with-project",
+    "input": "Erstell die Aufgabe 'Präsentation vorbereiten' im Projekt Arbeit.",
+    "expect_tool_called": "create_task",
+    "expect_no_tool": false,
+    "note": "Task creation with project filter"
+  },
+  {
+    "id": "calendar-specific-date",
+    "input": "Was habe ich am 15. Juli?",
+    "expect_tool_called": "find_event",
+    "expect_no_tool": false,
+    "note": "Calendar query for specific date — LLM must call tool, not say 'I don't know'"
+  },
+  {
+    "id": "memory-store-key-value",
+    "input": "Speichere: Lieblingsfarbe ist Blau.",
+    "expect_tool_called": "remember",
+    "expect_no_tool": false,
+    "note": "Memory store with key-value phrasing"
+  },
+  {
+    "id": "chat-greeting",
+    "input": "Wie geht es dir heute?",
+    "expect_tool_called": null,
+    "expect_no_tool": true,
+    "allow_tools": ["recall"],
+    "note": "Casual greeting — must NOT call any tool. recall is tolerated: llama3.1:8b calls it as context enrichment before reasoning; response is still correct and recall on empty store is harmless."
+  },
+  {
+    "id": "chat-factual-question",
+    "input": "Was ist die Hauptstadt von Österreich?",
+    "expect_tool_called": null,
+    "expect_no_tool": true,
+    "note": "General knowledge question — no tool needed, LLM knows the answer"
+  },
+  {
+    "id": "chat-explanation",
+    "input": "Erkläre mir kurz was Markdown ist.",
+    "expect_tool_called": null,
+    "expect_no_tool": true,
+    "note": "Explanation request — no tool, no search (unless Recherche-Modus active)"
+  },
+  {
+    "id": "chat-thanks",
+    "input": "Danke, das war sehr hilfreich!",
+    "expect_tool_called": null,
+    "expect_no_tool": true,
+    "allow_tools": ["recall"],
+    "note": "Conversational follow-up — must NOT call any tool. recall is tolerated: llama3.1:8b calls it as context enrichment before reasoning; response is still correct and recall on empty store is harmless."
+  },
+  {
+    "id": "chat-math",
+    "input": "Was ist 15 mal 37?",
+    "expect_tool_called": null,
+    "expect_no_tool": true,
+    "note": "Simple calculation — no tool needed"
+  }
+]

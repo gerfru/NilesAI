@@ -245,7 +245,7 @@ async def seed_contact(db_conn):
     await db_conn.execute(
         """
         INSERT INTO contact_phones (contact_id, type, number)
-        VALUES ($1, 'mobile', '+43 660 1234567')
+        VALUES ($1, 'mobile', '+43 500 000 0000')
         """,
         contact_id,
     )

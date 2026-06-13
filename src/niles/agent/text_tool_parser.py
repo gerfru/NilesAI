@@ -7,7 +7,10 @@ and parses such text into proper tool-call dicts.
 """
 
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def try_parse_text_tool_call(
@@ -105,6 +108,7 @@ def parse_json_tool_call(
             prefix = f"mcp__{parts[1]}__"
             candidates = [t for t in known_tools if t.startswith(prefix)]
             if len(candidates) == 1:
+                logger.warning("Fuzzy MCP tool name correction: %r → %r", name, candidates[0])
                 params = obj.get("parameters") or obj.get("arguments") or {}
                 return {
                     "name": candidates[0],
