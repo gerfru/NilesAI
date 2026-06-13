@@ -391,6 +391,9 @@ class Settings(BaseSettings):
     # LLM
     llm_base_url: str = "http://host.docker.internal:11434/v1"
     llm_model: str = "llama3.1:8b"
+    llm_temperature_tools: float = 0.35  # temperature when tools are available
+    llm_temperature_chat: float = 0.3    # temperature for pure chat (no tools)
+    llm_max_tokens: int = 4096           # max completion tokens per LLM call
     # PostgreSQL
     postgres_host: str = "evolution_postgres"
     postgres_port: int = 5432
@@ -507,7 +510,7 @@ class NilesAgent:
 | `create_event` | `summary: str, start: str, end?, description?, location?` | Create calendar event on writable source (via CalendarSourceManager). |
 | `list_tasks` | `project?, include_done?` | List open tasks from Vikunja (max 50). Feature flag: `feature_vikunja`. |
 | `create_task` | `title: str, description?, due_date?, priority?, project?` | Create new task in Vikunja. |
-| `complete_task` | `title: str` | Mark task as done (search by title). |
+| `complete_task` | `title: str` | Find task by title, request confirmation, then mark as done. |
 | `mcp__gws__*` | varies | Google Calendar tools via per-user gws MCP (when Google connected). |
 | `mcp__weather__*` | varies | Weather tools via MCP (Open-Meteo, always active). |
 | `mcp__fetch__fetch_url` | `url: str, max_chars?: int` | Fetch and extract text from a web page (always active). SSRF-protected. |
@@ -834,7 +837,7 @@ class TasksAction:
 
 - `list_tasks`: GET /tasks/all, result simplification for LLM context (max 50 tasks)
 - `create_task`: PUT /projects/{id}/tasks, supports project assignment, due date, and priority (0-4)
-- `complete_task`: Searches open tasks by title, marks as done (POST /tasks/{id}). Error on zero or multiple matches.
+- `complete_task`: Searches open tasks by title via `find_task()`, returns a confirmation prompt (`{"confirm": "..."}`). On user confirmation, calls `complete_task()` (POST /tasks/{id}). Error on zero or multiple matches. 5-minute TTL on pending confirmation.
 - Default project ID is cached (first call triggers HTTP request)
 
 ### 3.21 Briefing (`src/niles/actions/briefing.py`, `src/niles/jobs/briefing.py`)
@@ -1215,6 +1218,12 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `log_level` | `"INFO"` | `LOG_LEVEL` | No |
 | `llm_base_url` | `"http://host.docker.internal:11434/v1"` | `LLM_BASE_URL` | No |
 | `llm_model` | `"llama3.1:8b"` | `LLM_MODEL` | No |
+| `llm_temperature_tools` | `0.35` | `LLM_TEMPERATURE_TOOLS` | No |
+| `llm_temperature_chat` | `0.3` | `LLM_TEMPERATURE_CHAT` | No |
+| `llm_max_tokens` | `4096` | `LLM_MAX_TOKENS` | No |
+| `langfuse_host` | `""` | `LANGFUSE_HOST` | No |
+| `langfuse_public_key` | `""` | `LANGFUSE_PUBLIC_KEY` | No |
+| `langfuse_secret_key` | `""` | `LANGFUSE_SECRET_KEY` | No |
 | `postgres_host` | `"evolution_postgres"` | `POSTGRES_HOST` | No |
 | `postgres_port` | `5432` | `POSTGRES_PORT` | No |
 | `postgres_db` | `"evolution_db"` | `POSTGRES_DB` | No |
@@ -1311,7 +1320,7 @@ VIKUNJA_PUBLIC_URL=https://vikunja.example.local
 
 **Required:** `EVOLUTION_POSTGRES_PASSWORD`, `EVOLUTION_API_KEY`.
 
-**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_PUBLIC_URL`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `TIMEZONE`, `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `FEATURE_SEARCH`, `SEARXNG_URL`, `SEARXNG_SECRET_KEY`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
+**Optional:** `NILES_API_KEY`, `SESSION_SECRET`, `BASE_URL`, `WEBHOOK_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `CARDDAV_URL`, `CARDDAV_USER`, `CARDDAV_PASSWORD`, `CALDAV_URL`, `CALDAV_USER`, `CALDAV_PASSWORD`, `CALDAV_CALENDARS` (legacy, auto-migrated into DB), `VIKUNJA_API_URL`, `VIKUNJA_PUBLIC_URL`, `VIKUNJA_JWT_SECRET` (Docker only), `SIGNAL_API_URL`, `SIGNAL_PHONE_NUMBER`, `FEATURE_SIGNAL_SEND_OTHERS`, `BRIEFING_CHANNEL`, `FEATURE_BRIEFING_DAILY`, `FEATURE_BRIEFING_WEEKLY`, `BRIEFING_DAILY_TIME`, `BRIEFING_WEEKLY_TIME`, `LOG_LEVEL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TEMPERATURE_TOOLS`, `LLM_TEMPERATURE_CHAT`, `LLM_MAX_TOKENS`, `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `TIMEZONE`, `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`, `EVOLUTION_API_URL`, `EVOLUTION_INSTANCE`, `FEATURE_WHATSAPP_SEND_OTHERS`, `FEATURE_SEARCH`, `SEARXNG_URL`, `SEARXNG_SECRET_KEY`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` (Docker debugging), `CADDY_HOSTS_443`, `CADDY_HOSTS_8443`, `CADDY_HOSTS_3457` (Caddy reverse proxy hostnames).
 
 See `.env.example` for complete documentation.
 

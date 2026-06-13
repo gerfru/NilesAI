@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Vikunja task tools: list_tasks, create_task, complete_task."""
 
+import time
+
 from . import ToolContext, register_tool
 
 _VIKUNJA_NOT_CONFIGURED = "Aufgaben nicht konfiguriert. Bitte Vikunja-Token in den Einstellungen hinterlegen."
@@ -39,4 +41,14 @@ async def handle_complete_task(args: dict, chat_id: str, ctx: ToolContext) -> di
     tasks_action = await ctx.resolve_vikunja(chat_id)
     if not tasks_action:
         return {"error": _VIKUNJA_NOT_CONFIGURED}
-    return await tasks_action.complete_task(title=args["title"])
+    found = await tasks_action.find_task(title=args["title"])
+    if "error" in found:
+        return found
+    matched_title = found["title"]
+    ctx.pending_confirmations[chat_id] = {
+        "action": "complete_task",
+        "params": {"title": matched_title},
+        "display": f"Aufgabe '{matched_title}' als erledigt markieren",
+        "expires_at": time.monotonic() + 300,
+    }
+    return {"confirm": f"Aufgabe '{matched_title}' als erledigt markieren — ok?"}

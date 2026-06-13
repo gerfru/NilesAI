@@ -25,7 +25,8 @@ For technical details on architecture and development, see [Development.md](Deve
 13. [HTTPS & Remote Access (Tailscale + Caddy)](#13-https--remote-access-tailscale--caddy)
 14. [Backup & Maintenance](#14-backup--maintenance)
 15. [Troubleshooting](#15-troubleshooting)
-16. [Reference](#16-reference)
+16. [LLM Tracing & Token Monitoring (Langfuse)](#16-llm-tracing--token-monitoring-langfuse)
+17. [Reference](#17-reference)
 
 ---
 
@@ -857,7 +858,82 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 
 ---
 
-## 16. Reference
+## 16. LLM Tracing & Token Monitoring (Langfuse)
+
+### Langfuse einrichten
+
+Langfuse ist ein optionaler Self-hosted LLM-Tracing-Service, der jeden LLM-Aufruf
+(Prompt, Response, Latenz, Token-Verbrauch, Tool-Calls) aufzeichnet.
+
+```bash
+# Vorbereitung: Secrets generieren
+openssl rand -hex 32   # → LANGFUSE_NEXTAUTH_SECRET
+openssl rand -hex 16   # → LANGFUSE_SALT
+
+# In .env eintragen (Werte aus obigen Befehlen):
+# LANGFUSE_NEXTAUTH_SECRET=<32-byte-hex>
+# LANGFUSE_SALT=<16-byte-hex>
+# LANGFUSE_URL=http://localhost:3000
+
+# Service starten
+docker compose --profile langfuse up -d langfuse
+
+# Langfuse-Datenbank anlegen (einmalig)
+docker exec niles_evolution_postgres psql -U evolution -d evolution_db \
+  -c "CREATE DATABASE langfuse_db OWNER evolution;"
+```
+
+Langfuse UI aufrufen: `http://localhost:3000`
+
+1. Account registrieren
+2. Organization und Project anlegen
+3. **Settings → API Keys** → Public Key + Secret Key kopieren
+
+In `.env` eintragen und Niles neustarten:
+```
+LANGFUSE_HOST=http://langfuse:3000
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+```
+
+Langfuse-Paket installieren:
+```bash
+uv add langfuse
+```
+
+### Token Budget Alert (Prometheus)
+
+Niles exportiert Token-Metriken unter `/metrics` (Prometheus-Format):
+
+```
+niles_llm_tokens_total{type="prompt"} 12345
+niles_llm_tokens_total{type="completion"} 6789
+```
+
+Empfohlene Alert-Rule für einen externen Prometheus:
+
+```yaml
+groups:
+  - name: niles_llm
+    rules:
+      - alert: NilesTokenRateHigh
+        expr: rate(niles_llm_tokens_total[10m]) > 5000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Niles LLM Token-Rate > 5000 tokens/min"
+          description: "Möglicher Kostentreiber wenn API statt Ollama genutzt wird."
+```
+
+Ohne externen Prometheus: Metriken manuell abrufen:
+```bash
+curl http://localhost:8000/metrics | grep niles_llm_tokens
+```
+
+---
+
+## 17. Reference
 
 ### Environment Variables
 
@@ -877,7 +953,21 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 | `BASE_URL` | from request | Base URL for OAuth redirects (required behind reverse proxy) |
 | `TIMEZONE` | `Europe/Vienna` | Timezone for calendar, briefings, and prompts |
 | `LLM_MODEL` | `llama3.1:8b` | Ollama model |
+| `LLM_TEMPERATURE_TOOLS` | `0.35` | LLM temperature when tools are active |
+| `LLM_TEMPERATURE_CHAT` | `0.3` | LLM temperature for pure chat (no tools) |
+| `LLM_MAX_TOKENS` | `4096` | Max completion tokens per LLM call |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+
+**Langfuse LLM Tracing (optional, requires `--profile langfuse`):**
+
+| Variable | Description |
+| -------- | ----------- |
+| `LANGFUSE_HOST` | Langfuse server URL (e.g. `http://langfuse:3000`) |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse API public key (`pk-lf-...`) |
+| `LANGFUSE_SECRET_KEY` | Langfuse API secret key (`sk-lf-...`) |
+| `LANGFUSE_NEXTAUTH_SECRET` | Auth secret for Langfuse UI (`openssl rand -hex 32`) |
+| `LANGFUSE_SALT` | Salt for Langfuse UI (`openssl rand -hex 16`) |
+| `LANGFUSE_URL` | Public URL of Langfuse UI (default: `http://localhost:3000`) |
 
 **Google OAuth (optional):**
 

@@ -133,7 +133,7 @@ jobs:
           EVOLUTION_API_KEY: test-api-key  # pragma: allowlist secret
           NILES_API_KEY: test-niles-key  # pragma: allowlist secret
           LOG_LEVEL: DEBUG
-        run: uv run --extra dev pytest --cov --cov-report=term-missing --cov-report=xml
+        run: uv run --extra dev pytest -m "not llm_eval" --cov --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage artifact
         if: always()

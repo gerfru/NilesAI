@@ -2,6 +2,8 @@
 """MCP tool dispatch (fallback for tools not in the built-in registry)."""
 
 import logging
+import re
+from urllib.parse import urlparse
 
 from . import ToolContext
 
@@ -9,9 +11,37 @@ logger = logging.getLogger(__name__)
 
 MAX_MCP_RESULT_SIZE = 100_000  # 100 KB limit for MCP tool results
 
+# Block RFC1918 / loopback / Docker-internal hosts to prevent SSRF via the fetch tool.
+_SSRF_BLOCKED = re.compile(
+    r"^(localhost"
+    r"|127\.\d+\.\d+\.\d+"
+    r"|0\.0\.0\.0"
+    r"|10\.\d+\.\d+\.\d+"
+    r"|192\.168\.\d+\.\d+"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+"
+    r"|host\.docker\.internal"
+    r"|.*\.local)$",
+    re.IGNORECASE,
+)
+
+
+def _is_fetch_safe(url: str) -> bool:
+    """Return False if the URL resolves to a private/internal host."""
+    try:
+        host = urlparse(url).hostname or ""
+        return not _SSRF_BLOCKED.match(host)
+    except Exception:
+        return False
+
 
 async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
     """Execute an MCP tool call. Called as fallback when name is not in TOOL_REGISTRY."""
+    if name.startswith("mcp__fetch__"):
+        url = args.get("url", "")
+        if not _is_fetch_safe(url):
+            logger.warning("SSRF blocked: fetch tool called with internal URL %r", url)
+            return {"error": "URL nicht erreichbar: interne Netzwerkadressen sind nicht erlaubt."}
+
     # Global MCP tools (weather, searxng, fetch, etc.)
     if ctx.mcp and ctx.mcp.is_mcp_tool(name):
         try:

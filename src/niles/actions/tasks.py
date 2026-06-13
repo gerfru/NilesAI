@@ -167,9 +167,26 @@ class TasksAction:
             "project_id": project_id,
         }
 
+    async def find_task(self, title: str) -> dict:
+        """Find an open task by title without completing it.
+
+        Returns {"title": matched_title} on success, or an error dict with
+        optional "matches" list when multiple tasks match.
+        """
+        tasks = await self.list_tasks(include_done=False)
+        title_lower = title.lower()
+        matches = [t for t in tasks if title_lower in t["title"].lower()]
+        if not matches:
+            return {"error": f"Keine offene Aufgabe gefunden: '{title}'"}
+        if len(matches) > 1:
+            return {
+                "error": "Mehrere Aufgaben gefunden. Welche meinst du?",
+                "matches": [m["title"] for m in matches[:5]],
+            }
+        return {"title": matches[0]["title"]}
+
     async def complete_task(self, title: str) -> dict:
         """Find a task by title and mark it as done."""
-        # Search for matching task
         tasks = await self.list_tasks(include_done=False)
         title_lower = title.lower()
 
