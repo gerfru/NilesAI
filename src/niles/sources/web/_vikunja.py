@@ -4,9 +4,10 @@
 import logging
 
 import asyncpg  # FK violation handling requires cookie deletion (web concern)
-from fastapi import Form, Request, Response
+from fastapi import Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse
 
+from ...actions.vikunja_setup import VikunjaSetupAction
 from ._core import (
     SESSION_COOKIE_NAME,
     _get_session_user,
@@ -14,18 +15,21 @@ from ._core import (
     router,
     templates,
 )
+from ._deps import get_vikunja_setup
 
 logger = logging.getLogger(__name__)
 
 
 @router.get("/api/vikunja/status", response_class=HTMLResponse)
-async def vikunja_status(request: Request):
+async def vikunja_status(
+    request: Request,
+    vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
+):
     """Return Vikunja connection status fragment."""
     user = _get_session_user(request)
     if user is None:
         return Response(status_code=401, headers={"HX-Redirect": "/ui/login"})
 
-    vikunja_setup = getattr(request.app.state, "vikunja_setup_action", None)
     if not vikunja_setup:
         return HTMLResponse('<p class="text-sm text-zinc-500 dark:text-zinc-400 py-2">Vikunja nicht verfuegbar.</p>')
 
@@ -42,6 +46,7 @@ async def vikunja_connect(
     request: Request,
     api_token: str = Form(...),
     api_url: str = Form(""),
+    vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
 ):
     """Save Vikunja API token for the current user."""
     user, error = await _require_auth_and_csrf(request)
@@ -49,7 +54,6 @@ async def vikunja_connect(
         return error
     assert user is not None
 
-    vikunja_setup = getattr(request.app.state, "vikunja_setup_action", None)
     if not vikunja_setup:
         return templates.TemplateResponse(
             request,
@@ -95,14 +99,16 @@ async def vikunja_connect(
 
 
 @router.post("/api/vikunja/disconnect", response_class=HTMLResponse)
-async def vikunja_disconnect(request: Request):
+async def vikunja_disconnect(
+    request: Request,
+    vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
+):
     """Remove Vikunja API token for current user."""
     user, error = await _require_auth_and_csrf(request)
     if error:
         return error
     assert user is not None
 
-    vikunja_setup = getattr(request.app.state, "vikunja_setup_action", None)
     if vikunja_setup and user.get("uid"):
         await vikunja_setup.delete_credentials(user["uid"])
 
