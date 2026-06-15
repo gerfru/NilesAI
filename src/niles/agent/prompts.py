@@ -37,14 +37,14 @@ def load_system_prompt(path: str | None = None) -> str:
     """Load base system prompt from soul.md file."""
     if path is None:
         # Default: config/soul.md relative to project root
-        path = Path(__file__).parent.parent.parent.parent / "config" / "soul.md"
+        resolved = Path(__file__).parent.parent.parent.parent / "config" / "soul.md"
     else:
-        path = Path(path)
+        resolved = Path(path)
 
     try:
-        return path.read_text(encoding="utf-8")
+        return resolved.read_text(encoding="utf-8")
     except FileNotFoundError:
-        logger.warning("soul.md not found at %s, using default prompt", path)
+        logger.warning("soul.md not found at %s, using default prompt", resolved)
         return _DEFAULT_PROMPT
 
 

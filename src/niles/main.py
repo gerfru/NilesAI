@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     try:
-        settings = Settings()
+        settings = Settings()  # type: ignore[call-arg]  # required fields populated from env
     except ValidationError as exc:
         logger.error("Configuration error – required environment variables missing:")
         for error in exc.errors():

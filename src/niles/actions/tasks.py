@@ -63,7 +63,7 @@ class TasksAction:
         # Vikunja API: GET /api/v1/tasks/all
         # Note: limited to 50 tasks (no pagination). Users with more
         # tasks should use the Vikunja Web-UI for the full list.
-        params = {
+        params: dict[str, str | int] = {
             "sort_by": "due_date",
             "order_by": "asc",
             "per_page": 50,

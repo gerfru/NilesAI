@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Tool definitions for the Niles agent in OpenAI function-calling format."""
 
+from typing import Any
+
 # Tool definitions in OpenAI function-calling format
-TOOLS = [
+TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {

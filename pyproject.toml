@@ -93,6 +93,8 @@ dev = [
     "pip-audit>=2.7.0",
     "ruff>=0.9.0",
     "anthropic>=0.40",  # Claude-as-Judge E2E tests
+    "types-python-dateutil>=2.9.0.20260518",
+    "types-pyyaml>=6.0.12.20260518",
 ]
 
 [build-system]
@@ -142,50 +144,8 @@ warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
 
-# Type overrides — tightened incrementally; see docs/Quality-Assessment.md Phase 1
-# Removed: niles.sources.web (typed AppState eliminates union-attr)
-# Removed: niles.sync.caldav (fixed _base_url pattern)
-# Reduced: niles.sync.carddav (fixed assignment/operator, attr-defined remains)
-# Reduced: niles.sync.manager (fixed operator, arg-type remains)
-[[tool.mypy.overrides]]
-module = "niles.sync.manager"
-disable_error_code = ["arg-type"]
-
-[[tool.mypy.overrides]]
-module = "niles.main"
-disable_error_code = ["call-arg"]
-
-[[tool.mypy.overrides]]
-module = "niles.sync.ical_parser"
-disable_error_code = ["var-annotated", "assignment", "union-attr", "import-untyped"]
-
-[[tool.mypy.overrides]]
-module = "niles.sync.carddav"
-disable_error_code = ["attr-defined"]
-
-[[tool.mypy.overrides]]
-module = "niles.agent.core"
-disable_error_code = ["index", "assignment", "call-overload", "union-attr", "no-redef"]
-
-[[tool.mypy.overrides]]
-module = "niles.agent.prompts"
-disable_error_code = ["assignment", "union-attr"]
-
-[[tool.mypy.overrides]]
-module = "niles.jobs.briefing"
-disable_error_code = ["arg-type"]
-
-[[tool.mypy.overrides]]
-module = "niles.actions.tasks"
-disable_error_code = ["arg-type"]
-
-[[tool.mypy.overrides]]
-module = "niles.cli"
-disable_error_code = ["call-arg"]
-
-[[tool.mypy.overrides]]
-module = "niles.mcp.client"
-disable_error_code = ["import-untyped"]
+# All per-module error-code suppressions removed in W18 — fixed at the source.
+# Type stubs (types-python-dateutil, types-pyyaml) resolve the import-untyped cases.
 
 [tool.coverage.run]
 source = ["src/niles"]

@@ -190,7 +190,7 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
     unfolded = unfold_ics(ics_text)
     lines = unfolded.split("\n")
 
-    event = {
+    event: dict = {
         "summary": "",
         "dtstart": None,
         "dtend": None,
