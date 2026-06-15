@@ -19,8 +19,10 @@ from ..mcp.client import MCPManager
 from ..memory.history import ConversationHistory
 from ..memory.store import MemoryStore
 from ..metrics import LLM_DURATION, LLM_TOKENS, TOOL_CALLS
+from ..redaction import redact_tool_args
 from ..signal_store import SignalMessageStore
 from ..sync.manager import CalendarSourceManager
+from ..user_store import UserStore
 from ..vikunja_store import VikunjaCredentialStore
 from ..whatsapp_store import WhatsAppSessionStore
 from .context import ContextBuilder
@@ -74,6 +76,7 @@ class NilesAgent:
         vikunja_store: VikunjaCredentialStore | None = None,
         signal: SignalAction | None = None,
         signal_store: SignalMessageStore | None = None,
+        user_store: UserStore | None = None,
         http_client: httpx.AsyncClient | None = None,
     ):
         self.notion_retriever: object | None = None
@@ -111,6 +114,7 @@ class NilesAgent:
             vikunja_store=vikunja_store,
             signal=signal,
             signal_store=signal_store,
+            user_store=user_store,
             http_client=http_client,
         )
 
@@ -206,7 +210,12 @@ class NilesAgent:
 
         _success = result.get("error") is None if isinstance(result, dict) else True
         TOOL_CALLS.labels(tool_name=name, success=str(_success).lower()).inc()
-        logger.info("Tool result [%s]: %s", tool_call.id, result)
+        # Redact: tool results may contain PII (message text, phone numbers, names).
+        if isinstance(result, dict):
+            logger.info("Tool result [%s]: keys=%s", tool_call.id, sorted(result))
+            logger.debug("Tool result [%s]: %s", tool_call.id, redact_tool_args(result))
+        else:
+            logger.info("Tool result [%s]: %d chars", tool_call.id, len(str(result)))
 
         if isinstance(result, dict):
             for key in ("choose_phone", "confirm"):
@@ -585,7 +594,14 @@ class NilesAgent:
             TOOL_CALLS.labels(tool_name=name, success="false").inc()
             return {"error": "Invalid arguments"}
 
-        logger.info("Tool call [%s]: %s(%s)", tool_call.id, name, args)
+        # Redact: argument values may contain PII (recipients, message text, names).
+        logger.info(
+            "Tool call [%s]: %s(keys=%s)",
+            tool_call.id,
+            name,
+            sorted(args) if isinstance(args, dict) else "<non-dict>",
+        )
+        logger.debug("Tool call args [%s]: %s", tool_call.id, redact_tool_args(args))
 
         # Resolve user_id for per-user MCP tool routing
         user_id = await self._ctx.resolve_user_id(chat_id) if chat_id else None

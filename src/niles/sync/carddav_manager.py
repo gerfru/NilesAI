@@ -10,9 +10,11 @@ from urllib.parse import urlparse
 
 import asyncpg
 import httpx
+from cryptography.fernet import InvalidToken
 
 from ..crypto import FieldEncryptor
 from ..network import is_private_host
+from ..redaction import redact_credentials
 from ..sync.carddav import CardDAVSync
 
 logger = logging.getLogger(__name__)
@@ -190,7 +192,14 @@ class CardDAVSourceManager:
         """Sync a single source row."""
         password = src["auth_password"] or ""
         if self._enc and password:
-            password = self._enc.decrypt(password)
+            try:
+                password = self._enc.decrypt(password)
+            except InvalidToken:
+                logger.error(  # nosemgrep: python-logger-credential-disclosure
+                    "CardDAV credential decryption failed for source %s (key mismatch?)",
+                    src.get("id"),
+                )
+                raise
 
         sync = CardDAVSync(
             self.pool,
@@ -208,9 +217,10 @@ class CardDAVSourceManager:
             )
             return count
         except Exception as exc:
+            safe = redact_credentials(str(exc))[:500]
             await self.pool.execute(
                 "UPDATE carddav_sources SET last_error = $1 WHERE id = $2",
-                str(exc)[:500],
+                safe,
                 src["id"],
             )
             raise

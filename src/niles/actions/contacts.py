@@ -119,7 +119,14 @@ class ContactsAction:
         4. All words match across name fields
 
         Returns dict with full_name, phone, email or None.
+
+        Fails closed: without a ``user_id`` no lookup is performed, so an
+        unresolved chat context can never read another user's contacts.
         """
+        if user_id is None:
+            logger.warning("find_by_name called without user_id — failing closed (no lookup)")
+            return None
+
         words = name.split()
         if len(words) > 1:
             # Multi-word search: each word must appear in at least one name field
@@ -138,13 +145,10 @@ class ContactsAction:
             name_param = f"${len(params) + 1}"
             params.append(name)
 
-            # Optional user_id filter
-            if user_id is not None:
-                uid_param = f"${len(params) + 1}"
-                params.append(user_id)
-                user_filter = f" AND user_id = {uid_param}"
-            else:
-                user_filter = ""
+            # Always scope to the user (guaranteed non-None above)
+            uid_param = f"${len(params) + 1}"
+            params.append(user_id)
+            user_filter = f" AND user_id = {uid_param}"
 
             query = f"""
                 SELECT id, full_name, first_name, last_name,
@@ -163,51 +167,29 @@ class ContactsAction:
             """
             row = await self.pool.fetchrow(query, *params)
         else:
-            # Single-word search: original logic
-            if user_id is not None:
-                row = await self.pool.fetchrow(
-                    """
-                    SELECT id, full_name, first_name, last_name,
-                           phone_primary, phone_mobile, phone_work, email
-                    FROM contacts
-                    WHERE (full_name ILIKE '%' || $1 || '%'
-                       OR first_name ILIKE '%' || $1 || '%'
-                       OR last_name ILIKE '%' || $1 || '%')
-                       AND user_id = $2
-                    ORDER BY
-                        CASE
-                            WHEN LOWER(full_name) = LOWER($1) THEN 1
-                            WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                            WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                            ELSE 4
-                        END,
-                        full_name ASC
-                    LIMIT 1
-                    """,
-                    name,
-                    user_id,
-                )
-            else:
-                row = await self.pool.fetchrow(
-                    """
-                    SELECT id, full_name, first_name, last_name,
-                           phone_primary, phone_mobile, phone_work, email
-                    FROM contacts
-                    WHERE full_name ILIKE '%' || $1 || '%'
-                       OR first_name ILIKE '%' || $1 || '%'
-                       OR last_name ILIKE '%' || $1 || '%'
-                    ORDER BY
-                        CASE
-                            WHEN LOWER(full_name) = LOWER($1) THEN 1
-                            WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                            WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                            ELSE 4
-                        END,
-                        full_name ASC
-                    LIMIT 1
-                    """,
-                    name,
-                )
+            # Single-word search, always scoped to the user
+            row = await self.pool.fetchrow(
+                """
+                SELECT id, full_name, first_name, last_name,
+                       phone_primary, phone_mobile, phone_work, email
+                FROM contacts
+                WHERE (full_name ILIKE '%' || $1 || '%'
+                   OR first_name ILIKE '%' || $1 || '%'
+                   OR last_name ILIKE '%' || $1 || '%')
+                   AND user_id = $2
+                ORDER BY
+                    CASE
+                        WHEN LOWER(full_name) = LOWER($1) THEN 1
+                        WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
+                        WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
+                        ELSE 4
+                    END,
+                    full_name ASC
+                LIMIT 1
+                """,
+                name,
+                user_id,
+            )
 
         if not row:
             return None

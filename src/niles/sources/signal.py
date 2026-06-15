@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import structlog
 import websockets
 
+from ..redaction import redact_phone
 from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
 
@@ -48,7 +49,7 @@ async def signal_listener(
                         break
                     try:
                         envelope = json.loads(raw)
-                        logger.debug("Signal envelope: %s", raw[:500])
+                        logger.debug("Signal envelope received (%d bytes)", len(raw))
                         await _handle_envelope(app_state, envelope)
                     except Exception:
                         logger.exception("Error handling Signal message")
@@ -95,7 +96,7 @@ async def _handle_envelope(app_state: Any, data: dict) -> None:
     if data_msg and data_msg.get("message"):
         text = data_msg["message"]
         await signal_store.store(phone=source, text=text, from_me=False)
-        logger.info("Signal message from %s stored", source)
+        logger.info("Signal message from %s stored", redact_phone(source))
         return
 
     # --- Self-chat (Note to Self) via syncMessage.sentMessage ---
@@ -111,7 +112,7 @@ async def _handle_envelope(app_state: Any, data: dict) -> None:
 
     # Store outgoing message
     dest = sent.get("destination", own_phone)
-    logger.info("Signal self-chat message: dest=%s text=%s", dest, text[:80])
+    logger.info("Signal self-chat message stored (dest=%s, %d chars)", redact_phone(dest), len(text))
     await signal_store.store(phone=dest, text=text, from_me=True)
 
     # Echo-loop guard: skip if we just sent this via the agent

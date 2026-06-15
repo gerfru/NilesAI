@@ -120,6 +120,16 @@ class UserStore:
             return cast(UserInfo, dict(row))
         return None
 
+    async def get_admin_user_id(self) -> int | None:
+        """Return the id of the (single) admin user, if any.
+
+        Used to scope global single-account integrations (e.g. Signal, whose
+        phone number is a deployment-wide config, not per-user) to the owner.
+        """
+        return await self.pool.fetchval(
+            "SELECT id FROM users WHERE is_admin = TRUE AND is_active = TRUE ORDER BY id LIMIT 1"
+        )
+
     async def update_password(self, user_id: int, password_hash: str) -> bool:
         """Update password hash and set auth_method to 'password'.
 

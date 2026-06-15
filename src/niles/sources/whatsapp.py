@@ -8,6 +8,7 @@ import structlog
 from fastapi import APIRouter, Query, Request
 
 from ..errors import error_response
+from ..redaction import redact_phone
 
 from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
@@ -28,7 +29,7 @@ async def _handle_self_chat(text: str, remote_jid: str, payload: dict, request: 
 
     clean_text = strip_trigger(text) or "Hallo!"
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-    logger.info("Self-chat trigger from %s: %s", sender, clean_text[:100])
+    logger.info("Self-chat trigger from %s (%d chars)", redact_phone(sender), len(clean_text))
 
     chat_id = f"wa-self-{sender}"
     structlog.contextvars.bind_contextvars(chat_id=chat_id, source="whatsapp")
@@ -58,7 +59,7 @@ async def _handle_self_chat(text: str, remote_jid: str, payload: dict, request: 
             sent_id = result.get("key", {}).get("id") if isinstance(result, dict) else None
             if sent_id:
                 _echo_guard.record(sent_id)
-                logger.info("Self-chat reply sent to %s", remote_jid)
+                logger.info("Self-chat reply sent to %s", redact_phone(remote_jid))
             else:
                 logger.warning("No message ID in send_message response — echo guard not armed")
     except Exception:
@@ -130,5 +131,5 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     # Evolution API stores messages internally — no local DB needed.
     # Agent queries them via get_whatsapp_messages → Evolution API findMessages.
     sender = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
-    logger.info("WhatsApp message from %s (stored by Evolution API)", sender)
+    logger.info("WhatsApp message from %s (stored by Evolution API)", redact_phone(sender))
     return {"status": "received", "sender": sender}

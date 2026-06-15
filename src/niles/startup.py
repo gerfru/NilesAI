@@ -422,6 +422,7 @@ async def setup_mcp_and_actions(
         vikunja_store=stores["vikunja_store"],
         signal=signal_action,
         signal_store=signal_store,
+        user_store=stores["user_store"],
         http_client=http_clients.general,
     )
 

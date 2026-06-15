@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 import asyncpg
+from cryptography.fernet import InvalidToken
 
 if TYPE_CHECKING:
     from .crypto import FieldEncryptor
@@ -32,7 +33,14 @@ class VikunjaCredentialStore:
         if row:
             d = dict(row)
             if self._enc:
-                d["api_token"] = self._enc.decrypt(d["api_token"])
+                try:
+                    d["api_token"] = self._enc.decrypt(d["api_token"])
+                except InvalidToken:
+                    logger.error(  # nosemgrep: python-logger-credential-disclosure
+                        "Vikunja credential decryption failed for user %s (key mismatch?)",
+                        user_id,
+                    )
+                    return None
             return cast(VikunjaCredentials, d)
         return None
 

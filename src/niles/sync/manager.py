@@ -4,16 +4,17 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import asyncpg
 import httpx
+from cryptography.fernet import InvalidToken
 
 from niles.http_retry import retry_http
 from niles.network import is_private_host
+from niles.redaction import redact_credentials
 
 if TYPE_CHECKING:
     from niles.crypto import FieldEncryptor
@@ -31,9 +32,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_ICS_SIZE = 5 * 1024 * 1024  # 5 MB limit per ICS file
 _ICS_TIMEOUT = 60  # seconds
-
-# Strip credentials from URLs in error messages (user:pass@host → ***@host)
-_CREDENTIAL_RE = re.compile(r"://[^@/\s]+@")
 
 
 class CalendarSourceManager:
@@ -332,7 +330,14 @@ class CalendarSourceManager:
         if source["source_type"] == "caldav":
             password = source["auth_password"] or ""
             if self._enc and password:
-                password = self._enc.decrypt(password)
+                try:
+                    password = self._enc.decrypt(password)
+                except InvalidToken:
+                    logger.error(  # nosemgrep: python-logger-credential-disclosure
+                        "CalDAV credential decryption failed for source %s (key mismatch?)",
+                        source.get("id"),
+                    )
+                    raise
             return httpx.BasicAuth(source["auth_user"] or "", password)
         return None
 
@@ -380,7 +385,7 @@ class CalendarSourceManager:
 
     async def _set_error(self, source_id: int, error_msg: str) -> None:
         """Store sync error message (credentials stripped)."""
-        sanitized = _CREDENTIAL_RE.sub("://***@", error_msg)[:500]
+        sanitized = redact_credentials(error_msg)[:500]
         await self.pool.execute(
             "UPDATE calendar_sources SET last_error = $1 WHERE id = $2",
             sanitized,
