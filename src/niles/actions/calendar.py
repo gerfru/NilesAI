@@ -3,10 +3,11 @@
 
 import logging
 import re
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import asyncpg
+from niles.event_store import EventStore
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,8 @@ _WEEKDAY_MAP = {
 class CalendarAction:
     """Search calendar events by keyword and/or date range."""
 
-    def __init__(self, pool: asyncpg.Pool, timezone: str = "Europe/Vienna"):
-        self.pool = pool
+    def __init__(self, event_store: EventStore, timezone: str = "Europe/Vienna"):
+        self.store = event_store
         self.tz = ZoneInfo(timezone)
 
     async def find_by_query(
@@ -87,41 +88,11 @@ class CalendarAction:
         # Resolve optional calendar source filter
         source_id = None
         if calendar:
-            source_id = await self._resolve_source_id(calendar, user_id=user_id)
+            source_id = await self.store.resolve_source_id(calendar, user_id=user_id)
 
-        rows = await self.pool.fetch(
-            """
-            SELECT e.summary, e.dtstart, e.dtend, e.all_day,
-                   e.description, e.location, e.transp
-            FROM events e
-            LEFT JOIN calendar_sources cs ON e.source_id = cs.id
-            WHERE ($1 = '' OR e.summary ILIKE '%' || $1 || '%'
-                   OR e.description ILIKE '%' || $1 || '%'
-                   OR e.location ILIKE '%' || $1 || '%')
-              AND ($2::timestamptz IS NULL OR e.dtstart >= $2)
-              AND ($3::timestamptz IS NULL OR e.dtstart <= $3)
-              AND ($4::integer IS NULL OR e.source_id = $4)
-              AND ($5::integer IS NULL OR cs.user_id = $5)
-            ORDER BY e.dtstart ASC
-            LIMIT 10
-            """,
-            query,
-            ts_from,
-            ts_to,
-            source_id,
-            user_id,
-        )
+        rows = await self.store.search(query, ts_from, ts_to, source_id, user_id)
 
         return [self._row_to_dict(row) for row in rows]
-
-    async def _resolve_source_id(self, name: str, user_id: int | None = None) -> int | None:
-        """Resolve a calendar source name to its ID."""
-        row = await self.pool.fetchrow(
-            "SELECT id FROM calendar_sources WHERE LOWER(name) = LOWER($1) AND ($2::integer IS NULL OR user_id = $2)",
-            name,
-            user_id,
-        )
-        return row["id"] if row else None
 
     @staticmethod
     def _day_boundary(dt: datetime, end_of_day: bool) -> datetime:
@@ -197,7 +168,7 @@ class CalendarAction:
             clean = clean[:_MAX_FIELD_LENGTH] + "..."
         return clean
 
-    def _row_to_dict(self, row: asyncpg.Record) -> dict:
+    def _row_to_dict(self, row: Mapping) -> dict:
         """Convert a database row to a formatted dict."""
         dtstart = row["dtstart"]
         dtend = row["dtend"]

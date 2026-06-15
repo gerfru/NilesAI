@@ -133,7 +133,7 @@ ignore = ["E501"]  # Line length handled by ruff format
 "src/niles/sources/web/_whatsapp.py" = ["S101"]
 # CalDAV: uses defusedxml (S314 no longer needed)
 # Dynamic SQL uses parameterized queries (where_clause built from internal logic, not user input)
-"src/niles/actions/contacts.py" = ["S608"]
+"src/niles/contact_store.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.14"

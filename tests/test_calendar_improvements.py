@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from niles.actions.calendar import CalendarAction, _WEEKDAY_MAP
+from niles.event_store import EventStore
 from niles.agent.prompts import build_system_prompt
 
 
@@ -52,7 +53,7 @@ class TestParseDateMalformedLLM:
     @pytest.fixture
     def action(self):
         pool = AsyncMock()
-        return CalendarAction(pool, timezone="Europe/Vienna")
+        return CalendarAction(EventStore(pool), timezone="Europe/Vienna")
 
     def test_dict_wrapped_date(self, action):
         """{'date': '2026-02-24'} should extract 2026-02-24."""
@@ -98,7 +99,7 @@ class TestParseDateWeekday:
     @pytest.fixture
     def action(self):
         pool = AsyncMock()
-        return CalendarAction(pool, timezone="Europe/Vienna")
+        return CalendarAction(EventStore(pool), timezone="Europe/Vienna")
 
     def test_next_monday_from_thursday(self, action):
         """If today is Thursday (weekday=3), 'montag' should be next Monday (+4 days)."""
@@ -194,7 +195,7 @@ class TestRowToDictAllDay:
     @pytest.fixture
     def action(self):
         pool = AsyncMock()
-        return CalendarAction(pool, timezone="Europe/Vienna")
+        return CalendarAction(EventStore(pool), timezone="Europe/Vienna")
 
     def test_all_day_event_date_only(self, action):
         """All-day events should output date-only, not timezone-converted time."""
@@ -310,18 +311,18 @@ class TestResolveSourceId:
     async def test_returns_id_when_found(self):
         pool = AsyncMock()
         pool.fetchrow.return_value = {"id": 42}
-        action = CalendarAction(pool)
+        action = CalendarAction(EventStore(pool))
 
-        result = await action._resolve_source_id("Geburtstage", user_id=1)
+        result = await action.store.resolve_source_id("Geburtstage", user_id=1)
         assert result == 42
         pool.fetchrow.assert_called_once()
 
     async def test_returns_none_when_not_found(self):
         pool = AsyncMock()
         pool.fetchrow.return_value = None
-        action = CalendarAction(pool)
+        action = CalendarAction(EventStore(pool))
 
-        result = await action._resolve_source_id("Nonexistent", user_id=1)
+        result = await action.store.resolve_source_id("Nonexistent", user_id=1)
         assert result is None
 
 
@@ -335,7 +336,7 @@ class TestFindByQueryCalendarFilter:
         pool = AsyncMock()
         pool.fetchrow.return_value = {"id": 7}
         pool.fetch.return_value = []
-        action = CalendarAction(pool)
+        action = CalendarAction(EventStore(pool))
 
         await action.find_by_query(query="Geburtstag", calendar="Birthdays", user_id=1)
 
@@ -347,7 +348,7 @@ class TestFindByQueryCalendarFilter:
     async def test_no_calendar_passes_none(self):
         pool = AsyncMock()
         pool.fetch.return_value = []
-        action = CalendarAction(pool)
+        action = CalendarAction(EventStore(pool))
 
         await action.find_by_query(query="Test", user_id=1)
 
