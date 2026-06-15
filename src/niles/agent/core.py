@@ -486,13 +486,7 @@ class NilesAgent:
 
         # Tool-call loop: LLM may request multiple rounds of tool calls
         for _round in range(MAX_TOOL_ROUNDS):
-            if _force_search and _round == 0:
-                _tool_choice: object = {
-                    "type": "function",
-                    "function": {"name": _search_tool},
-                }
-            else:
-                _tool_choice = "auto" if all_tools else None
+            _tool_choice = self._tool_choice_for_round(_force_search, _round, all_tools, _search_tool)
 
             try:
                 _llm_start = time.monotonic()
@@ -517,56 +511,17 @@ class NilesAgent:
                 LLM_TOKENS.labels(type="prompt").inc(response.usage.prompt_tokens)
                 LLM_TOKENS.labels(type="completion").inc(response.usage.completion_tokens)
 
-            # No tool calls – check for text-based tool call fallback
+            # No tool calls – check for text-based tool call fallback, else finalize
             if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
                 content = choice.message.content or ""
-                _all_names = frozenset(t["function"]["name"] for t in all_tools)
-                parsed = self._try_parse_text_tool_call(content, _all_names) if content else None
-                if parsed:
-                    logger.info("Detected text-based tool call: %s", parsed["name"])
-                    tc_dict, assistant_msg = self._synthetic_tool_call(parsed)
-                    messages.append(assistant_msg)
-                    tc = SimpleNamespace(
-                        id=tc_dict["id"],
-                        function=SimpleNamespace(
-                            name=tc_dict["name"],
-                            arguments=tc_dict["arguments"],
-                        ),
-                    )
-                    bypass = await self._execute_and_check(
-                        tc,
-                        chat_id,
-                        messages,
-                        _history_content,
-                    )
-                    if bypass is not None:
-                        return bypass
-                    continue  # Next LLM round to generate natural language response
-
-                # Suppress raw JSON for unavailable tools
-                if content:
-                    rejected_name = is_rejected_tool_call(content)
-                    if rejected_name:
-                        logger.info(
-                            "Suppressed rejected tool call: %s",
-                            rejected_name,
-                        )
-                        content = (
-                            "Ich kann diese Anfrage mit den aktuell "
-                            "verfügbaren Funktionen nicht beantworten. "
-                            "Bitte aktiviere den Recherche-Modus."
-                        )
-
-                if not content:
-                    logger.warning(
-                        "LLM returned empty response for event: %s",
-                        event.get("content", "")[:100],
-                    )
-                # Save both messages together to avoid orphaned records
-                if content:
-                    await self.history.add_message(chat_id, "user", _history_content)
-                    await self.history.add_message(chat_id, "assistant", content)
-                return content
+                action, bypass = await self._handle_text_tool_call(
+                    content, all_tools, messages, chat_id, _history_content
+                )
+                if action == "bypass":
+                    return bypass
+                if action == "continue":
+                    continue  # text tool call executed → next round for the answer
+                return await self._finalize_event_text(chat_id, content, _history_content, event)
 
             # Append assistant message with tool calls (serialize to dict)
             messages.append(choice.message.model_dump(exclude_unset=True))
@@ -584,6 +539,49 @@ class NilesAgent:
 
         logger.warning("Max tool rounds reached")
         return "Ich konnte die Anfrage nicht abschließen."
+
+    async def _handle_text_tool_call(self, content, all_tools, messages, chat_id, history_content):
+        """Handle a text-encoded tool call (llama emits JSON as content).
+
+        Returns ("bypass", text) when execution produced a bypass result (caller
+        returns text), ("continue", None) when executed normally (caller loops
+        for the natural-language answer), or ("none", None) when *content* is not
+        a tool call (caller finalizes it as the response).
+        """
+        _all_names = frozenset(t["function"]["name"] for t in all_tools)
+        parsed = self._try_parse_text_tool_call(content, _all_names) if content else None
+        if not parsed:
+            return ("none", None)
+        logger.info("Detected text-based tool call: %s", parsed["name"])
+        tc_dict, assistant_msg = self._synthetic_tool_call(parsed)
+        messages.append(assistant_msg)
+        tc = SimpleNamespace(
+            id=tc_dict["id"],
+            function=SimpleNamespace(name=tc_dict["name"], arguments=tc_dict["arguments"]),
+        )
+        bypass = await self._execute_and_check(tc, chat_id, messages, history_content)
+        if bypass is not None:
+            return ("bypass", bypass)
+        return ("continue", None)
+
+    async def _finalize_event_text(self, chat_id, content, history_content, event) -> str:
+        """Suppress rejected raw-JSON tool calls, persist the turn, return the text."""
+        if content:
+            rejected_name = is_rejected_tool_call(content)
+            if rejected_name:
+                logger.info("Suppressed rejected tool call: %s", rejected_name)
+                content = (
+                    "Ich kann diese Anfrage mit den aktuell "
+                    "verfügbaren Funktionen nicht beantworten. "
+                    "Bitte aktiviere den Recherche-Modus."
+                )
+        if not content:
+            logger.warning("LLM returned empty response for event: %s", event.get("content", "")[:100])
+        # Save both messages together to avoid orphaned records
+        if content:
+            await self.history.add_message(chat_id, "user", history_content)
+            await self.history.add_message(chat_id, "assistant", content)
+        return content
 
     def _tool_context(self, user_id: int | None = None) -> ToolContext:
         """Build a ToolContext from the agent's dependencies.

@@ -151,6 +151,36 @@ def _extract_value(line: str) -> str:
     return line[colon_idx + 1 :].strip()
 
 
+def _apply_vevent_line(event: dict, line: str) -> None:
+    """Apply a single VEVENT property line to the event dict."""
+    if line.startswith("SUMMARY"):
+        event["summary"] = _extract_value(line)
+    elif line.startswith("DESCRIPTION"):
+        event["description"] = _extract_value(line)
+    elif line.startswith("LOCATION"):
+        event["location"] = _extract_value(line)
+    elif line.startswith("UID:"):
+        event["caldav_uid"] = line[4:].strip()
+    elif line.startswith("DTSTART"):
+        dt, all_day = parse_dt(line)
+        if dt:
+            event["dtstart"] = dt
+            event["all_day"] = all_day
+    elif line.startswith("DTEND"):
+        dt, _ = parse_dt(line)
+        if dt:
+            event["dtend"] = dt
+    elif line.startswith("TRANSP"):
+        event["transp"] = _extract_value(line)
+    elif line.startswith("RRULE:"):
+        event["rrule"] = line
+    elif line.startswith("EXDATE"):
+        try:
+            event["exdates"].extend(_parse_exdate_line(line))
+        except ValueError, IndexError:
+            logger.warning("Failed to parse EXDATE line: %s", line)
+
+
 def parse_icalendar(ics_text: str, url: str) -> dict | None:
     """Parse iCalendar text into an event dict. Returns None if invalid.
 
@@ -183,35 +213,8 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
             continue
         if line == "END:VEVENT":
             break
-        if not in_vevent:
-            continue
-
-        if line.startswith("SUMMARY"):
-            event["summary"] = _extract_value(line)
-        elif line.startswith("DESCRIPTION"):
-            event["description"] = _extract_value(line)
-        elif line.startswith("LOCATION"):
-            event["location"] = _extract_value(line)
-        elif line.startswith("UID:"):
-            event["caldav_uid"] = line[4:].strip()
-        elif line.startswith("DTSTART"):
-            dt, all_day = parse_dt(line)
-            if dt:
-                event["dtstart"] = dt
-                event["all_day"] = all_day
-        elif line.startswith("DTEND"):
-            dt, _ = parse_dt(line)
-            if dt:
-                event["dtend"] = dt
-        elif line.startswith("TRANSP"):
-            event["transp"] = _extract_value(line)
-        elif line.startswith("RRULE:"):
-            event["rrule"] = line
-        elif line.startswith("EXDATE"):
-            try:
-                event["exdates"].extend(_parse_exdate_line(line))
-            except ValueError, IndexError:
-                logger.warning("Failed to parse EXDATE line: %s", line)
+        if in_vevent:
+            _apply_vevent_line(event, line)
 
     # Skip events without summary
     if not event["summary"]:
@@ -228,6 +231,58 @@ def parse_icalendar(ics_text: str, url: str) -> dict | None:
     return event
 
 
+def _strip_recurrence_fields(event: dict) -> dict:
+    """Return a copy of *event* without the internal rrule/exdates keys."""
+    return {k: v for k, v in event.items() if k not in ("rrule", "exdates")}
+
+
+def _occurrence_duration(event: dict) -> timedelta:
+    """Duration of one occurrence: explicit DTEND, else 1 day (all-day) / 1 hour."""
+    dtend = event.get("dtend")
+    if dtend:
+        return dtend - event["dtstart"]
+    return timedelta(days=1) if event["all_day"] else timedelta(hours=1)
+
+
+def _exdate_lookup(event: dict) -> set:
+    """EXDATE set for exclusion: by date for all-day, by UTC datetime otherwise."""
+    exdates = event.get("exdates", [])
+    if event["all_day"]:
+        return {d.date() for d in exdates}
+    return {d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates}
+
+
+def _parse_rrule(rrule_str: str, dtstart: datetime, summary: str):
+    """Parse an RRULE string to a dateutil rule, or None on failure/missing dep."""
+    try:
+        from dateutil.rrule import rrulestr
+    except ImportError:
+        logger.warning("python-dateutil not installed, skipping RRULE expansion")
+        return None
+    rule_value = rrule_str[6:] if rrule_str.upper().startswith("RRULE:") else rrule_str
+    try:
+        return rrulestr(rule_value, dtstart=dtstart)
+    except ValueError, TypeError:
+        logger.warning("Failed to parse RRULE for '%s': %s", summary, rrule_str)
+        return None
+
+
+def _build_occurrence(event: dict, occ_start: datetime, duration: timedelta, original_uid: str) -> dict:
+    """Build a single expanded occurrence dict with a unique caldav_uid."""
+    uid_suffix = occ_start.strftime("%Y%m%d" if event["all_day"] else "%Y%m%dT%H%M%S")
+    return {
+        "summary": event["summary"],
+        "dtstart": occ_start,
+        "dtend": occ_start + duration,
+        "all_day": event["all_day"],
+        "description": event["description"],
+        "location": event["location"],
+        "transp": event.get("transp", "OPAQUE"),
+        "caldav_uid": f"{original_uid}@{uid_suffix}",
+        "caldav_url": event["caldav_url"],
+    }
+
+
 def expand_recurring_event(
     event: dict,
     window_start: datetime,
@@ -240,100 +295,31 @@ def expand_recurring_event(
     Each occurrence uid is formatted as "{original_uid}@{date_or_datetime}".
     """
     rrule_str = event.get("rrule", "")
-
-    # Non-recurring: strip internal fields and return as-is
     if not rrule_str:
-        clean = {k: v for k, v in event.items() if k not in ("rrule", "exdates")}
-        return [clean]
+        return [_strip_recurrence_fields(event)]
 
-    try:
-        from dateutil.rrule import rrulestr
-    except ImportError:
-        logger.warning("python-dateutil not installed, skipping RRULE expansion")
-        clean = {k: v for k, v in event.items() if k not in ("rrule", "exdates")}
-        return [clean]
+    rule = _parse_rrule(rrule_str, event["dtstart"], event.get("summary", ""))
+    if rule is None:
+        return [_strip_recurrence_fields(event)]
 
-    dtstart = event["dtstart"]
-    dtend = event.get("dtend")
-    if dtend:
-        duration = dtend - dtstart
-    elif event["all_day"]:
-        duration = timedelta(days=1)
-    else:
-        duration = timedelta(hours=1)
-
-    # Parse RRULE (strip "RRULE:" prefix)
-    rule_value = rrule_str
-    if rule_value.upper().startswith("RRULE:"):
-        rule_value = rule_value[6:]
-
-    try:
-        rule = rrulestr(rule_value, dtstart=dtstart)
-    except ValueError, TypeError:
-        logger.warning(
-            "Failed to parse RRULE for '%s': %s",
-            event.get("summary", ""),
-            rrule_str,
-        )
-        clean = {k: v for k, v in event.items() if k not in ("rrule", "exdates")}
-        return [clean]
-
-    # Build EXDATE set — compare by date for all-day, by UTC datetime otherwise
-    exdates = event.get("exdates", [])
-    if event["all_day"]:
-        exdate_dates = {d.date() for d in exdates}
-    else:
-        exdate_dates = {d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates}
-
-    # Generate occurrences within window
-    occurrences = rule.between(window_start, window_end, inc=True)
-
+    duration = _occurrence_duration(event)
+    exdate_set = _exdate_lookup(event)
     original_uid = event["caldav_uid"]
     results: list[dict] = []
 
-    for occ_start in occurrences:
+    for occ_start in rule.between(window_start, window_end, inc=True):
         if len(results) >= _MAX_OCCURRENCES:
-            logger.warning(
-                "Capped RRULE expansion at %d for '%s'",
-                _MAX_OCCURRENCES,
-                event.get("summary", ""),
-            )
+            logger.warning("Capped RRULE expansion at %d for '%s'", _MAX_OCCURRENCES, event.get("summary", ""))
             break
 
-        # Check EXDATE exclusion
-        if event["all_day"]:
-            if occ_start.date() in exdate_dates:
-                continue
-        else:
-            occ_utc = occ_start.astimezone(timezone.utc).replace(microsecond=0)
-            if occ_utc in exdate_dates:
-                continue
+        # EXDATE exclusion: compare by date for all-day, by UTC datetime otherwise
+        key = occ_start.date() if event["all_day"] else occ_start.astimezone(timezone.utc).replace(microsecond=0)
+        if key in exdate_set:
+            continue
 
-        occ_end = occ_start + duration
-
-        if event["all_day"]:
-            uid_suffix = occ_start.strftime("%Y%m%d")
-        else:
-            uid_suffix = occ_start.strftime("%Y%m%dT%H%M%S")
-
-        results.append(
-            {
-                "summary": event["summary"],
-                "dtstart": occ_start,
-                "dtend": occ_end,
-                "all_day": event["all_day"],
-                "description": event["description"],
-                "location": event["location"],
-                "transp": event.get("transp", "OPAQUE"),
-                "caldav_uid": f"{original_uid}@{uid_suffix}",
-                "caldav_url": event["caldav_url"],
-            }
-        )
+        results.append(_build_occurrence(event, occ_start, duration, original_uid))
 
     if not results:
-        logger.debug(
-            "No occurrences in window for recurring event '%s'",
-            event.get("summary", ""),
-        )
+        logger.debug("No occurrences in window for recurring event '%s'", event.get("summary", ""))
 
     return results
