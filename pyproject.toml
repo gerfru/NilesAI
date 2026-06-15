@@ -190,10 +190,11 @@ disable_error_code = ["import-untyped"]
 [tool.coverage.run]
 source = ["src/niles"]
 omit = ["tests/*", "alembic/*"]
+branch = true
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 70
+fail_under = 77  # branch-inclusive; raised from 70 after the route/agent-loop test additions (W16/W17)
 exclude_lines = [
     "pragma: no cover",
     "if __name__",

@@ -307,8 +307,8 @@ W19 (unabhängig)
 | W13 | DI / StartupContext + Depends-Pilot (_vikunja) + ADR-0002 | H | ~220 | ✅ (Phase-C PR3) |
 | W14 | Refactor process_event_stream | H | ~250 | ☐ |
 | W15 | Refactor process_event + iCal | M | ~300 | ☐ |
-| W16 | Tests Web/Agent-Loop | H | ~350 | ☐ |
-| W17 | Tests + Coverage-Gates | M | ~300 | ☐ |
+| W16 | Tests Web/Agent-Loop | H | ~350 | ✅ (Phase-D PR1) |
+| W17 | Tests + Coverage-Gates (branch on, fail_under 77) | M | ~300 | ✅ (Phase-D PR1) |
 | W18 | mypy/Typen-Baseline | M | ~200 | ☐ |
 | W19 | Observability-Glue | L | ~150 | ☐ |
 | W20 | Kosmetik + ADRs | L | ~200 | ☐ |
