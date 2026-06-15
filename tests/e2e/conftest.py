@@ -19,7 +19,9 @@ import pytest
 import pytest_asyncio
 
 from niles.actions.calendar import CalendarAction
+from niles.event_store import EventStore
 from niles.actions.contacts import ContactsAction
+from niles.contact_store import ContactStore
 from niles.agent.core import NilesAgent
 from niles.config import Settings
 from niles.memory.history import ConversationHistory
@@ -181,10 +183,10 @@ def _make_settings(**overrides):
 def _make_agent_core(pool) -> NilesAgent:
     """Build a NilesAgent with real DB stores (no LLM assigned)."""
     config = _make_settings()
-    contacts = ContactsAction(pool)
+    contacts = ContactsAction(ContactStore(pool))
     memory = MemoryStore(pool)
     history = ConversationHistory(pool)
-    calendar = CalendarAction(pool, timezone="Europe/Vienna")
+    calendar = CalendarAction(EventStore(pool), timezone="Europe/Vienna")
     whatsapp = AsyncMock()
 
     with patch("niles.agent.core.load_system_prompt", return_value="Du bist Niles."):

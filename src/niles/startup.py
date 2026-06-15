@@ -24,7 +24,9 @@ from .actions.whatsapp import WhatsAppAction
 from .actions.whatsapp_setup import WhatsAppSetupAction
 from .agent.core import NilesAgent
 from .config import Settings, apply_overrides
+from .contact_store import ContactStore
 from .crypto import FieldEncryptor
+from .event_store import EventStore
 from .http_clients import HttpClients
 from .jobs.briefing import send_daily_briefing, send_weekly_briefing
 from .mcp.client import MCPManager
@@ -70,6 +72,8 @@ class StartupContext:
     user_store: UserStore
     wa_store: WhatsAppSessionStore
     vikunja_store: VikunjaCredentialStore
+    contact_store: ContactStore
+    event_store: EventStore
     settings_store: SettingsStore
     notion_store: NotionStore
     signal_store: SignalMessageStore | None = None
@@ -168,6 +172,8 @@ async def setup_stores(
     await user_store.initialize()
     wa_store = WhatsAppSessionStore(pool)
     vikunja_store = VikunjaCredentialStore(pool, encryptor=encryptor)
+    contact_store = ContactStore(pool)
+    event_store = EventStore(pool)
 
     # Vikunja auto-provisioning
     vikunja_provisioner = None
@@ -231,6 +237,8 @@ async def setup_stores(
         "user_store": user_store,
         "wa_store": wa_store,
         "vikunja_store": vikunja_store,
+        "contact_store": contact_store,
+        "event_store": event_store,
         "vikunja_provisioner": vikunja_provisioner,
         "admin_action": admin_action,
         "settings_store": settings_store,
@@ -277,7 +285,7 @@ async def setup_scheduler(app_state: Any, settings: Settings, stores: dict[str, 
     calendar_sources = await calendar_manager.get_sources()
     calendar_action = None
     if settings.caldav_url or calendar_sources:
-        calendar_action = CalendarAction(stores["memory"].pool, timezone=settings.timezone)
+        calendar_action = CalendarAction(stores["event_store"], timezone=settings.timezone)
 
     if calendar_sources:
         scheduler.add_job(
@@ -297,7 +305,7 @@ async def setup_scheduler(app_state: Any, settings: Settings, stores: dict[str, 
 
     # Briefing Generator
     briefing_generator = BriefingGenerator(
-        pool=stores["memory"].pool,
+        stores["event_store"],
         timezone=settings.timezone,
         vikunja_store=vikunja_store,
         weather_latitude=settings.weather_latitude,
@@ -381,7 +389,9 @@ async def setup_mcp_and_actions(
     http_clients = stores["http_clients"]
 
     contacts = ContactsAction(
-        pool, carddav_manager=stores["carddav_manager"], phone_country_code=settings.phone_country_code
+        stores["contact_store"],
+        carddav_manager=stores["carddav_manager"],
+        phone_country_code=settings.phone_country_code,
     )
     vikunja_setup = VikunjaSetupAction(
         stores["vikunja_store"],

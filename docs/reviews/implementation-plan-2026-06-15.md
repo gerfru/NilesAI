@@ -302,7 +302,7 @@ W19 (unabhängig)
 | W8 | LLM-Timeout + Injection + Repair-Counter | M | ~150 | ✅ (LLM-Reife PR) |
 | W9 | Kontext-Budget (tiktoken, num_ctx, MCP-Token-Cap) | M | ~130 | ✅ (LLM-Reife PR2) |
 | W10 | Eval-CI-Gate (Golden, self-hosted nightly) | 🟠 H | ~120 | ✅ (LLM-Reife PR) |
-| W11 | Data-Access-Stores | H | ~280 | ☐ |
+| W11 | Data-Access-Stores (ContactStore/EventStore + Fitness-Test) | H | ~280 | ✅ (Phase-C PR1) |
 | W12 | MessageDispatch | H | ~250 | ☐ |
 | W13 | DI / StartupContext | H | ~220 | ☐ |
 | W14 | Refactor process_event_stream | H | ~250 | ☐ |

@@ -5,8 +5,7 @@ import logging
 import re
 from typing import cast
 
-import asyncpg
-
+from niles.contact_store import ContactStore
 from niles.types import ContactInfo
 
 logger = logging.getLogger(__name__)
@@ -39,34 +38,22 @@ class ContactsAction:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        contact_store: ContactStore,
         *,
         carddav_manager=None,
         phone_country_code: str = "43",
     ):
-        self.pool = pool
+        self.store = contact_store
         self.carddav_manager = carddav_manager
         self.phone_country_code = phone_country_code
 
     async def get_sync_status(self, user_id: int | None = None) -> dict:
         """Return contact count and last sync timestamp, optionally per user."""
-        if user_id is not None:
-            row = await self.pool.fetchrow(
-                "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts WHERE user_id = $1",
-                user_id,
-            )
-        else:
-            row = await self.pool.fetchrow("SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_sync FROM contacts")
-        return dict(row) if row else {"cnt": 0, "last_sync": None}
+        return await self.store.count_and_last_sync(user_id)
 
     async def clear_all(self, user_id: int | None = None) -> None:
         """Remove contacts, optionally scoped to a user."""
-        if user_id is not None:
-            await self.pool.execute("DELETE FROM contacts WHERE user_id = $1", user_id)
-            logger.info("Contacts cleared for user %d", user_id)
-        else:
-            await self.pool.execute("DELETE FROM contacts")
-            logger.info("All contacts cleared")
+        await self.store.clear(user_id)
 
     async def connect(
         self,
@@ -120,96 +107,15 @@ class ContactsAction:
 
         Returns dict with full_name, phone, email or None.
 
-        Fails closed: without a ``user_id`` no lookup is performed, so an
-        unresolved chat context can never read another user's contacts.
+        Fails closed (in the store): without a ``user_id`` no lookup is
+        performed, so an unresolved chat context can never read another
+        user's contacts.
         """
-        if user_id is None:
-            logger.warning("find_by_name called without user_id — failing closed (no lookup)")
-            return None
-
-        words = name.split()
-        if len(words) > 1:
-            # Multi-word search: each word must appear in at least one name field
-            word_conditions: list[str] = []
-            params: list[str | int] = []
-            for i, word in enumerate(words):
-                p = f"${i + 1}"
-                word_conditions.append(
-                    f"(full_name ILIKE '%%' || {p} || '%%' "
-                    f"OR first_name ILIKE '%%' || {p} || '%%' "
-                    f"OR last_name ILIKE '%%' || {p} || '%%')"
-                )
-                params.append(word)
-
-            where_clause = " AND ".join(word_conditions)
-            name_param = f"${len(params) + 1}"
-            params.append(name)
-
-            # Always scope to the user (guaranteed non-None above)
-            uid_param = f"${len(params) + 1}"
-            params.append(user_id)
-            user_filter = f" AND user_id = {uid_param}"
-
-            query = f"""
-                SELECT id, full_name, first_name, last_name,
-                       phone_primary, phone_mobile, phone_work, email
-                FROM contacts
-                WHERE {where_clause}{user_filter}
-                ORDER BY
-                    CASE
-                        WHEN LOWER(full_name) = LOWER({name_param}) THEN 1
-                        WHEN LOWER(full_name) LIKE LOWER({name_param}) || '%%' THEN 2
-                        WHEN LOWER(full_name) LIKE '%%' || LOWER({name_param}) || '%%' THEN 3
-                        ELSE 4
-                    END,
-                    full_name ASC
-                LIMIT 1
-            """
-            row = await self.pool.fetchrow(query, *params)
-        else:
-            # Single-word search, always scoped to the user
-            row = await self.pool.fetchrow(
-                """
-                SELECT id, full_name, first_name, last_name,
-                       phone_primary, phone_mobile, phone_work, email
-                FROM contacts
-                WHERE (full_name ILIKE '%' || $1 || '%'
-                   OR first_name ILIKE '%' || $1 || '%'
-                   OR last_name ILIKE '%' || $1 || '%')
-                   AND user_id = $2
-                ORDER BY
-                    CASE
-                        WHEN LOWER(full_name) = LOWER($1) THEN 1
-                        WHEN LOWER(full_name) LIKE LOWER($1) || '%' THEN 2
-                        WHEN LOWER(full_name) LIKE '%' || LOWER($1) || '%' THEN 3
-                        ELSE 4
-                    END,
-                    full_name ASC
-                LIMIT 1
-                """,
-                name,
-                user_id,
-            )
-
+        row = await self.store.find_contact_row(name, user_id=user_id)
         if not row:
             return None
 
-        # Fetch all phone numbers from contact_phones table
-        contact_id = row["id"]
-        phone_rows = await self.pool.fetch(
-            """
-            SELECT type, number FROM contact_phones
-            WHERE contact_id = $1
-            ORDER BY
-                CASE type
-                    WHEN 'mobile' THEN 1
-                    WHEN 'home' THEN 2
-                    WHEN 'work' THEN 3
-                    ELSE 4
-                END
-            """,
-            contact_id,
-        )
+        phone_rows = await self.store.get_phones(row["id"])
 
         cc = self.phone_country_code
         phones = [{"type": p["type"], "number": normalize_phone(p["number"], cc)} for p in phone_rows]

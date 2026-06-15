@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from niles.actions.contacts import ContactsAction
+from niles.contact_store import ContactStore
 from niles.agent.context import ContextBuilder
 from niles.config import Settings
 
@@ -39,7 +40,7 @@ class TestContactsFailClosed:
     @pytest.mark.asyncio
     async def test_none_user_id_returns_none_without_query(self):
         pool = AsyncMock()
-        action = ContactsAction(pool)
+        action = ContactsAction(ContactStore(pool))
 
         result = await action.find_by_name("Thomas", user_id=None)
 
@@ -50,7 +51,7 @@ class TestContactsFailClosed:
     async def test_scoped_query_includes_user_id(self):
         pool = AsyncMock()
         pool.fetchrow.return_value = None
-        action = ContactsAction(pool)
+        action = ContactsAction(ContactStore(pool))
 
         await action.find_by_name("Thomas", user_id=42)
 

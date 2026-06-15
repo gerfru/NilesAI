@@ -5,9 +5,9 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import asyncpg
 import httpx
 
+from niles.event_store import EventStore
 from niles.http_retry import retry_http
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class BriefingGenerator:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        event_store: EventStore,
         *,
         weather_client: httpx.AsyncClient,
         vikunja_client: httpx.AsyncClient,
@@ -67,7 +67,7 @@ class BriefingGenerator:
         weather_latitude: str = "",
         weather_longitude: str = "",
     ):
-        self.pool = pool
+        self.store = event_store
         self.tz = ZoneInfo(timezone)
         self.timezone = timezone
         self.vikunja_store = vikunja_store
@@ -87,20 +87,7 @@ class BriefingGenerator:
         user_id: int | None = None,
     ) -> list[dict]:
         """Fetch calendar events within a date range, scoped to user."""
-        rows = await self.pool.fetch(
-            """
-            SELECT e.summary, e.dtstart, e.dtend, e.all_day, e.location,
-                   cs.name AS calendar_name
-            FROM events e
-            LEFT JOIN calendar_sources cs ON e.source_id = cs.id
-            WHERE e.dtstart >= $1 AND e.dtstart <= $2
-              AND ($3::integer IS NULL OR cs.user_id = $3)
-            ORDER BY e.dtstart ASC
-            """,
-            date_from,
-            date_to,
-            user_id,
-        )
+        rows = await self.store.in_range(date_from, date_to, user_id)
         return [dict(r) for r in rows]
 
     async def _get_open_tasks(self, user_id: int | None = None) -> list[dict]:
