@@ -1,6 +1,6 @@
 {
-  "pass": 18,
+  "pass": 20,
   "total": 20,
   "tolerance": 1,
-  "_note": "Conservative starting baseline. Calibrate after the first real eval run on the self-hosted runner: set 'pass' to the observed pass count. Gate fails when passed < pass - tolerance."
+  "_note": "Calibrated from the first real run on the self-hosted runner (20/20). Gate fails when passed < pass - tolerance (floor 19). Re-calibrate if the golden dataset grows or the model changes."
 }
