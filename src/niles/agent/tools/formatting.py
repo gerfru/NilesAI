@@ -8,11 +8,14 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..prompts import wrap_untrusted
+
 
 def format_message_transcript(
     messages: Sequence[Mapping[str, Any]],
     contact_name: str,
     timezone_str: str,
+    source: str = "message",
 ) -> dict[str, Any]:
     """Format messages into a readable chat transcript with date range.
 
@@ -53,5 +56,6 @@ def format_message_transcript(
             "Termine, Abmachungen, offene Fragen, wichtige Infos. "
             "Gib NICHT das rohe Transcript wieder."
         ),
-        "transcript": transcript,
+        # Incoming message text is externally controlled → isolate it as data.
+        "transcript": wrap_untrusted(source, transcript),
     }

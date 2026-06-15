@@ -5,6 +5,7 @@ import logging
 import re
 from urllib.parse import urlparse
 
+from ..prompts import wrap_untrusted
 from . import ToolContext
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
             result_text = await ctx.mcp.call_tool(name, args)
             if len(result_text) > MAX_MCP_RESULT_SIZE:
                 result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
+            # Web fetch/search return externally-controlled content → isolate as
+            # data (indirect injection). Weather/structured tools stay as-is.
+            if "fetch" in name or "search" in name:
+                return {"result": wrap_untrusted("web", result_text)}
             return {"result": result_text}
         except Exception as e:
             logger.error("MCP tool call failed [%s]: %s", name, e)

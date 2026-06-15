@@ -10,6 +10,8 @@ import json
 import logging
 import re
 
+from niles.metrics import LLM_TOOL_REPAIRS
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,6 +77,7 @@ def parse_json_tool_call(
         if repaired != cleaned:
             try:
                 obj = json.loads(repaired)
+                LLM_TOOL_REPAIRS.labels(stage="regex").inc()
             except json.JSONDecodeError:
                 pass
 
@@ -84,6 +87,7 @@ def parse_json_tool_call(
             from json_repair import repair_json
 
             obj = repair_json(cleaned, return_objects=True)  # type: ignore[assignment]  # repair_json returns str | Any
+            LLM_TOOL_REPAIRS.labels(stage="json_repair").inc()
         except Exception:
             return None
 
@@ -109,6 +113,7 @@ def parse_json_tool_call(
             candidates = [t for t in known_tools if t.startswith(prefix)]
             if len(candidates) == 1:
                 logger.warning("Fuzzy MCP tool name correction: %r → %r", name, candidates[0])
+                LLM_TOOL_REPAIRS.labels(stage="fuzzy").inc()
                 params = obj.get("parameters") or obj.get("arguments") or {}
                 return {
                     "name": candidates[0],

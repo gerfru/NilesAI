@@ -86,6 +86,7 @@ dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=6.0.0",
+    "pytest-json-report>=1.5.0",  # machine-readable eval pass counts for the LLM-eval gate
     "httpx>=0.28.1",  # For TestClient
     "mypy>=1.14.0",
     "pip-audit>=2.7.0",

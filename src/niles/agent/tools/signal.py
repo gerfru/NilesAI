@@ -84,4 +84,5 @@ async def handle_get_signal_messages(args: dict, chat_id: str, ctx: ToolContext)
         messages=messages,
         contact_name=contact_name,
         timezone_str=ctx.config.timezone,
+        source="signal",
     )

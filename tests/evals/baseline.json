@@ -1,0 +1,6 @@
+{
+  "pass": 18,
+  "total": 20,
+  "tolerance": 1,
+  "_note": "Conservative starting baseline. Calibrate after the first real eval run on the self-hosted runner: set 'pass' to the observed pass count. Gate fails when passed < pass - tolerance."
+}

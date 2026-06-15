@@ -95,7 +95,8 @@ class NilesAgent:
                 logger.info("LLM tracing enabled via Langfuse (%s)", config.langfuse_host)
             except ImportError:
                 logger.warning("langfuse package not installed; LLM tracing disabled. Install: uv add langfuse")
-        self.llm = self._OpenAI(base_url=config.llm_base_url, api_key="not-needed")
+        self.llm_timeout = config.llm_timeout
+        self.llm = self._OpenAI(base_url=config.llm_base_url, api_key="not-needed", timeout=self.llm_timeout)
         self.model = config.llm_model
         self.llm_temperature_tools = config.llm_temperature_tools
         self.llm_temperature_chat = config.llm_temperature_chat
@@ -126,7 +127,7 @@ class NilesAgent:
         """
         async with self._llm_lock:
             if base_url is not None:
-                self.llm = self._OpenAI(base_url=base_url, api_key="not-needed")
+                self.llm = self._OpenAI(base_url=base_url, api_key="not-needed", timeout=self.llm_timeout)
             if model is not None:
                 self.model = model
 

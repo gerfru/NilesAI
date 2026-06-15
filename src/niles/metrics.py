@@ -33,6 +33,13 @@ TOOL_CALLS = Counter(
     ["tool_name", "success"],
 )
 
+# Text tool-call parser repairs (high rate ⇒ model/prompt problem to fix at the root)
+LLM_TOOL_REPAIRS = Counter(
+    "niles_llm_tool_repairs_total",
+    "Text tool-call parser repairs by stage",
+    ["stage"],
+)
+
 # SSE connections
 ACTIVE_SSE = Gauge(
     "niles_active_sse_connections",

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     llm_temperature_tools: float = 0.35  # temperature when tools are available
     llm_temperature_chat: float = 0.3  # temperature for pure chat (no tools)
     llm_max_tokens: int = 4096  # max completion tokens per LLM call
+    llm_timeout: float = 120.0  # max seconds per LLM request (local model can be slow)
 
     # PostgreSQL (bestehende Verbindung)
     postgres_host: str = "evolution_postgres"
