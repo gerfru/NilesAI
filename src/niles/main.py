@@ -32,6 +32,7 @@ from .sources.signal import signal_listener
 from .sources.web import router as web_router
 from .sources.whatsapp import router as whatsapp_router
 from .startup import (
+    StartupContext,
     setup_database,
     setup_encryptor,
     setup_mcp_and_actions,
@@ -168,6 +169,51 @@ async def lifespan(app: FastAPI):
         signal_task = asyncio.create_task(signal_listener(app.state, shutdown_event))
         logger.info("Signal WebSocket listener started")
     app.state.signal_task = signal_task
+
+    # Typed startup container — the single source for dependency injection.
+    # Routes migrated to Depends() read from here (see sources/web/_deps.py);
+    # the individual app.state.* attrs above remain for not-yet-migrated routers.
+    app.state.ctx = StartupContext(
+        settings=settings,
+        pool=pool,
+        memory=stores["memory"],
+        history=stores["history"],
+        user_store=stores["user_store"],
+        wa_store=stores["wa_store"],
+        vikunja_store=stores["vikunja_store"],
+        contact_store=stores["contact_store"],
+        event_store=stores["event_store"],
+        settings_store=stores["settings_store"],
+        notion_store=stores["notion_store"],
+        signal_store=actions["signal_store"],
+        carddav_manager=stores["carddav_manager"],
+        caldav_sync=stores["caldav_sync"],
+        calendar_manager=stores["calendar_manager"],
+        http_clients=stores["http_clients"],
+        mcp_manager=actions["mcp_manager"],
+        admin_action=stores["admin_action"],
+        settings_action=stores["settings_action"],
+        weather_action=stores["weather_action"],
+        contacts_action=actions["contacts_action"],
+        whatsapp_action=actions["whatsapp_action"],
+        wa_setup_action=actions["wa_setup_action"],
+        vikunja_setup_action=actions["vikunja_setup_action"],
+        vikunja_provisioner=stores["vikunja_provisioner"],
+        signal_action=actions["signal_action"],
+        signal_setup_action=actions["signal_setup_action"],
+        calendar_action=sched["calendar_action"],
+        briefing_generator=sched["briefing_generator"],
+        agent=actions["agent"],
+        notion_sync=notion["notion_sync"],
+        notion_embedder=notion["notion_embedder"],
+        notion_retriever=notion["notion_retriever"],
+        ollama_embedder=notion["ollama_embedder"],
+        notion_summarizer=notion["notion_summarizer"],
+        scheduler=sched["scheduler"],
+        signal_task=signal_task,
+        encryptor=encryptor,
+        overrides=stores["overrides"],
+    )
 
     yield
 

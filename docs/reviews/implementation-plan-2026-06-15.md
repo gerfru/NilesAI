@@ -304,7 +304,7 @@ W19 (unabhängig)
 | W10 | Eval-CI-Gate (Golden, self-hosted nightly) | 🟠 H | ~120 | ✅ (LLM-Reife PR) |
 | W11 | Data-Access-Stores (ContactStore/EventStore + Fitness-Test) | H | ~280 | ✅ (Phase-C PR1) |
 | W12 | MessageDispatch (policy+send unified; replay re-gates) | H | ~250 | ✅ (Phase-C PR2) |
-| W13 | DI / StartupContext | H | ~220 | ☐ |
+| W13 | DI / StartupContext + Depends-Pilot (_vikunja) + ADR-0002 | H | ~220 | ✅ (Phase-C PR3) |
 | W14 | Refactor process_event_stream | H | ~250 | ☐ |
 | W15 | Refactor process_event + iCal | M | ~300 | ☐ |
 | W16 | Tests Web/Agent-Loop | H | ~350 | ☐ |

@@ -208,6 +208,12 @@ class TestVikunjaAuthGuards:
         resp = await vikunja_disconnect(_noauth())
         assert resp.status_code == 401
 
+    async def test_status_uses_injected_dependency(self):
+        """DI pilot: the action is injected via Depends, not read from app.state."""
+        resp = await vikunja_status(_authed(), vikunja_setup=None)
+        assert resp.status_code == 200
+        assert "nicht verfuegbar" in resp.body.decode().lower()
+
 
 # ---- WhatsApp Routes ----
 
