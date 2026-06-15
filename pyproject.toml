@@ -1,6 +1,6 @@
 [project]
 name = "niles-core"
-version = "0.2.4"
+version = "0.2.5"
 description = "Local AI Butler"
 license = "AGPL-3.0-only"
 requires-python = ">=3.14"

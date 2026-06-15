@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.4...niles-core-v0.2.5) (2026-06-15)
+
+
+### Bug Fixes
+
+* **security:** complete GDPR erasure across all channels (PR3) ([#171](https://github.com/gerfru/NilesAI/issues/171)) ([22fec94](https://github.com/gerfru/NilesAI/commit/22fec94031f91a9c15014aeb4a245e0437d3dd79))
+
 ## [0.2.4](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.3...niles-core-v0.2.4) (2026-06-15)
 
 
