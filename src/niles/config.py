@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     llm_temperature_chat: float = 0.3  # temperature for pure chat (no tools)
     llm_max_tokens: int = 4096  # max completion tokens per LLM call
     llm_timeout: float = 120.0  # max seconds per LLM request (local model can be slow)
+    llm_num_ctx: int = 8192  # Ollama context window (input+output); default would otherwise be ~2048
+    mcp_max_result_tokens: int = 3000  # cap a single MCP tool result (approx. tokens)
 
     # PostgreSQL (bestehende Verbindung)
     postgres_host: str = "evolution_postgres"

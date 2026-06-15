@@ -101,6 +101,7 @@ class NilesAgent:
         self.llm_temperature_tools = config.llm_temperature_tools
         self.llm_temperature_chat = config.llm_temperature_chat
         self.llm_max_tokens = config.llm_max_tokens
+        self.llm_num_ctx = config.llm_num_ctx
         self._ctx = ContextBuilder(
             config=config,
             contacts=contacts,
@@ -137,10 +138,13 @@ class NilesAgent:
         Retries ConnectError / TimeoutException (Ollama restart, momentary lag)
         twice with short backoff.  Auth / rate-limit errors raise immediately.
         """
+        # Pin Ollama's context window explicitly (its OpenAI-compat default is
+        # small, ~2048); merge into any caller-provided extra_body.
+        extra_body = {**kwargs.pop("extra_body", {}), "options": {"num_ctx": self.llm_num_ctx}}
         delays = (0.5, 2.0)
         for i, delay in enumerate((*delays, None)):
             try:
-                return await self.llm.chat.completions.create(**kwargs)
+                return await self.llm.chat.completions.create(extra_body=extra_body, **kwargs)
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 if delay is None:
                     raise

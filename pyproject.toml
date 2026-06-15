@@ -24,6 +24,7 @@ dependencies = [
 
     # LLM Client (OpenAI-kompatibel für LM Studio)
     "openai>=2.21.0",
+    "tiktoken>=0.8.0",  # approximate token counting for the context budget
 
     # MCP SDK
     "mcp>=1.26.0",

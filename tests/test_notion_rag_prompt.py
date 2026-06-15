@@ -76,6 +76,8 @@ def _make_ctx():
     config.timezone = "Europe/Vienna"
     config.vikunja_api_url = None
     config.feature_notion = True
+    config.llm_num_ctx = 8192
+    config.llm_max_tokens = 4096
 
     ctx = ContextBuilder.__new__(ContextBuilder)
     ctx.config = config
