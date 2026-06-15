@@ -1,6 +1,6 @@
 [project]
 name = "niles-core"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local AI Butler"
 license = "AGPL-3.0-only"
 requires-python = ">=3.14"
@@ -80,7 +80,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tracing = [
-    "langfuse>=2.0.0,<3",
+    "langfuse>=4.7.1,<5",
 ]
 dev = [
     "pytest>=9.0.0",
