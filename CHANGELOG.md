@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.6](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.5...niles-core-v0.2.6) (2026-06-15)
+
+
+### Bug Fixes
+
+* **security:** decouple webhook token + close SSRF DNS-rebinding (PR4) ([#173](https://github.com/gerfru/NilesAI/issues/173)) ([d26c3bb](https://github.com/gerfru/NilesAI/commit/d26c3bbfd2ff0b1c1e0fc139c33f0ddec2c0828d))
+
 ## [0.2.5](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.4...niles-core-v0.2.5) (2026-06-15)
 
 
