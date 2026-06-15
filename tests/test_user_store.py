@@ -250,26 +250,50 @@ class TestDeactivateUser:
 
 
 class TestHardDeleteUser:
-    async def test_deletes_associated_data_in_transaction(self, store, pool):
+    async def test_erases_all_channels_in_transaction(self, store, pool):
         conn = pool._conn
         conn.execute.return_value = "DELETE 1"
+        conn.fetchval.return_value = 1  # user exists
+        conn.fetchrow.return_value = {"phone_number": "+43 660 12345"}
         result = await store.hard_delete_user(42)
         assert result is True
 
-        # Verify cascade order: conversations, whatsapp_sessions, vikunja_credentials, users
-        calls = conn.execute.call_args_list
-        assert len(calls) == 4
-        assert "conversations" in calls[0][0][0]
-        assert "web-user-42" == calls[0][0][1]
-        assert "whatsapp_sessions" in calls[1][0][0]
-        assert "vikunja_credentials" in calls[2][0][0]
-        assert "DELETE FROM users" in calls[3][0][0]
+        # Flatten all executed SQL + bind params for assertions
+        sqls = [c[0][0] for c in conn.execute.call_args_list]
+        joined = "\n".join(sqls)
+        params = [c[0][1:] for c in conn.execute.call_args_list]
+
+        # Web + WhatsApp self-chat conversations (scoped to this user's phone)
+        assert ("web-user-42",) in params
+        assert ("wa-self-4366012345",) in params
+        # Signal single-account history fully erased
+        assert "signal-self-%" in joined
+        assert "DELETE FROM signal_messages" in joined
+        # FK tables + user row
+        assert "whatsapp_sessions" in joined
+        assert "vikunja_credentials" in joined
+        assert "DELETE FROM users" in joined
+
+    async def test_skips_wa_self_when_no_phone(self, store, pool):
+        conn = pool._conn
+        conn.execute.return_value = "DELETE 1"
+        conn.fetchval.return_value = 1  # user exists
+        conn.fetchrow.return_value = None  # no WhatsApp session
+        await store.hard_delete_user(7)
+
+        params = [c[0][1:] for c in conn.execute.call_args_list]
+        assert not any(p and str(p[0]).startswith("wa-self-") for p in params)
+        # Signal history is still erased regardless of WhatsApp
+        joined = "\n".join(c[0][0] for c in conn.execute.call_args_list)
+        assert "DELETE FROM signal_messages" in joined
 
     async def test_returns_false_when_user_not_found(self, store, pool):
         conn = pool._conn
-        conn.execute.return_value = "DELETE 0"
+        conn.fetchval.return_value = None  # user does not exist
         result = await store.hard_delete_user(999)
         assert result is False
+        # Nothing must be deleted for an unknown user (esp. global Signal history)
+        conn.execute.assert_not_called()
 
 
 # ---- initialize (auto-promote) ----
