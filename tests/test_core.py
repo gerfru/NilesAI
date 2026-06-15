@@ -730,3 +730,100 @@ class TestFindEventGuard:
 
         assert "error" in result
         assert "hinweis" not in result
+
+
+# --- process_event (non-streaming loop, App H6) ---
+
+
+def _make_response(content=None, tool_calls=None, finish_reason="stop"):
+    """Build a mock non-streaming ChatCompletion response."""
+    msg = SimpleNamespace(
+        content=content,
+        tool_calls=tool_calls or None,
+        model_dump=lambda exclude_unset=False: {
+            "role": "assistant",
+            "content": content,
+            "tool_calls": tool_calls or [],
+        },
+    )
+    choice = SimpleNamespace(finish_reason=finish_reason, message=msg)
+    return SimpleNamespace(choices=[choice], usage=None)
+
+
+def _event(content="hallo", **md):
+    return {"type": "web", "from": "web-user-1", "content": content, "metadata": md}
+
+
+class TestProcessEvent:
+    """Unit tests for NilesAgent.process_event (non-streaming source path)."""
+
+    async def test_interception_bypasses_llm(self):
+        agent = _make_agent()
+        agent._handle_interception = AsyncMock(return_value="intercepted")
+        agent.llm = AsyncMock()
+        result = await agent.process_event(_event("ja"))
+        assert result == "intercepted"
+        agent.llm.chat.completions.create.assert_not_called()
+
+    async def test_simple_text_response_saves_history(self):
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [{"role": "user", "content": "hi"}], []))
+        agent.llm.chat.completions.create = AsyncMock(return_value=_make_response(content="Hallo!"))
+        result = await agent.process_event(_event("hi"))
+        assert result == "Hallo!"
+        assert agent.history.add_message.await_count == 2
+
+    async def test_empty_response_not_saved(self):
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [], []))
+        agent.llm.chat.completions.create = AsyncMock(return_value=_make_response(content=""))
+        result = await agent.process_event(_event())
+        assert result == ""
+        agent.history.add_message.assert_not_called()
+
+    async def test_llm_error_returns_message(self):
+        from openai import OpenAIError
+
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [], []))
+        agent.llm.chat.completions.create = AsyncMock(side_effect=OpenAIError("boom"))
+        result = await agent.process_event(_event())
+        assert "konnte die Anfrage nicht verarbeiten" in result
+
+    async def test_tool_round_then_text(self):
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [], [{"function": {"name": "recall"}}]))
+        tc = SimpleNamespace(id="t1", function=SimpleNamespace(name="recall", arguments="{}"))
+        agent._execute_and_check = AsyncMock(return_value=None)  # no bypass → loop continues
+        agent.llm.chat.completions.create = AsyncMock(
+            side_effect=[
+                _make_response(tool_calls=[tc], finish_reason="tool_calls"),
+                _make_response(content="Erledigt."),
+            ]
+        )
+        result = await agent.process_event(_event("merk dir X"))
+        assert result == "Erledigt."
+        agent._execute_and_check.assert_awaited_once()
+
+    async def test_tool_bypass_returns_early(self):
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [], [{"function": {"name": "send_whatsapp"}}]))
+        tc = SimpleNamespace(id="t1", function=SimpleNamespace(name="send_whatsapp", arguments="{}"))
+        agent._execute_and_check = AsyncMock(return_value="Soll ich senden? ja/nein")
+        agent.llm.chat.completions.create = AsyncMock(
+            return_value=_make_response(tool_calls=[tc], finish_reason="tool_calls")
+        )
+        result = await agent.process_event(_event("schick Anna hi"))
+        assert result == "Soll ich senden? ja/nein"
+
+    async def test_max_tool_rounds_exhausted(self):
+        agent = _make_agent()
+        agent._prepare_messages = AsyncMock(return_value=("web-user-1", [], [{"function": {"name": "recall"}}]))
+        tc = SimpleNamespace(id="t1", function=SimpleNamespace(name="recall", arguments="{}"))
+        agent._execute_and_check = AsyncMock(return_value=None)
+        agent.llm.chat.completions.create = AsyncMock(
+            return_value=_make_response(tool_calls=[tc], finish_reason="tool_calls")
+        )
+        result = await agent.process_event(_event())
+        assert "nicht abschließen" in result
+        assert agent.llm.chat.completions.create.await_count == MAX_TOOL_ROUNDS
