@@ -153,7 +153,7 @@ class CardDAVSync:
     def _parse_vcard(self, vcard_text: str, url: str) -> dict | None:
         """Parse vCard text into a contact dict. Returns None if invalid."""
         lines = vcard_text.split("\n")
-        contact = {
+        contact: dict = {
             "full_name": "",
             "first_name": "",
             "last_name": "",

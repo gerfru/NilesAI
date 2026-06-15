@@ -38,7 +38,7 @@ ph = PasswordHasher()
 
 
 async def _get_pool():
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]  # required fields populated from env
     return await asyncpg.create_pool(
         host=settings.postgres_host,
         port=settings.postgres_port,
@@ -52,7 +52,7 @@ async def _get_pool():
 
 async def _vikunja_sync_password(pool: asyncpg.Pool, user_id: int, email: str, password: str) -> None:
     """Best-effort sync of plaintext password to Vikunja account."""
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]  # required fields populated from env
     if not settings.vikunja_api_url:
         return
     try:
@@ -92,7 +92,7 @@ async def _reset_password(email: str, password: str) -> None:
         if updated:
             print(f"Password reset for {email} (id={user['id']})")
             # Mark Vikunja password as out-of-sync (will re-sync on next login)
-            settings = Settings()
+            settings = Settings()  # type: ignore[call-arg]  # required fields populated from env
             if settings.vikunja_api_url:
                 try:
                     vikunja_store = VikunjaCredentialStore(pool)

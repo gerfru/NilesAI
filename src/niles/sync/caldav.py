@@ -142,7 +142,7 @@ class CalDAVSync:
         self,
         pool: asyncpg.Pool,
         caldav_url: str,
-        auth: httpx.Auth,
+        auth: httpx.Auth | None,
         timezone: str,
         client: httpx.AsyncClient,
         caldav_calendars: str = "",
@@ -442,7 +442,8 @@ class CalDAVSync:
                 "Content-Type": "text/calendar; charset=utf-8",
                 "If-None-Match": "*",
             },
-            auth=self.auth,
+            # httpx's put() stub rejects None; fall back to the client default (no auth) instead
+            auth=self.auth if self.auth is not None else httpx.USE_CLIENT_DEFAULT,
             timeout=30,
         )
         response.raise_for_status()

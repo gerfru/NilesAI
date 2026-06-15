@@ -32,7 +32,7 @@ async def _get_connected_session(
     return row["phone_number"], row["instance_name"], row["user_id"]
 
 
-async def _send_via_whatsapp(app_state, message: str, number: str, instance: str) -> bool:
+async def _send_via_whatsapp(app_state, message: str, number: str, instance: str | None) -> bool:
     """Send briefing message via WhatsApp using pre-resolved session. Returns True on success."""
     try:
         await app_state.whatsapp_action.send_message(to=number, text=message, instance=instance)
