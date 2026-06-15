@@ -300,7 +300,7 @@ W19 (unabhängig)
 | W6 | SSRF DNS-Rebinding | M | ~120 | ✅ #173 |
 | W7 | Container-Hardening | M | ~60 | ✅ #167 |
 | W8 | LLM-Timeout + Injection + Repair-Counter | M | ~150 | ✅ (LLM-Reife PR) |
-| W9 | Kontext-Budget | M | ~130 | ☐ |
+| W9 | Kontext-Budget (tiktoken, num_ctx, MCP-Token-Cap) | M | ~130 | ✅ (LLM-Reife PR2) |
 | W10 | Eval-CI-Gate (Golden, self-hosted nightly) | 🟠 H | ~120 | ✅ (LLM-Reife PR) |
 | W11 | Data-Access-Stores | H | ~280 | ☐ |
 | W12 | MessageDispatch | H | ~250 | ☐ |

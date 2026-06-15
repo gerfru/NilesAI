@@ -5,12 +5,14 @@ import logging
 import re
 from urllib.parse import urlparse
 
+from ...tokens import count_tokens, truncate_to_tokens
 from ..prompts import wrap_untrusted
 from . import ToolContext
 
 logger = logging.getLogger(__name__)
 
-MAX_MCP_RESULT_SIZE = 100_000  # 100 KB limit for MCP tool results
+# Hard byte cap (defensive, before token work) — token cap below is the real limit.
+MAX_MCP_RESULT_SIZE = 100_000
 
 # Block RFC1918 / loopback / Docker-internal hosts to prevent SSRF via the fetch tool.
 _SSRF_BLOCKED = re.compile(
@@ -47,8 +49,13 @@ async def handle_mcp_tool(name: str, args: dict, ctx: ToolContext) -> dict:
     if ctx.mcp and ctx.mcp.is_mcp_tool(name):
         try:
             result_text = await ctx.mcp.call_tool(name, args)
+            # Defensive byte cap, then the real token cap so one big result
+            # cannot blow the model's context window.
             if len(result_text) > MAX_MCP_RESULT_SIZE:
-                result_text = result_text[:MAX_MCP_RESULT_SIZE] + "\n...[truncated]"
+                result_text = result_text[:MAX_MCP_RESULT_SIZE]
+            max_tokens = ctx.config.mcp_max_result_tokens
+            if count_tokens(result_text) > max_tokens:
+                result_text = truncate_to_tokens(result_text, max_tokens) + "\n...[truncated]"
             # Web fetch/search return externally-controlled content → isolate as
             # data (indirect injection). Weather/structured tools stay as-is.
             if "fetch" in name or "search" in name:

@@ -5,6 +5,7 @@ Extracts context assembly (system prompt, memory, calendar sources)
 and per-user resource resolution from the main orchestration loop.
 """
 
+import json
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -14,7 +15,11 @@ from ..actions.tasks import TasksAction
 from ..config import Settings
 from ..memory.store import MemoryStore
 from ..memory.history import ConversationHistory
+from ..tokens import count_tokens, fit_history
 from .prompts import build_notion_rag_prompt, build_system_prompt
+
+# Safety margin (tokens) for tiktoken approximation error + chat formatting overhead.
+_CONTEXT_SAFETY = 256
 
 if TYPE_CHECKING:
     import httpx
@@ -378,11 +383,6 @@ class ContextBuilder:
                     "Such-Tools stehen nicht zur Verfügung."
                 )
 
-        history_messages = await self.history.get_recent(chat_id)
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend({"role": m["role"], "content": m["content"]} for m in history_messages)
-        messages.append({"role": "user", "content": event["content"]})
-
         all_tools = list(tools)
         # Remove task tools when Vikunja is not configured
         if not self.config.vikunja_api_url:
@@ -407,6 +407,32 @@ class ContextBuilder:
                     "MCP tools added: %s",
                     [t["function"]["name"] for t in mcp_tools],
                 )
+
+        # Token-budgeted history: drop oldest turns so system prompt + tools +
+        # current message + history + reserved output fit the context window.
+        current = event["content"]
+        fixed_cost = (
+            count_tokens(system_prompt)
+            + count_tokens(json.dumps(all_tools, ensure_ascii=False))
+            + count_tokens(current)
+        )
+        history_budget = self.config.llm_num_ctx - self.config.llm_max_tokens - fixed_cost - _CONTEXT_SAFETY
+        raw_history = await self.history.get_recent(chat_id)
+        trimmed_history = fit_history(
+            [{"role": m["role"], "content": m["content"]} for m in raw_history],
+            history_budget,
+        )
+        if len(trimmed_history) < len(raw_history):
+            logger.debug(
+                "History trimmed to token budget: %d/%d messages (budget=%d)",
+                len(trimmed_history),
+                len(raw_history),
+                history_budget,
+            )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(trimmed_history)
+        messages.append({"role": "user", "content": current})
         return chat_id, messages, all_tools
 
     # Backward-compatible aliases — tests and older code use underscore-prefixed names.
