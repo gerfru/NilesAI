@@ -80,7 +80,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tracing = [
-    "langfuse>=2.0.0,<3",
+    "langfuse>=4.7.1,<5",
 ]
 dev = [
     "pytest>=9.0.0",
