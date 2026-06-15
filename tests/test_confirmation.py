@@ -118,7 +118,11 @@ class TestHandleConfirmation:
     async def test_signal_confirmation(self):
         signal_mock = AsyncMock()
         signal_mock.send_message.return_value = {"status": "sent"}
-        ctx = _make_context_builder(signal=signal_mock)
+        # Sending to others must be enabled — the same gate is re-applied at replay.
+        ctx = _make_context_builder(
+            signal=signal_mock,
+            config=_make_settings(feature_signal_send_others=True),
+        )
         ctx._pending_confirmations["chat-1"] = {
             "action": "send_signal",
             "params": {"to": "+436601234", "text": "Signal msg"},
@@ -127,6 +131,20 @@ class TestHandleConfirmation:
         }
         result = await ctx.handle_confirmation("chat-1", "ok")
         assert "gesendet" in result
+
+    async def test_replay_re_applies_feature_gate(self):
+        """Security (W12): the send-others gate is re-checked at confirmation
+        replay, so a flag disabled after confirming blocks the send."""
+        ctx = _make_context_builder(config=_make_settings(feature_whatsapp_send_others=False))
+        ctx._pending_confirmations["chat-1"] = {
+            "action": "send_whatsapp",
+            "params": {"to": "436601234", "text": "Hi", "instance": None},
+            "display": "x",
+            "expires_at": time.monotonic() + 300,
+        }
+        result = await ctx.handle_confirmation("chat-1", "ja")
+        assert "Fehler beim Senden" in result
+        ctx.whatsapp.send_message.assert_not_called()
 
     async def test_create_event_confirmation(self):
         cal_mgr = AsyncMock()

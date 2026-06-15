@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..actions.contacts import normalize_phone
+from ..actions.message_dispatch import MessageDispatch
 from ..actions.tasks import TasksAction
 from ..config import Settings
 from ..memory.store import MemoryStore
@@ -90,6 +91,9 @@ class ContextBuilder:
         self._pending_phone_choices: dict[str, dict] = {}
         # Generic pending confirmations: chat_id → {action, params, display, expires_at}
         self._pending_confirmations: dict[str, dict] = {}
+
+        # Single owner of the send-policy + send (used by tools and confirm-replay)
+        self.dispatch = MessageDispatch(config, whatsapp, signal, get_own_phone_number=self.get_own_phone_number)
 
     def cleanup_expired_pending(self) -> None:
         """Remove expired entries from pending confirmations and phone choices."""
@@ -285,15 +289,14 @@ class ContextBuilder:
         params = pending["params"]
         try:
             if action == "send_whatsapp":
-                result = await self.whatsapp.send_message(**params)
+                # Re-applies the feature-flag/self gate at execution time.
+                result = await self.dispatch.send_whatsapp(**params, chat_id=chat_id)
                 if "error" not in result:
                     return f"Nachricht an {params['to']} gesendet."
                 return f"Fehler beim Senden: {result['error']}"
 
             if action == "send_signal":
-                if self.signal is None:
-                    return "Signal ist nicht konfiguriert."
-                result = await self.signal.send_message(**params)
+                result = await self.dispatch.send_signal(**params, chat_id=chat_id)
                 if "error" not in result:
                     return f"Signal-Nachricht an {params['to']} gesendet."
                 return f"Fehler beim Senden: {result['error']}"
