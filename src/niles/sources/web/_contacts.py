@@ -36,7 +36,7 @@ async def _contacts_status_ctx(request: Request, user_id: int) -> dict:
 
 
 @router.get("/api/contacts/status", response_class=HTMLResponse)
-async def contacts_status(request: Request):
+async def contacts_status(request: Request) -> Response:
     """Return CardDAV sync status fragment (sources list or connect form)."""
     user = _get_session_user(request)
     if user is None:
@@ -56,7 +56,7 @@ async def contacts_connect(
     url: str = Form(...),
     username: str = Form(...),
     password: str = Form(...),
-):
+) -> Response:
     """Test CardDAV connection, then save source and trigger initial sync."""
     user, error = await _require_auth_and_csrf(request)
     if error:
@@ -94,7 +94,7 @@ async def contacts_connect(
 
 
 @router.post("/api/contacts/{source_id}/disconnect", response_class=HTMLResponse)
-async def contacts_disconnect(request: Request, source_id: int):
+async def contacts_disconnect(request: Request, source_id: int) -> Response:
     """Remove a CardDAV source (contacts are CASCADE-deleted)."""
     user, error = await _require_auth_and_csrf(request)
     if error:
@@ -117,7 +117,7 @@ async def contacts_disconnect(request: Request, source_id: int):
 
 
 @router.post("/api/contacts/{source_id}/sync", response_class=HTMLResponse)
-async def contacts_sync(request: Request, source_id: int):
+async def contacts_sync(request: Request, source_id: int) -> Response:
     """Trigger a manual CardDAV contact sync for a specific source."""
     user, error = await _require_auth_and_csrf(request)
     if error:

@@ -4,7 +4,7 @@
 import html as _html
 import logging
 
-from fastapi import Form, Query, Request
+from fastapi import Form, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, error: str = Query(default="")):
+async def settings_page(request: Request, error: str = Query(default="")) -> Response:
     """Settings dashboard (safe dict, no __dict__ access)."""
     user, auth_error = await _require_auth_page(request)
     if auth_error:
@@ -50,7 +50,7 @@ async def settings_page(request: Request, error: str = Query(default="")):
 
 
 @router.get("/api/settings/ollama_models", response_class=HTMLResponse)
-async def ollama_models(request: Request):
+async def ollama_models(request: Request) -> Response:
     """Return <option> elements for all locally available Ollama models."""
     _user, error = await _require_admin_page(request)
     if error:
@@ -95,7 +95,7 @@ async def ollama_models(request: Request):
 
 
 @router.post("/api/settings/{key}", response_class=HTMLResponse)
-async def update_setting(request: Request, key: str, value: str = Form(...)):
+async def update_setting(request: Request, key: str, value: str = Form(...)) -> Response:
     """Update a single runtime setting."""
     if key in _USER_EDITABLE_SETTINGS:
         _user, error = await _require_auth_and_csrf(request)

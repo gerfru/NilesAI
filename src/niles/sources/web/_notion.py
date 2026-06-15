@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import Form, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -19,7 +20,7 @@ from ._core import (
 logger = logging.getLogger(__name__)
 
 
-async def _notion_status_ctx(request: Request) -> dict:
+async def _notion_status_ctx(request: Request) -> dict[str, Any]:
     """Build template context for notion_status.html fragment."""
     settings = request.app.state.settings
     connected = settings.feature_notion and bool(settings.notion_token)
@@ -56,7 +57,7 @@ async def _notion_status_ctx(request: Request) -> dict:
 
 
 @router.get("/api/notion/status", response_class=HTMLResponse)
-async def notion_status(request: Request):
+async def notion_status(request: Request) -> Response:
     """Return Notion connection status fragment."""
     user = _get_session_user(request)
     if user is None:
@@ -74,7 +75,7 @@ async def notion_status(request: Request):
 async def notion_connect(
     request: Request,
     token: str = Form(...),
-):
+) -> Response:
     """Test Notion connection, save token, and trigger initial sync."""
     _user, error = await _require_admin(request)
     if error:
@@ -184,7 +185,7 @@ async def notion_connect(
             scheduler.remove_job("notion_sync")
         if new_settings.notion_sync_interval > 0:
 
-            async def notion_sync_and_embed():
+            async def notion_sync_and_embed() -> None:
                 if _notion_sync_lock.locked():
                     logger.info("Scheduled sync skipped (already running)")
                     return
@@ -203,7 +204,7 @@ async def notion_connect(
             logger.info("Notion sync job registered via UI")
 
     # Trigger initial sync in background
-    async def _initial_sync():
+    async def _initial_sync() -> None:
         async with _notion_sync_lock:
             try:
                 await notion_sync.sync_all()
@@ -222,7 +223,7 @@ async def notion_connect(
 
 
 @router.post("/api/notion/disconnect", response_class=HTMLResponse)
-async def notion_disconnect(request: Request):
+async def notion_disconnect(request: Request) -> Response:
     """Remove Notion token and clear all synced data."""
     _user, error = await _require_admin(request)
     if error:
@@ -282,7 +283,7 @@ _notion_sync_lock = asyncio.Lock()
 
 
 @router.post("/api/notion/sync", response_class=HTMLResponse)
-async def notion_sync_trigger(request: Request):
+async def notion_sync_trigger(request: Request) -> Response:
     """Trigger a manual Notion sync + embed in the background."""
     _user, error = await _require_admin(request)
     if error:
@@ -308,7 +309,7 @@ async def notion_sync_trigger(request: Request):
             ctx,
         )
 
-    async def _run_sync():
+    async def _run_sync() -> None:
         async with _notion_sync_lock:
             try:
                 await notion_sync.sync_all()
@@ -328,7 +329,7 @@ async def notion_sync_trigger(request: Request):
 
 
 @router.post("/api/notion/reembed", response_class=HTMLResponse)
-async def notion_force_reembed(request: Request):
+async def notion_force_reembed(request: Request) -> Response:
     """Force re-embedding of all Notion pages (e.g. after model/prefix change)."""
     _user, error = await _require_admin(request)
     if error:
@@ -353,7 +354,7 @@ async def notion_force_reembed(request: Request):
             ctx,
         )
 
-    async def _run_reembed():
+    async def _run_reembed() -> None:
         async with _notion_sync_lock:
             try:
                 count = await notion_embedder.force_reembed()
@@ -372,8 +373,8 @@ async def notion_force_reembed(request: Request):
     )
 
 
-@router.post("/api/notion/search")
-async def notion_search(request: Request, query: str = Form(...)):
+@router.post("/api/notion/search", response_model=None)
+async def notion_search(request: Request, query: str = Form(...)) -> Response | dict[str, Any]:
     """Direct Notion search (bypasses LLM tool selection)."""
     _user, error = await _require_auth_and_csrf(request)
     if error:

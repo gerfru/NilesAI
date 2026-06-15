@@ -3,7 +3,9 @@
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import Form, Query, Request, Response
@@ -23,16 +25,20 @@ from ._core import (
     templates,
 )
 
+if TYPE_CHECKING:
+    from ...actions.notion import NotionRetriever
+    from ...actions.whatsapp import WhatsAppAction
+
 logger = logging.getLogger(__name__)
 
 
 async def _fetch_wa_history(
-    whatsapp_action,
+    whatsapp_action: WhatsAppAction,
     phone: str,
     instance: str,
     limit: int = 20,
     offset: int = 0,
-) -> tuple[list[dict], bool]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Fetch WhatsApp self-chat history from Evolution API.
 
     Returns (messages, has_more) in the same format as
@@ -78,7 +84,7 @@ async def _fetch_wa_history(
 async def chat_page(
     request: Request,
     channel: str = Query(default="web"),
-):
+) -> Response:
     """Chat page with channel selection and per-user conversation history."""
     user, error = await _require_auth_page(request)
     if error:
@@ -143,7 +149,7 @@ async def chat_history(
     request: Request,
     offset: int = Query(default=0, ge=0),
     channel: str = Query(default="web"),
-):
+) -> Response:
     """Load older chat messages (pagination), channel-aware."""
     user = _get_session_user(request)
     if user is None:
@@ -184,7 +190,7 @@ async def chat_history(
 
 
 @router.post("/api/chat", response_class=HTMLResponse)
-async def chat_send(request: Request, message: str = Form(...)):
+async def chat_send(request: Request, message: str = Form(...)) -> Response:
     """Process a chat message, return HTML fragment with user + assistant bubbles."""
     user, error = await _require_auth_and_csrf(request)
     if error:
@@ -225,7 +231,7 @@ async def chat_send(request: Request, message: str = Form(...)):
     )
 
 
-async def _enrich_with_notion_context(message: str, retriever) -> str:
+async def _enrich_with_notion_context(message: str, retriever: NotionRetriever) -> str:
     """Prepend Notion RAG context to the user message (or a no-results note)."""
     results = await retriever.search(message, max_results=5)
     if not results:
@@ -276,7 +282,7 @@ async def chat_stream(
     message: str = Form(...),
     web_search: bool = Form(default=False),
     notion_search: bool = Form(default=False),
-):
+) -> Response:
     """Process a chat message via SSE streaming.
 
     Uses fetch+ReadableStream on the client (not EventSource), so native SSE
@@ -319,7 +325,7 @@ async def chat_stream(
         },
     }
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         shutdown_event = getattr(request.app.state, "shutdown_event", None)
         ACTIVE_SSE.inc()
         try:
@@ -348,7 +354,7 @@ async def chat_stream(
 
 
 @router.post("/api/chat/clear", response_class=HTMLResponse)
-async def chat_clear(request: Request):
+async def chat_clear(request: Request) -> Response:
     """Clear chat history for current user."""
     user, error = await _require_auth_and_csrf(request)
     if error:

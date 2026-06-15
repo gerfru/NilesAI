@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
-async def admin_users_page(request: Request):
+async def admin_users_page(request: Request) -> Response:
     """Admin page: list and manage users."""
     user, error = await _require_admin_page(request)
     if error:
@@ -42,7 +42,7 @@ async def admin_create_user(
     email: str = Form(...),
     display_name: str = Form(...),
     password: str = Form(...),
-):
+) -> Response:
     """Create a new user with password authentication."""
     user, error = await _require_admin(request)
     if error:
@@ -105,7 +105,7 @@ async def admin_reset_password(
     request: Request,
     user_id: int,
     password: str = Form(...),
-):
+) -> Response:
     """Reset password for a user (admin only)."""
     admin, error = await _require_admin(request)
     if error:
@@ -131,7 +131,7 @@ async def admin_reset_password(
 
 
 @router.post("/api/admin/users/{user_id}/deactivate")
-async def admin_deactivate_user(request: Request, user_id: int):
+async def admin_deactivate_user(request: Request, user_id: int) -> Response:
     """Deactivate a user (admin only, cannot deactivate own account)."""
     admin, error = await _require_admin(request)
     if error:
@@ -159,7 +159,7 @@ async def admin_deactivate_user(request: Request, user_id: int):
 
 
 @router.delete("/api/admin/users/{user_id}")
-async def admin_delete_user(request: Request, user_id: int):
+async def admin_delete_user(request: Request, user_id: int) -> Response:
     """Permanently delete a user and all data (GDPR Art. 17, admin only)."""
     admin, error = await _require_admin(request)
     if error:

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 async def weather_location_search(
     request: Request,
     q: str = Query(default="", min_length=2, max_length=100),
-):
+) -> Response:
     """Proxy location search via Open-Meteo Geocoding API, return HTMX fragment."""
     user = _get_session_user(request)
     if user is None:
@@ -70,7 +70,7 @@ async def weather_location_set(
     latitude: str = Form(...),
     longitude: str = Form(...),
     location_name: str = Form(""),
-):
+) -> Response:
     """Save weather location (latitude, longitude, display name)."""
     _user, error = await _require_auth_and_csrf(request)
     if error:
@@ -102,7 +102,7 @@ async def weather_location_set(
 
 
 @router.post("/api/weather/location/remove", response_class=HTMLResponse)
-async def weather_location_remove(request: Request):
+async def weather_location_remove(request: Request) -> Response:
     """Remove weather location configuration."""
     _user, error = await _require_auth_and_csrf(request)
     if error:

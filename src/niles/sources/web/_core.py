@@ -8,13 +8,19 @@ import hmac
 import logging
 import secrets
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from niles.types import AppState
+
+if TYPE_CHECKING:
+    from niles.config import Settings
+    from niles.types import WhatsAppSession
+    from niles.whatsapp_store import WhatsAppSessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +52,13 @@ _ASSET_VERSION = _asset_hash()
 class _NilesTemplates(Jinja2Templates):
     """Jinja2Templates with automatic CSP nonce injection."""
 
-    def TemplateResponse(self, request, name, context=None, **kwargs):  # type: ignore[override]  # Starlette TemplateResponse signature
+    def TemplateResponse(  # type: ignore[override]  # Starlette TemplateResponse signature
+        self,
+        request: Request,
+        name: str,
+        context: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> HTMLResponse:
         ctx = context or {}
         ctx.setdefault("csp_nonce", getattr(request.state, "csp_nonce", ""))
         ctx.setdefault("v", _ASSET_VERSION)
@@ -271,8 +283,8 @@ async def _maybe_provision_vikunja(request: Request, user_id: int, email: str, *
 async def _resolve_channel(
     user: dict,
     channel: str,
-    wa_store,
-    wa_session: dict | None = None,
+    wa_store: "WhatsAppSessionStore | None",
+    wa_session: "WhatsAppSession | None" = None,
     signal_phone: str = "",
 ) -> tuple[str, bool]:
     """Resolve channel name to (chat_id, readonly).
@@ -284,8 +296,9 @@ async def _resolve_channel(
         session = wa_session
         if session is None and wa_store:
             session = await wa_store.get_session(user["uid"])
-        if session and session.get("phone_number"):
-            chat_id = f"wa-self-{session['phone_number'].replace('+', '').replace(' ', '')}"
+        phone_number = session.get("phone_number") if session else None
+        if phone_number:
+            chat_id = f"wa-self-{phone_number.replace('+', '').replace(' ', '')}"
             return chat_id, True
     if channel == "signal" and signal_phone:
         phone_digits = signal_phone.lstrip("+").replace(" ", "")
@@ -311,7 +324,7 @@ def _build_redirect_uri(request: Request, path: str = "/ui/callback/google") -> 
     return f"{base_url.rstrip('/')}{path}"
 
 
-def _safe_settings_dict(settings) -> dict:
+def _safe_settings_dict(settings: "Settings") -> dict:
     """Build a safe dict of settings values for templates (no __dict__ access)."""
     text_settings = {}
     for key in ["llm_base_url", "llm_model"]:

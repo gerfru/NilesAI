@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/api/caldav/calendars", response_class=HTMLResponse)
-async def caldav_calendars(request: Request):
+async def caldav_calendars(request: Request) -> Response:
     """Discover available CalDAV calendars, return checkboxes fragment."""
     user = _get_session_user(request)
     if user is None:
@@ -54,7 +54,7 @@ async def caldav_calendars(request: Request):
 
 
 @router.get("/api/calendar/sources", response_class=HTMLResponse)
-async def calendar_sources_list(request: Request):
+async def calendar_sources_list(request: Request) -> Response:
     """Return htmx fragment listing all calendar sources."""
     user = _get_session_user(request)
     if user is None:
@@ -83,7 +83,7 @@ async def calendar_source_add(
     url: str = Form(...),
     auth_user: str = Form(""),
     auth_password: str = Form(""),
-):
+) -> Response:
     """Add a new calendar source and return updated sources list."""
     _user, error = await _require_auth_and_csrf(request)
     if error:
@@ -145,7 +145,7 @@ async def calendar_source_add(
 
 
 @router.delete("/api/calendar/sources/{source_id}", response_class=HTMLResponse)
-async def calendar_source_remove(request: Request, source_id: int):
+async def calendar_source_remove(request: Request, source_id: int) -> Response:
     """Remove a calendar source (CASCADE deletes events)."""
     _user, error = await _require_auth_and_csrf(request)
     if error:
@@ -167,7 +167,7 @@ async def calendar_source_remove(request: Request, source_id: int):
 
 
 @router.post("/api/calendar/sources/{source_id}/sync", response_class=HTMLResponse)
-async def calendar_source_sync(request: Request, source_id: int):
+async def calendar_source_sync(request: Request, source_id: int) -> Response:
     """Sync a single calendar source."""
     _user, error = await _require_auth_and_csrf(request)
     if error:

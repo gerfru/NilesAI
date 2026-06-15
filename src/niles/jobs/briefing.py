@@ -2,12 +2,18 @@
 """Scheduled briefing jobs."""
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from niles.actions.briefing import BriefingGenerator
+    from niles.config import Settings
+    from niles.types import AppState
 
 logger = logging.getLogger(__name__)
 
 
 async def _get_connected_session(
-    app_state,
+    app_state: "AppState",
 ) -> tuple[str | None, str | None, int | None]:
     """Return (phone_number, instance_name, user_id) from a connected WhatsApp session.
 
@@ -32,7 +38,7 @@ async def _get_connected_session(
     return row["phone_number"], row["instance_name"], row["user_id"]
 
 
-async def _send_via_whatsapp(app_state, message: str, number: str, instance: str | None) -> bool:
+async def _send_via_whatsapp(app_state: "AppState", message: str, number: str, instance: str | None) -> bool:
     """Send briefing message via WhatsApp using pre-resolved session. Returns True on success."""
     try:
         await app_state.whatsapp_action.send_message(to=number, text=message, instance=instance)
@@ -43,7 +49,7 @@ async def _send_via_whatsapp(app_state, message: str, number: str, instance: str
         return False
 
 
-async def _send_via_signal(app_state, message: str) -> bool:
+async def _send_via_signal(app_state: "AppState", message: str) -> bool:
     """Send briefing message via Signal. Returns True on success."""
     signal_action = getattr(app_state, "signal_action", None)
     if not signal_action or not app_state.settings.signal_phone_number:
@@ -58,7 +64,7 @@ async def _send_via_signal(app_state, message: str) -> bool:
         return False
 
 
-async def _send_briefing(app_state, message: str, wa_number: str | None, wa_instance: str | None) -> bool:
+async def _send_briefing(app_state: "AppState", message: str, wa_number: str | None, wa_instance: str | None) -> bool:
     """Send a briefing message via the configured channel(s).
 
     Respects settings.briefing_channel: whatsapp | signal | both.
@@ -78,13 +84,13 @@ async def _send_briefing(app_state, message: str, wa_number: str | None, wa_inst
     return sent_any
 
 
-def _refresh_weather_coords(briefing, settings) -> None:
+def _refresh_weather_coords(briefing: "BriefingGenerator", settings: "Settings") -> None:
     """Sync weather coordinates from current settings (may change at runtime)."""
     briefing.weather_latitude = settings.weather_latitude
     briefing.weather_longitude = settings.weather_longitude
 
 
-async def send_daily_briefing(app_state) -> bool:
+async def send_daily_briefing(app_state: "AppState") -> bool:
     """Generate and send the daily briefing.
 
     Called by APScheduler. Sends via the configured briefing channel.
@@ -103,7 +109,7 @@ async def send_daily_briefing(app_state) -> bool:
     return await _send_briefing(app_state, message, number, instance)
 
 
-async def send_weekly_briefing(app_state) -> bool:
+async def send_weekly_briefing(app_state: "AppState") -> bool:
     """Generate and send the weekly briefing.
 
     Called by APScheduler on Mondays, before the daily briefing.

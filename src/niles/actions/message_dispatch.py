@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..config import Settings
+    from .signal import SignalAction
+    from .whatsapp import WhatsAppAction
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +35,11 @@ class MessageDispatch:
     def __init__(
         self,
         config: "Settings",
-        whatsapp,
-        signal,
+        whatsapp: "WhatsAppAction",
+        signal: "SignalAction | None",
         *,
         get_own_phone_number: Callable[[str], Awaitable[str | None]],
-    ):
+    ) -> None:
         self.config = config
         self.whatsapp = whatsapp
         self.signal = signal

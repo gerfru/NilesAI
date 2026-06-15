@@ -13,6 +13,7 @@ Configuration via environment variables:
 
 import os
 from datetime import datetime
+from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -71,7 +72,7 @@ def wind_direction_text(degrees: float) -> str:
     return _WIND_DIRECTIONS[idx]
 
 
-def _daily_value(daily: dict, key: str, index: int, default="?"):
+def _daily_value(daily: dict, key: str, index: int, default: Any = "?") -> Any:
     """Safely get a value from Open-Meteo daily data arrays."""
     values = daily.get(key) or []
     return values[index] if index < len(values) else default

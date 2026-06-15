@@ -4,7 +4,7 @@
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import structlog
@@ -14,6 +14,9 @@ from ..redaction import redact_phone
 from .echo_guard import EchoGuard
 from .triggers import is_niles_trigger, strip_trigger
 
+if TYPE_CHECKING:
+    from ..types import AppState
+
 logger = logging.getLogger(__name__)
 
 # Echo-loop guard: signal-cli echoes outgoing messages back as
@@ -22,7 +25,7 @@ _echo_guard = EchoGuard(ttl=10.0)
 
 
 async def signal_listener(
-    app_state,
+    app_state: "AppState",
     shutdown_event: asyncio.Event,
 ) -> None:
     """Background task: listen to signal-cli WebSocket for incoming messages.

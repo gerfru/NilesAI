@@ -6,6 +6,7 @@ import logging
 
 import structlog
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 
 from ..errors import error_response
 from ..redaction import redact_phone
@@ -68,8 +69,8 @@ async def _handle_self_chat(text: str, remote_jid: str, payload: dict, request: 
     return {"status": "processed", "trigger": "self-chat"}
 
 
-@router.post("/whatsapp")
-async def whatsapp_webhook(request: Request, token: str = Query(default="")):
+@router.post("/whatsapp", response_model=None)
+async def whatsapp_webhook(request: Request, token: str = Query(default="")) -> dict | JSONResponse:
     """
     Evolution API webhook handler.
 
