@@ -7,6 +7,7 @@ Used by both CalDAV sync and ICS subscription sync.
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ def _exdate_lookup(event: dict) -> set:
     return {d.astimezone(timezone.utc).replace(microsecond=0) for d in exdates}
 
 
-def _parse_rrule(rrule_str: str, dtstart: datetime, summary: str):
+def _parse_rrule(rrule_str: str, dtstart: datetime, summary: str) -> Any:
     """Parse an RRULE string to a dateutil rule, or None on failure/missing dep."""
     try:
         from dateutil.rrule import rrulestr

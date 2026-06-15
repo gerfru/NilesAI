@@ -3,10 +3,13 @@
 
 import logging
 import re
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from niles.contact_store import ContactStore
 from niles.types import ContactInfo
+
+if TYPE_CHECKING:
+    from niles.sync.carddav_manager import CardDAVSourceManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,9 @@ class ContactsAction:
         self,
         contact_store: ContactStore,
         *,
-        carddav_manager=None,
+        carddav_manager: "CardDAVSourceManager | None" = None,
         phone_country_code: str = "43",
-    ):
+    ) -> None:
         self.store = contact_store
         self.carddav_manager = carddav_manager
         self.phone_country_code = phone_country_code

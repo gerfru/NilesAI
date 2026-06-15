@@ -5,7 +5,9 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 from openai import AsyncOpenAI, OpenAIError
@@ -132,7 +134,7 @@ class NilesAgent:
             if model is not None:
                 self.model = model
 
-    async def _llm_create(self, **kwargs):
+    async def _llm_create(self, **kwargs: Any) -> Any:
         """Call self.llm.chat.completions.create with retry on transient errors.
 
         Retries ConnectError / TimeoutException (Ollama restart, momentary lag)
@@ -151,7 +153,7 @@ class NilesAgent:
                 logger.warning("LLM call failed (attempt %d), retrying in %.1fs: %s", i + 1, delay, e)
                 await asyncio.sleep(delay)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to ContextBuilder for backward compat.
 
         Only called when normal attribute lookup fails, so ``self.llm``
@@ -199,7 +201,7 @@ class NilesAgent:
 
     async def _execute_and_check(
         self,
-        tool_call,
+        tool_call: Any,
         chat_id: str,
         messages: list,
         history_content: str,
@@ -239,7 +241,7 @@ class NilesAgent:
         )
         return None
 
-    async def process_event_stream(self, event: dict):
+    async def process_event_stream(self, event: dict) -> AsyncIterator[dict]:
         """Async generator: yields status updates + streamed text chunks.
 
         Every LLM call uses stream=True so even simple queries (no tool calls)
@@ -365,7 +367,7 @@ class NilesAgent:
         return "auto" if all_tools else None
 
     @staticmethod
-    def _accumulate_tool_call_delta(tool_calls_by_idx: dict[int, dict], tc_delta) -> None:
+    def _accumulate_tool_call_delta(tool_calls_by_idx: dict[int, dict], tc_delta: Any) -> None:
         """Merge a streamed tool-call delta fragment into the accumulator."""
         idx = tc_delta.index
         if idx not in tool_calls_by_idx:
@@ -378,7 +380,7 @@ class NilesAgent:
             if tc_delta.function.arguments:
                 tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
 
-    async def _consume_stream(self, stream, state: dict):
+    async def _consume_stream(self, stream: Any, state: dict) -> AsyncIterator[dict]:
         """Consume an LLM stream: yield live text chunks; fill *state* with the
         accumulated content / tool_calls / finish_reason / buffering flag.
 
@@ -433,7 +435,14 @@ class NilesAgent:
             ],
         }
 
-    async def _finalize_text_response(self, chat_id, full_content, buffering, history_content, event):
+    async def _finalize_text_response(
+        self,
+        chat_id: str,
+        full_content: str,
+        buffering: bool,
+        history_content: str,
+        event: dict,
+    ) -> AsyncIterator[dict]:
         """Emit the final text answer (flushing buffered content), persist the
         user+assistant turn, and yield the terminating done event."""
         if buffering and full_content:
@@ -540,7 +549,14 @@ class NilesAgent:
         logger.warning("Max tool rounds reached")
         return "Ich konnte die Anfrage nicht abschließen."
 
-    async def _handle_text_tool_call(self, content, all_tools, messages, chat_id, history_content):
+    async def _handle_text_tool_call(
+        self,
+        content: str,
+        all_tools: list,
+        messages: list,
+        chat_id: str,
+        history_content: str,
+    ) -> tuple[str, Any]:
         """Handle a text-encoded tool call (llama emits JSON as content).
 
         Returns ("bypass", text) when execution produced a bypass result (caller
@@ -564,7 +580,13 @@ class NilesAgent:
             return ("bypass", bypass)
         return ("continue", None)
 
-    async def _finalize_event_text(self, chat_id, content, history_content, event) -> str:
+    async def _finalize_event_text(
+        self,
+        chat_id: str,
+        content: str,
+        history_content: str,
+        event: dict,
+    ) -> str:
         """Suppress rejected raw-JSON tool calls, persist the turn, return the text."""
         if content:
             rejected_name = is_rejected_tool_call(content)
@@ -611,7 +633,7 @@ class NilesAgent:
             notion_retriever=getattr(self, "notion_retriever", None),
         )
 
-    async def _execute_tool_call(self, tool_call, chat_id: str = "") -> dict:
+    async def _execute_tool_call(self, tool_call: Any, chat_id: str = "") -> dict:
         """Execute a single tool call and return the result."""
         name = tool_call.function.name
         try:

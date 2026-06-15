@@ -143,6 +143,8 @@ warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 
 # All per-module error-code suppressions removed in W18 — fixed at the source.
 # Type stubs (types-python-dateutil, types-pyyaml) resolve the import-untyped cases.

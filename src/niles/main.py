@@ -11,8 +11,10 @@ import secrets
 import sys
 import time
 from collections import OrderedDict
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 import structlog
@@ -21,7 +23,8 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.types import ASGIApp
 
 from .logging_config import generate_request_id, setup_logging
 from .metrics import HTTP_DURATION, HTTP_REQUESTS
@@ -49,7 +52,7 @@ setup_logging()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown."""
     logger.info("Niles Core starting up...")
 
@@ -265,12 +268,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     MAX_TRACKED_IPS = 10_000
 
-    def __init__(self, app, requests_per_minute: int = 60):
+    def __init__(self, app: ASGIApp, requests_per_minute: int = 60) -> None:
         super().__init__(app)
         self.rpm = requests_per_minute
         self._hits: OrderedDict[str, list[float]] = OrderedDict()
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip rate limiting for health checks and static files
         if request.url.path in ("/health", "/ready") or request.url.path.startswith("/static"):
             return await call_next(request)
@@ -301,7 +304,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add defence-in-depth security headers including nonce-based CSP."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         nonce = secrets.token_urlsafe(16)
         request.state.csp_nonce = nonce
 
@@ -329,7 +332,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a unique request_id to every request via structlog contextvars."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get("X-Request-ID", "")
         # Accept only short alphanumeric/dash/underscore IDs to prevent abuse
         if incoming and len(incoming) <= 64 and incoming.replace("-", "").replace("_", "").isalnum():
@@ -361,7 +364,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         """
         return MetricsMiddleware._ID_RE.sub("/:id", path)
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in (
             "/metrics",
             "/health",
@@ -432,13 +435,13 @@ async def require_api_key(
 
 
 @app.get("/")
-async def root():
+async def root() -> RedirectResponse:
     """Redirect to web UI."""
     return RedirectResponse(url="/ui/chat", status_code=303)
 
 
 @app.get("/metrics")
-async def metrics(_key: str = Depends(require_api_key)):
+async def metrics(_key: str = Depends(require_api_key)) -> Response:
     """Prometheus metrics endpoint (API-key protected)."""
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -457,13 +460,13 @@ async def metrics(_key: str = Depends(require_api_key)):
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     """Liveness probe. Pool stats are available via /metrics (API-key protected)."""
     return {"status": "ok"}
 
 
-@app.get("/ready")
-async def readiness():
+@app.get("/ready", response_model=None)
+async def readiness() -> JSONResponse | dict[str, str]:
     """Readiness probe: checks DB connectivity and migration status."""
     pool = app.state.pool
     errors: list[str] = []
@@ -519,7 +522,7 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest, _key: str = Depends(require_api_key)):
+async def chat(request: ChatRequest, _key: str = Depends(require_api_key)) -> dict[str, Any]:
     """Direct chat endpoint for testing (no WhatsApp)."""
     chat_id = f"web-user-{request.user_id}" if request.user_id else "api"
     agent = app.state.agent

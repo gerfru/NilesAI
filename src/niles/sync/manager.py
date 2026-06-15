@@ -17,6 +17,7 @@ from niles.network import is_private_host
 from niles.redaction import redact_credentials
 
 if TYPE_CHECKING:
+    from niles.config import Settings
     from niles.crypto import FieldEncryptor
 
 from .caldav import (
@@ -48,11 +49,11 @@ class CalendarSourceManager:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        settings,
+        settings: Settings,
         client: httpx.AsyncClient,
         *,
         encryptor: FieldEncryptor | None = None,
-    ):
+    ) -> None:
         self.pool = pool
         self.settings = settings
         self._client = client

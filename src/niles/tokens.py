@@ -18,7 +18,7 @@ _MSG_OVERHEAD = 4
 _encoder = None
 
 
-def _enc():
+def _enc() -> tiktoken.Encoding:
     global _encoder
     if _encoder is None:
         _encoder = tiktoken.get_encoding("cl100k_base")

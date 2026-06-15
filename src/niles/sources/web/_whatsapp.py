@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/api/whatsapp/status", response_class=HTMLResponse)
-async def whatsapp_status(request: Request):
+async def whatsapp_status(request: Request) -> Response:
     """Return WhatsApp connection status fragment."""
     user = _get_session_user(request)
     if user is None:
@@ -34,7 +34,7 @@ async def whatsapp_status(request: Request):
 
 
 @router.post("/api/whatsapp/connect", response_class=HTMLResponse)
-async def whatsapp_connect(request: Request):
+async def whatsapp_connect(request: Request) -> Response:
     """Create an Evolution API instance and return QR code fragment."""
     user, error = await _require_auth_and_csrf(request)
     if error:
@@ -61,7 +61,7 @@ async def whatsapp_connect(request: Request):
 
 
 @router.post("/api/whatsapp/disconnect", response_class=HTMLResponse)
-async def whatsapp_disconnect(request: Request):
+async def whatsapp_disconnect(request: Request) -> Response:
     """Logout and delete the user's Evolution API instance."""
     user, error = await _require_auth_and_csrf(request)
     if error:

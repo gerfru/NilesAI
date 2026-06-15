@@ -12,7 +12,7 @@ _LEGAL_PATH = Path(__file__).resolve().parents[4] / "docs" / "LEGAL.md"
 
 
 @router.get("/legal", response_class=HTMLResponse)
-async def legal_page(request: Request):
+async def legal_page(request: Request) -> HTMLResponse:
     """Render docs/LEGAL.md as a simple page (no auth required)."""
     content = ""
     if _LEGAL_PATH.exists():

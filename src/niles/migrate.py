@@ -17,6 +17,10 @@ import logging
 import os
 import sys
 import time
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)-5s %(message)s")
 logger = logging.getLogger("niles.migrate")
@@ -38,7 +42,7 @@ def _get_database_url() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 
-def _wait_for_postgres(engine) -> None:
+def _wait_for_postgres(engine: "Engine") -> None:
     """Block until PostgreSQL accepts connections."""
     from sqlalchemy import text
 
@@ -55,7 +59,7 @@ def _wait_for_postgres(engine) -> None:
             time.sleep(1)
 
 
-def _table_exists(engine, table_name: str) -> bool:
+def _table_exists(engine: "Engine", table_name: str) -> bool:
     """Check whether a table exists in the public schema."""
     from sqlalchemy import text
 
@@ -69,7 +73,7 @@ def _table_exists(engine, table_name: str) -> bool:
             ),
             {"name": table_name},
         )
-        return result.scalar()
+        return cast(bool, result.scalar())
 
 
 def main() -> None:

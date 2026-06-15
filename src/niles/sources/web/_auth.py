@@ -69,7 +69,7 @@ def _record_login_attempt(client_ip: str) -> None:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+async def login_page(request: Request) -> Response:
     """Login page: Google OAuth button and/or email+password form."""
     user_store = getattr(request.app.state, "user_store", None)
     pw_users_exist = await user_store.has_password_users() if user_store else False
@@ -89,7 +89,7 @@ async def login_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-):
+) -> Response:
     """Validate email + password and set session cookie."""
     client_ip = request.client.host if request.client else "unknown"
     user_store = request.app.state.user_store
@@ -147,7 +147,7 @@ async def login_submit(
 
 
 @router.get("/login/google")
-async def login_google(request: Request):
+async def login_google(request: Request) -> Response:
     """Redirect to Google OAuth consent screen."""
     if not _google_configured(request):
         return RedirectResponse(url="/ui/login", status_code=303)
@@ -195,7 +195,7 @@ async def callback_google(
     code: str = "",
     state: str = "",
     error: str = "",
-):
+) -> Response:
     """Handle Google OAuth callback: exchange code, create/find user, set session."""
     gc = _google_configured(request)
 
@@ -362,7 +362,7 @@ async def callback_google(
 
 
 @router.post("/logout")
-async def logout(request: Request):
+async def logout(request: Request) -> Response:
     """Clear session and CSRF cookies (POST to prevent logout CSRF)."""
     # htmx requests need HX-Redirect header; regular requests get 303
     if request.headers.get("hx-request"):

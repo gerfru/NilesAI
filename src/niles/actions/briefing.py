@@ -2,13 +2,17 @@
 """Daily and weekly briefing generator."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from niles.event_store import EventStore
 from niles.http_retry import retry_http
+
+if TYPE_CHECKING:
+    from niles.vikunja_store import VikunjaCredentialStore
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +67,10 @@ class BriefingGenerator:
         weather_client: httpx.AsyncClient,
         vikunja_client: httpx.AsyncClient,
         timezone: str = "Europe/Vienna",
-        vikunja_store=None,
+        vikunja_store: "VikunjaCredentialStore | None" = None,
         weather_latitude: str = "",
         weather_longitude: str = "",
-    ):
+    ) -> None:
         self.store = event_store
         self.tz = ZoneInfo(timezone)
         self.timezone = timezone
@@ -191,7 +195,7 @@ class BriefingGenerator:
         return resp.json()
 
     @staticmethod
-    def _daily_value(daily: dict, key: str, index: int, default="?"):
+    def _daily_value(daily: dict, key: str, index: int, default: Any = "?") -> Any:
         """Safely get a value from Open-Meteo daily data arrays."""
         values = daily.get(key) or []
         return values[index] if index < len(values) else default
@@ -295,7 +299,7 @@ class BriefingGenerator:
     def _filter_tasks_for_date(
         self,
         tasks: list[dict],
-        target_date,
+        target_date: date,
         *,
         exclude_ids: set | None = None,
     ) -> list[dict]:

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def vikunja_status(
     request: Request,
     vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
-):
+) -> Response:
     """Return Vikunja connection status fragment."""
     user = _get_session_user(request)
     if user is None:
@@ -47,7 +47,7 @@ async def vikunja_connect(
     api_token: str = Form(...),
     api_url: str = Form(""),
     vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
-):
+) -> Response:
     """Save Vikunja API token for the current user."""
     user, error = await _require_auth_and_csrf(request)
     if error:
@@ -102,7 +102,7 @@ async def vikunja_connect(
 async def vikunja_disconnect(
     request: Request,
     vikunja_setup: VikunjaSetupAction | None = Depends(get_vikunja_setup),
-):
+) -> Response:
     """Remove Vikunja API token for current user."""
     user, error = await _require_auth_and_csrf(request)
     if error:

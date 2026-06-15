@@ -3,7 +3,7 @@
 
 import logging
 
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.responses import HTMLResponse
 
 from ._core import _require_admin, router, templates
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/api/briefing/test/{briefing_type}", response_class=HTMLResponse)
-async def briefing_test(request: Request, briefing_type: str):
+async def briefing_test(request: Request, briefing_type: str) -> Response:
     """Manually trigger a briefing (generate + send via WhatsApp)."""
     _user, error = await _require_admin(request)
     if error:

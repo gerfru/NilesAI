@@ -494,7 +494,7 @@ async def setup_notion_rag(pool: asyncpg.Pool, settings: Settings, agent: Any, s
 
     _notion_lock = asyncio.Lock()
 
-    async def notion_sync_and_embed():
+    async def notion_sync_and_embed() -> None:
         if _notion_lock.locked():
             logger.info("Notion sync skipped (already running)")
             return

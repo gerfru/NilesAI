@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 ph = PasswordHasher()
 
 
-async def _get_pool():
+async def _get_pool() -> asyncpg.Pool:
     settings = Settings()  # type: ignore[call-arg]  # required fields populated from env
     return await asyncpg.create_pool(
         host=settings.postgres_host,
@@ -157,7 +157,7 @@ async def _delete_user(email: str, confirm: bool) -> None:
         await pool.close()
 
 
-def _read_password(args) -> str:
+def _read_password(args: argparse.Namespace) -> str:
     """Read password from --password-stdin or interactive prompt."""
     if args.password_stdin:
         pw = sys.stdin.readline().rstrip("\n")

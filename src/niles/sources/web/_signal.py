@@ -4,7 +4,7 @@
 import asyncio
 import logging
 
-from fastapi import Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
 
 from ...config import apply_overrides
@@ -18,7 +18,7 @@ from ._core import (
 logger = logging.getLogger(__name__)
 
 
-async def _ensure_signal_listener(app) -> None:
+async def _ensure_signal_listener(app: FastAPI) -> None:
     """Start the Signal WebSocket listener if not already running.
 
     Guards against concurrent callers (e.g. overlapping HTMX polls) by
@@ -49,7 +49,7 @@ async def _ensure_signal_listener(app) -> None:
 
 
 @router.get("/api/signal/status", response_class=HTMLResponse)
-async def signal_status(request: Request):
+async def signal_status(request: Request) -> Response:
     """Return Signal connection status fragment.
 
     Auto-discovers the phone number after QR-code linking via /v1/accounts
@@ -88,7 +88,7 @@ async def signal_status(request: Request):
 
 
 @router.get("/api/signal/qrcode")
-async def signal_qrcode(request: Request):
+async def signal_qrcode(request: Request) -> Response:
     """Proxy QR code PNG from signal-cli-rest-api (admin only)."""
     user, error = await _require_admin_page(request)
     if error:
@@ -106,7 +106,7 @@ async def signal_qrcode(request: Request):
 
 
 @router.post("/api/signal/link", response_class=HTMLResponse)
-async def signal_link(request: Request):
+async def signal_link(request: Request) -> Response:
     """Start linking process (show QR code)."""
     user, error = await _require_admin(request)
     if error:
@@ -128,7 +128,7 @@ async def signal_link(request: Request):
 
 
 @router.post("/api/signal/disconnect", response_class=HTMLResponse)
-async def signal_disconnect(request: Request):
+async def signal_disconnect(request: Request) -> Response:
     """Unlink Signal device, stop listener, clear phone number."""
     _user, error = await _require_admin(request)
     if error:
