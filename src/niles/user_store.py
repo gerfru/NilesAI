@@ -170,21 +170,43 @@ class UserStore:
     async def hard_delete_user(self, user_id: int) -> bool:
         """Permanently delete a user and all associated data (GDPR Art. 17).
 
-        Deletes non-cascaded tables explicitly, then the user row itself
-        (which cascades to user_google_tokens, calendar_sources → events).
+        Removes, in one transaction:
+          - conversations across every channel: ``web-user-{id}`` and the
+            user's WhatsApp self-chat ``wa-self-{phone}`` (phone looked up from
+            the session). Signal is a single deployment-wide account, so its
+            entire history (``signal_messages`` + ``signal-self-*``
+            conversations) belongs to the owner and is erased as well.
+          - whatsapp_sessions, vikunja_credentials (FK, no ON DELETE CASCADE)
+          - the user row (cascades to user_google_tokens, calendar_sources →
+            events).
+
         Returns True if the user was deleted.
         """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Delete non-FK tables that reference user by chat_id pattern
-                chat_id = f"web-user-{user_id}"
-                await conn.execute("DELETE FROM conversations WHERE chat_id = $1", chat_id)
+                # 0. Fail fast for unknown users — never wipe the single-account
+                #    Signal history (or anything else) for a user that doesn't exist.
+                if not await conn.fetchval("SELECT 1 FROM users WHERE id = $1", user_id):
+                    return False
 
-                # 2. Delete tables with FK but no ON DELETE CASCADE
+                # 1. Web chat history (keyed by chat_id, no FK)
+                await conn.execute("DELETE FROM conversations WHERE chat_id = $1", f"web-user-{user_id}")
+
+                # 2. WhatsApp self-chat history (keyed by the user's own phone)
+                wa = await conn.fetchrow("SELECT phone_number FROM whatsapp_sessions WHERE user_id = $1", user_id)
+                if wa and wa["phone_number"]:
+                    wa_digits = wa["phone_number"].replace("+", "").replace(" ", "")
+                    await conn.execute("DELETE FROM conversations WHERE chat_id = $1", f"wa-self-{wa_digits}")
+
+                # 3. Signal: single global account → full history is the owner's
+                await conn.execute("DELETE FROM conversations WHERE chat_id LIKE 'signal-self-%'")
+                await conn.execute("DELETE FROM signal_messages")
+
+                # 4. FK tables without ON DELETE CASCADE
                 await conn.execute("DELETE FROM whatsapp_sessions WHERE user_id = $1", user_id)
                 await conn.execute("DELETE FROM vikunja_credentials WHERE user_id = $1", user_id)
 
-                # 3. Delete user row (cascades to user_google_tokens, calendar_sources → events)
+                # 5. User row (cascades to user_google_tokens, calendar_sources → events)
                 result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
                 deleted = result == "DELETE 1"
                 if deleted:
