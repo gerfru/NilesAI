@@ -2,7 +2,9 @@ name: SBOM
 
 on:
   push:
-    tags: ["v*"]
+    # release-please tags are prefixed with the package name (e.g. niles-core-v0.2.1);
+    # "*-v*" matches those, "v*" keeps legacy/manual tags (v0.1.0, v0.2.2) working.
+    tags: ["*-v*", "v*"]
 
 permissions:
   contents: write

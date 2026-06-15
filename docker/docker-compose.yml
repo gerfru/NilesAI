@@ -8,6 +8,10 @@ services:
     container_name: niles_evolution_postgres
     image: pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    # cap_drop:[ALL] intentionally omitted: the postgres entrypoint needs CHOWN/SETUID/
+    # SETGID/DAC_OVERRIDE to chown PGDATA and step down from root to the postgres user.
     # Postgres port: loopback only, random port by default (not discoverable).
     # For debugging, set in .env: POSTGRES_HOST_PORT=5432
     ports:
@@ -42,6 +46,8 @@ services:
     container_name: niles_evolution_api
     image: evoapicloud/evolution-api@sha256:e15508de128b9ab232d9cabb2441ca897a4802fba2c8186ed384b4f4508767d9  # v2.3.7
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
     # No port exposed -- access via gateway-caddy reverse proxy
     environment:
       # API Authentication
@@ -180,6 +186,8 @@ services:
     image: searxng/searxng@sha256:4baf815fff29c6ba8b2f41625deea54f8b1e9371d5c670ca510eebc7d0153883  # 2025.5.10-1b787ed35
     container_name: niles_searxng
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
       # Required: generate with `openssl rand -hex 32` and set in .env.
@@ -208,6 +216,8 @@ services:
     image: langfuse/langfuse:3@sha256:1a128e60b0b6547a576010819f91e27c6bde929ca3c640115038e5de15511f9f
     container_name: niles_langfuse
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
     profiles:
       - langfuse
     environment:
@@ -249,6 +259,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.niles
     restart: unless-stopped
+    # Hardening: runs as non-root (Dockerfile USER niles), binds high port 8000,
+    # needs no Linux capabilities -> drop all. read_only deferred (writes /tmp; needs tmpfs test).
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
     # No port exposed -- access via gateway-caddy reverse proxy
     environment:
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}

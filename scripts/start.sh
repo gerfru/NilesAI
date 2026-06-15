@@ -43,6 +43,15 @@ if ! docker network inspect proxy >/dev/null 2>&1; then
     exit 1
 fi
 
+# Pin the built image to the released version (single source: release-please manifest).
+# This tags the image niles-core:<version> instead of :latest, so previous version
+# images remain locally available as immutable rollback targets (see docs/Deployment.md).
+if [ -z "${NILES_VERSION:-}" ] && [ -f .release-please-manifest.json ]; then
+    NILES_VERSION="$(python3 -c 'import json;print(json.load(open(".release-please-manifest.json"))["."])' 2>/dev/null || true)"
+    export NILES_VERSION
+fi
+[ -n "${NILES_VERSION:-}" ] && echo "Building image tag: niles-core:${NILES_VERSION}"
+
 # Build docker compose command with optional profiles
 COMPOSE_CMD="docker compose -f docker/docker-compose.yml --env-file .env"
 if grep -qsE '^FEATURE_SEARCH\s*=\s*"?true"?' .env 2>/dev/null; then
