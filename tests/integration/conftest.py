@@ -233,14 +233,15 @@ async def searxng_available():
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def seed_contact(db_conn):
-    """Insert a test contact with phone number."""
+async def seed_contact(db_conn, seed_user):
+    """Insert a test contact (owned by seed_user) with a phone number."""
     contact_id = await db_conn.fetchval(
         """
-        INSERT INTO contacts (full_name, first_name, last_name, email)
-        VALUES ('Max Mustermann', 'Max', 'Mustermann', 'max@example.com')
+        INSERT INTO contacts (full_name, first_name, last_name, email, user_id)
+        VALUES ('Max Mustermann', 'Max', 'Mustermann', 'max@example.com', $1)
         RETURNING id
         """,
+        seed_user,
     )
     await db_conn.execute(
         """
@@ -249,7 +250,12 @@ async def seed_contact(db_conn):
         """,
         contact_id,
     )
-    return {"id": contact_id, "full_name": "Max Mustermann", "phone": "435000000000"}
+    return {
+        "id": contact_id,
+        "full_name": "Max Mustermann",
+        "phone": "435000000000",
+        "user_id": seed_user,
+    }
 
 
 @pytest_asyncio.fixture(loop_scope="session")
