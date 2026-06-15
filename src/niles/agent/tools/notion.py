@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Notion RAG search tool."""
 
+from ..prompts import wrap_untrusted
 from . import ToolContext, register_tool
 
 
@@ -27,7 +28,8 @@ async def handle_search_notion(args: dict, chat_id: str, ctx: ToolContext) -> di
             {
                 "source": r["page_title"],
                 "url": r["page_url"],
-                "content": r["chunk_text"],
+                # Indexed page content is externally controlled → isolate as data.
+                "content": wrap_untrusted("notion", r["chunk_text"]),
                 "relevance": r["similarity"],
             }
         )

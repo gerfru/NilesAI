@@ -100,5 +100,7 @@ class TestSearchNotionTool:
         item = result["results"][0]
         assert item["source"] == "Page Title"
         assert item["url"] == "https://notion.so/page"
-        assert item["content"] == "Content here."
+        # Indexed content is isolated as untrusted external data (indirect injection)
+        assert '<untrusted_external_content source="notion">' in item["content"]
+        assert "Content here." in item["content"]
         assert item["relevance"] == 0.92

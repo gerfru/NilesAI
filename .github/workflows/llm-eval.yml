@@ -1,0 +1,47 @@
+name: LLM Eval (nightly)
+
+# Golden-dataset tool-selection regression gate. Runs on a SELF-HOSTED runner
+# (Mac Mini) against the real local Ollama (llama3.1:8b) — tools are mocked, so
+# no DB is needed. Triggers are schedule + manual ONLY (never pull_request), so
+# a self-hosted runner on a public repo never executes untrusted fork code.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # nightly 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  golden-eval:
+    # Adjust the label set to match your registered runner (e.g. [self-hosted, macOS]).
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run golden-dataset evals
+        # Individual case failures must not fail the job — the baseline gate decides.
+        continue-on-error: true
+        env:
+          LLM_BASE_URL: http://localhost:11434/v1
+        run: uv run --extra dev pytest -m llm_eval --json-report --json-report-file=eval-report.json
+
+      - name: Gate on baseline
+        run: uv run python tests/evals/eval_gate.py eval-report.json tests/evals/baseline.json
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: llm-eval-report
+          path: eval-report.json
+          retention-days: 90

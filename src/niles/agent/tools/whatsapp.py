@@ -118,4 +118,5 @@ async def handle_get_whatsapp_messages(args: dict, chat_id: str, ctx: ToolContex
         messages=messages,
         contact_name=contact_name,
         timezone_str=ctx.config.timezone,
+        source="whatsapp",
     )
