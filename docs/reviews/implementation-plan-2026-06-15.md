@@ -306,7 +306,7 @@ W19 (unabhängig)
 | W12 | MessageDispatch (policy+send unified; replay re-gates) | H | ~250 | ✅ (Phase-C PR2) |
 | W13 | DI / StartupContext + Depends-Pilot (_vikunja) + ADR-0002 | H | ~220 | ✅ (Phase-C PR3) |
 | W14 | Refactor process_event_stream (extract stream/finalize/builders) | H | ~250 | ✅ (Phase-D PR2) |
-| W15 | Refactor process_event + iCal | M | ~300 | ☐ |
+| W15 | Refactor process_event + iCal-Parser | M | ~300 | ✅ (Phase-D PR3) |
 | W16 | Tests Web/Agent-Loop | H | ~350 | ✅ (Phase-D PR1) |
 | W17 | Tests + Coverage-Gates (branch on, fail_under 77) | M | ~300 | ✅ (Phase-D PR1) |
 | W18 | mypy/Typen-Baseline | M | ~200 | ☐ |
