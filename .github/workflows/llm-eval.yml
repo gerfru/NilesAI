@@ -2,12 +2,15 @@ name: LLM Eval (nightly)
 
 # Golden-dataset tool-selection regression gate. Runs on a SELF-HOSTED runner
 # (Mac Mini) against the real local Ollama (llama3.1:8b) — tools are mocked, so
-# no DB is needed. Triggers are schedule + manual ONLY (never pull_request), so
-# a self-hosted runner on a public repo never executes untrusted fork code.
+# no DB is needed.
+#
+# Manual-only (workflow_dispatch): the runner is on-demand (no autostart), so a
+# nightly schedule would just queue runs with no online runner. Start the runner
+# (cd ~/actions-runner-niles && ./run.sh), then trigger this workflow. There is
+# deliberately no pull_request trigger → a self-hosted runner on a public repo
+# never executes untrusted fork code.
 
 on:
-  schedule:
-    - cron: "0 3 * * *" # nightly 03:00 UTC
   workflow_dispatch:
 
 permissions:
