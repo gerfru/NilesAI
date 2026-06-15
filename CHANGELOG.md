@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.3...niles-core-v0.2.4) (2026-06-15)
+
+
+### Bug Fixes
+
+* **security:** fail-closed data isolation + PII/credential log redaction (PR2) ([#169](https://github.com/gerfru/NilesAI/issues/169)) ([ded863f](https://github.com/gerfru/NilesAI/commit/ded863f3d4953f17a90cdc1dc3860f510eed99ae))
+
 ## [0.2.3](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.2...niles-core-v0.2.3) (2026-06-15)
 
 
