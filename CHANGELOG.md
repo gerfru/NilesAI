@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.7](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.6...niles-core-v0.2.7) (2026-06-15)
+
+
+### Tests
+
+* **integration:** scope contacts integration tests to the owning user ([#175](https://github.com/gerfru/NilesAI/issues/175)) ([78f770f](https://github.com/gerfru/NilesAI/commit/78f770f845462849c602ee3e15b256166be2d606))
+
 ## [0.2.6](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.5...niles-core-v0.2.6) (2026-06-15)
 
 
