@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.9](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.8...niles-core-v0.2.9) (2026-06-15)
+
+
+### Miscellaneous
+
+* **eval:** calibrate baseline to 20/20 + manual-only eval trigger ([#179](https://github.com/gerfru/NilesAI/issues/179)) ([554a546](https://github.com/gerfru/NilesAI/commit/554a5464f70c8b62097584752bfff79d732c7e3d))
+
 ## [0.2.8](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.7...niles-core-v0.2.8) (2026-06-15)
 
 
