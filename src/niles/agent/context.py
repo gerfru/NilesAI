@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ..mcp.client import MCPManager
     from ..signal_store import SignalMessageStore
     from ..sync.manager import CalendarSourceManager
+    from ..user_store import UserStore
     from ..vikunja_store import VikunjaCredentialStore
     from ..whatsapp_store import WhatsAppSessionStore
 
@@ -57,6 +58,7 @@ class ContextBuilder:
         vikunja_store: "VikunjaCredentialStore | None" = None,
         signal: "SignalAction | None" = None,
         signal_store: "SignalMessageStore | None" = None,
+        user_store: "UserStore | None" = None,
         http_client: "httpx.AsyncClient | None" = None,
     ):
         self.config = config
@@ -72,6 +74,7 @@ class ContextBuilder:
         self.vikunja_store = vikunja_store
         self.signal = signal
         self.signal_store = signal_store
+        self.user_store = user_store
         self._http_client = http_client
         self.notion_retriever: object | None = None
 
@@ -95,8 +98,13 @@ class ContextBuilder:
         """Extract user_id from chat_id, resolving phone lookups as needed.
 
         Supports:
-          - web-user-{uid}  → uid directly
+          - web-user-{uid}   → uid directly
           - wa-self-{phone}  → phone lookup via wa_store
+          - signal-self-...  → admin user (Signal is a single deployment-wide
+                               account, so it belongs to the deployment owner)
+
+        Returns None when the chat cannot be mapped; callers must fail closed
+        (never fall back to an unscoped, cross-tenant query).
         """
         if chat_id.startswith("web-user-"):
             try:
@@ -108,6 +116,8 @@ class ContextBuilder:
             session = await self.wa_store.get_by_phone(phone)
             if session:
                 return session["user_id"]
+        if chat_id.startswith("signal-self-") and self.user_store:
+            return await self.user_store.get_admin_user_id()
         return None
 
     async def resolve_wa_instance(self, chat_id: str) -> str | None:

@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import asyncpg
+from cryptography.fernet import InvalidToken
 
 if TYPE_CHECKING:
     from .crypto import FieldEncryptor
@@ -148,6 +149,11 @@ class SettingsStore:
                 result[row["key"]] = val
             except json.JSONDecodeError, TypeError:
                 logger.warning("Corrupted settings override: %s", row["key"])
+            except InvalidToken:
+                logger.error(
+                    "Settings override '%s' could not be decrypted (key mismatch?) — skipping",
+                    row["key"],
+                )
         return result
 
     async def set(self, key: str, value: Any) -> None:
