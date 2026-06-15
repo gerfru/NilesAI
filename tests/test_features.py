@@ -220,4 +220,28 @@ class TestWebhookAuth:
         result = await whatsapp_webhook(request, token="")
 
         assert result.status_code == 401
+
+    async def test_webhook_accepts_dedicated_token(self, mock_app, webhook_payload):
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        token = mock_app.state.settings.webhook_token
+        result = await whatsapp_webhook(request, token=token)
+
+        assert result == {"status": "received", "sender": "435000000000"}
+
+    async def test_webhook_rejects_evolution_admin_key(self, mock_app, webhook_payload):
+        """Webhook token is decoupled from the Evolution admin key (CWE-598)."""
+        from niles.sources.whatsapp import whatsapp_webhook
+
+        request = AsyncMock()
+        request.app = mock_app
+        request.json.return_value = webhook_payload
+
+        result = await whatsapp_webhook(request, token=mock_app.state.settings.evolution_api_key)
+
+        assert result.status_code == 401
         mock_app.state.agent.process_event.assert_not_called()

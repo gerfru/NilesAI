@@ -79,7 +79,7 @@ async def whatsapp_webhook(request: Request, token: str = Query(default="")):
     retry-spam from Evolution.
     """
     settings = request.app.state.settings
-    expected = settings.evolution_api_key
+    expected = settings.webhook_token
     if not token or len(token) > 256 or not hmac.compare_digest(token, expected):
         logger.warning("Webhook request with invalid or missing token")
         return error_response(401, "Unauthorized")

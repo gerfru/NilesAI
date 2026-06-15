@@ -4,7 +4,37 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from niles.network import is_private_host
+from niles.network import is_private_host, resolve_public_ip
+
+
+class TestResolvePublicIp:
+    """Single-resolution, fail-closed resolver used to pin connections."""
+
+    @patch("niles.network.socket.getaddrinfo")
+    def test_returns_public_ip(self, mock_gai):
+        mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+        assert resolve_public_ip("example.com") == "93.184.216.34"
+
+    @patch("niles.network.socket.getaddrinfo")
+    def test_returns_none_if_any_address_private(self, mock_gai):
+        # Mixed result (public + private) must fail closed — never pick the public one.
+        mock_gai.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("127.0.0.1", 0)),
+        ]
+        assert resolve_public_ip("rebind.example.com") is None
+
+    @patch("niles.network.socket.getaddrinfo")
+    def test_returns_none_on_private(self, mock_gai):
+        mock_gai.return_value = [(2, 1, 6, "", ("169.254.169.254", 0))]
+        assert resolve_public_ip("metadata.internal") is None
+
+    @patch("niles.network.socket.getaddrinfo")
+    def test_returns_none_on_dns_failure(self, mock_gai):
+        import socket
+
+        mock_gai.side_effect = socket.gaierror("nope")
+        assert resolve_public_ip("nonexistent.invalid") is None
 
 
 class TestIsPrivateHost:

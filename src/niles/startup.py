@@ -395,7 +395,7 @@ async def setup_mcp_and_actions(
             stores["wa_store"],
             whatsapp_action,
             webhook_base_url=settings.webhook_base_url,
-            evolution_api_key=settings.evolution_api_key,
+            webhook_token=settings.webhook_token,
         )
 
     # Signal
