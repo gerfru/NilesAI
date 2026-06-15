@@ -9,11 +9,12 @@ imports at the bottom of this file).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from ...actions.calendar import CalendarAction
 from ...actions.contacts import ContactsAction
+from ...actions.message_dispatch import MessageDispatch
 from ...actions.signal import SignalAction
 from ...actions.whatsapp import WhatsAppAction
 from ...config import Settings
@@ -51,6 +52,18 @@ class ToolContext:
     pending_confirmations: dict[str, dict]
     notion_retriever: Any = None  # actions.notion.NotionRetriever
     user_id: int | None = None
+    # Centralised send-policy + send — derived from the fields above (not an init arg)
+    dispatch: MessageDispatch = field(init=False)
+
+    def __post_init__(self) -> None:
+        # Read get_own_phone_number indirectly so callers/tests that reassign it
+        # on the context after construction are still honoured.
+        self.dispatch = MessageDispatch(
+            self.config,
+            self.whatsapp,
+            self.signal,
+            get_own_phone_number=lambda chat_id: self.get_own_phone_number(chat_id),
+        )
 
 
 ToolHandler = Callable[[dict, str, ToolContext], Awaitable[dict]]

@@ -4,6 +4,7 @@
 import logging
 import time
 
+from ...actions.message_dispatch import SEND_OTHERS_DISABLED
 from . import ToolContext, register_tool
 from .formatting import format_message_transcript
 
@@ -21,24 +22,18 @@ async def handle_send_signal(args: dict, chat_id: str, ctx: ToolContext) -> dict
         return err
     resolved_number = f"+{phone}"
 
-    # 2. Self-check: own number is always allowed
-    own_phone = ctx.config.signal_phone_number
-    is_self = resolved_number == own_phone
-
-    # 3. Sending to others: only if feature flag is active
-    if not is_self and not ctx.config.feature_signal_send_others:
+    # 2. Policy (self-check + feature gate) lives in MessageDispatch
+    is_self, allowed = await ctx.dispatch.policy("signal", resolved_number, chat_id)
+    if not allowed:
         logger.info("send_signal to others disabled via feature flag")
-        return {
-            "error": "Das Senden an andere Personen ist deaktiviert. "
-            "Du kannst diese Funktion in den Einstellungen aktivieren."
-        }
+        return {"error": SEND_OTHERS_DISABLED}
 
-    # 4. Confirmation before sending (skip for self-messages)
     if not ctx.signal:
         return {"error": "Signal ist nicht konfiguriert"}
 
+    # 3. Self-messages send immediately; others need confirmation
     if is_self:
-        result = await ctx.signal.send_message(to=resolved_number, text=text)
+        result = await ctx.dispatch.send_signal(to=resolved_number, text=text, chat_id=chat_id)
         return {"status": "sent", "to": resolved_number} if "error" not in result else result
 
     # Store pending confirmation and ask user
