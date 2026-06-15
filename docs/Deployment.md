@@ -791,6 +791,24 @@ Then: `./scripts/start.sh`
 
 All code changes to `src/` require rebuilding the Docker image (`./scripts/build.sh && ./scripts/start.sh`). For local development with auto-reload, use `./scripts/dev.sh` instead.
 
+### Version Pinning & Rollback
+
+`./scripts/start.sh` reads the released version from `.release-please-manifest.json` and tags the
+built image as `niles-core:<version>` (e.g. `niles-core:0.2.1`). Because each release builds a
+distinctly tagged image, **previous version images remain locally available** as immutable rollback
+targets — no `:latest` overwrite.
+
+```bash
+# List locally available Niles image versions
+docker images niles-core
+
+# Roll back to a previous version WITHOUT rebuilding (uses the existing local image)
+NILES_VERSION=0.2.0 docker compose -f docker/docker-compose.yml --env-file .env up -d
+```
+
+Override `NILES_VERSION` explicitly in `.env` or the environment to pin a specific deploy.
+If the target version image is no longer present locally, check out the matching git tag and rebuild.
+
 ### Full Reset
 
 ```bash
