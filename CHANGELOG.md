@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.8](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.7...niles-core-v0.2.8) (2026-06-15)
+
+
+### Features
+
+* **llm:** LLM safety hardening + golden-dataset eval gate (W8 + W10) ([#177](https://github.com/gerfru/NilesAI/issues/177)) ([52dab6a](https://github.com/gerfru/NilesAI/commit/52dab6ae50fef07e93afa61b1213bca1977b906e))
+
 ## [0.2.7](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.6...niles-core-v0.2.7) (2026-06-15)
 
 
