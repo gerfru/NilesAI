@@ -11,12 +11,13 @@ Configuration via environment variables:
 """
 
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import trafilatura
 from mcp.server.fastmcp import FastMCP
 
-from niles.network import is_private_host as _is_private_host
+from niles.network import resolve_public_ip
 
 mcp = FastMCP("fetch")
 
@@ -59,15 +60,44 @@ def _validate_url(url: str) -> tuple[str, str | None]:
     if not url_lower.startswith(("http://", "https://")):
         url = "https://" + url
 
-    # SSRF protection: block private/internal IPs
-    try:
-        hostname = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-        if _is_private_host(hostname):
-            return "", "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
-    except IndexError, ValueError:
-        pass
-
+    # SSRF is enforced at connect time in _pinned_get (resolve-then-connect),
+    # which is robust against DNS rebinding. No host check here.
     return url, None
+
+
+async def _pinned_get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    user_agent: str,
+) -> tuple[httpx.Response | None, str | None]:
+    """GET *url*, pinning the TCP connection to a freshly validated public IP.
+
+    Resolves the host once, validates it is public, then connects to that exact
+    IP while preserving the original Host header and TLS SNI/cert hostname (via
+    the ``sni_hostname`` extension). This defeats DNS rebinding: the address we
+    validate is the address we connect to — there is no second resolution.
+
+    Returns (response, None) or (None, error_message).
+    """
+    parts = urlsplit(url)
+    host = parts.hostname
+    if not host:
+        return None, "Fehler: Ungueltige URL."
+    ip = resolve_public_ip(host)
+    if ip is None:
+        return None, "Fehler: Zugriff auf interne Adressen ist nicht erlaubt."
+    netloc = f"[{ip}]" if ":" in ip else ip
+    if parts.port:
+        netloc += f":{parts.port}"
+    ip_url = urlunsplit((parts.scheme, netloc, parts.path or "/", parts.query, ""))
+    host_header = host if parts.port is None else f"{host}:{parts.port}"
+    response = await client.get(
+        ip_url,
+        headers={"Host": host_header, "User-Agent": user_agent},
+        extensions={"sni_hostname": host},
+    )
+    return response, None
 
 
 async def _fetch_with_redirects(
@@ -87,7 +117,11 @@ async def _fetch_with_redirects(
         ) as client:
             current_url = url
             for _redirect_i in range(5):
-                response = await client.get(current_url)
+                # Each hop resolves-then-connects to a validated public IP, so a
+                # redirect target pointing at an internal address is blocked here.
+                response, err = await _pinned_get(client, current_url, user_agent=user_agent)
+                if err or response is None:
+                    return "", err or "Fehler: Keine Antwort."
                 if response.is_redirect:
                     location = response.headers.get("location", "")
                     if not location:
@@ -99,18 +133,13 @@ async def _fetch_with_redirects(
                         location = f"{parts[0]}://{host_part}{location}"
                     elif not location.lower().startswith(("http://", "https://")):
                         return "", f"Fehler: URL-Schema in Redirect nicht erlaubt: {location}"
-                    # SSRF check on redirect target
-                    try:
-                        redir_host = location.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-                        if _is_private_host(redir_host):
-                            return "", "Fehler: Redirect zu interner Adresse blockiert."
-                    except IndexError, ValueError:
-                        return "", "Fehler: Ungueltige Redirect-URL."
                     current_url = location
                     continue
                 break
             else:
                 return "", "Fehler: Zu viele Redirects (max 5)."
+            if response is None:  # defensive: the loop only breaks with a response
+                return "", "Fehler: Keine Antwort."
             response.raise_for_status()
 
             # Content-Type check

@@ -22,12 +22,12 @@ class WhatsAppSetupAction:
         whatsapp_action: WhatsAppAction,
         *,
         webhook_base_url: str = "",
-        evolution_api_key: str = "",
+        webhook_token: str = "",
     ):
         self.wa_store = wa_store
         self.whatsapp_action = whatsapp_action
         self.webhook_base_url = webhook_base_url
-        self.evolution_api_key = evolution_api_key
+        self.webhook_token = webhook_token
 
     async def get_status(self, user_id: int) -> dict:
         """Return WhatsApp connection status for template context.
@@ -78,8 +78,10 @@ class WhatsAppSetupAction:
         """
         instance_name = f"niles-wa-{user_id}"
         # Evolution API requires the token as a query parameter for webhook
-        # authentication — header-based auth is not supported.
-        webhook_url = f"{self.webhook_base_url.rstrip('/')}/webhook/whatsapp?token={self.evolution_api_key}"
+        # authentication — header-based auth is not supported. We therefore use
+        # a dedicated webhook_token (not the Evolution admin key) so a query-string
+        # log leak cannot escalate to admin control.
+        webhook_url = f"{self.webhook_base_url.rstrip('/')}/webhook/whatsapp?token={self.webhook_token}"
 
         result = await self.whatsapp_action.create_instance(instance_name, webhook_url)
 

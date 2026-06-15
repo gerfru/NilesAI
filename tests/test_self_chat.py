@@ -1,5 +1,7 @@
 """Tests for WhatsApp self-chat trigger."""
 
+import hashlib
+import hmac
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,6 +9,10 @@ import pytest
 from niles.config import Settings
 from niles.sources.triggers import is_niles_trigger, strip_trigger
 from niles.sources.whatsapp import _echo_guard
+
+_SESSION_SECRET = "test-session-secret"  # pragma: allowlist secret
+# Mirrors config.webhook_token (derived from session_secret).
+VALID_WEBHOOK_TOKEN = hmac.new(_SESSION_SECRET.encode(), b"whatsapp-webhook", hashlib.sha256).hexdigest()
 
 
 class TestIsNilesTrigger:
@@ -92,6 +98,7 @@ class TestSelfChatWebhook:
             _env_file=None,
             postgres_password="test",
             evolution_api_key=self.VALID_TOKEN,
+            session_secret=_SESSION_SECRET,
         )
         return app
 
@@ -119,7 +126,7 @@ class TestSelfChatWebhook:
         request.app = mock_app
         request.json.return_value = self._self_chat_payload("Hey Niles, was steht morgen an?")
 
-        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "processed", "trigger": "self-chat"}
         mock_app.state.agent.process_event.assert_called_once()
@@ -142,7 +149,7 @@ class TestSelfChatWebhook:
         request.app = mock_app
         request.json.return_value = self._self_chat_payload("Einkaufsliste fuer morgen")
 
-        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "ignored", "reason": "own message without trigger"}
         mock_app.state.agent.process_event.assert_not_called()
@@ -156,7 +163,7 @@ class TestSelfChatWebhook:
         request.app = mock_app
         request.json.return_value = self._self_chat_payload("Hey Niles")
 
-        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "processed", "trigger": "self-chat"}
         event = mock_app.state.agent.process_event.call_args[0][0]
@@ -182,7 +189,7 @@ class TestSelfChatWebhook:
             },
         }
 
-        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "received", "sender": "436609999999"}
         mock_app.state.agent.process_event.assert_not_called()
@@ -212,7 +219,7 @@ class TestSelfChatWebhook:
             },
         }
 
-        result = await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "ignored", "reason": "echo of own reply"}
         mock_app.state.agent.process_event.assert_not_called()
@@ -234,7 +241,7 @@ class TestSelfChatWebhook:
         request.app = mock_app
         request.json.return_value = self._self_chat_payload("Hey Niles, test")
 
-        await whatsapp_webhook(request, token=self.VALID_TOKEN)
+        await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert _echo_guard.is_echo("SENT999")
 

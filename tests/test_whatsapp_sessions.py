@@ -1,5 +1,7 @@
 """Tests for WhatsApp session management (per-user Evolution API instances)."""
 
+import hashlib
+import hmac
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock
@@ -10,6 +12,8 @@ from niles.config import Settings
 
 
 VALID_TOKEN = "test-api-key"
+# Fixed session secret so the derived webhook_token is deterministic in tests.
+_SESSION_SECRET = "test-session-secret"  # pragma: allowlist secret
 
 
 def _make_settings(**overrides):
@@ -17,9 +21,15 @@ def _make_settings(**overrides):
         _env_file=None,
         postgres_password="test",
         evolution_api_key=VALID_TOKEN,
+        session_secret=_SESSION_SECRET,
     )
     defaults.update(overrides)
     return Settings(**defaults)
+
+
+# The webhook now authenticates with the dedicated webhook_token (derived from
+# session_secret), not the Evolution admin key. Mirror config.webhook_token here.
+VALID_WEBHOOK_TOKEN = hmac.new(_SESSION_SECRET.encode(), b"whatsapp-webhook", hashlib.sha256).hexdigest()
 
 
 class TestWhatsAppAction:
@@ -237,7 +247,7 @@ class TestWebhookIncoming:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "received", "sender": "435000000000"}
 
@@ -260,7 +270,7 @@ class TestWebhookIncoming:
             },
         }
 
-        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "ignored", "reason": "group message"}
         mock_app.state.agent.process_event.assert_not_called()
@@ -286,7 +296,7 @@ class TestWebhookIncoming:
             },
         }
 
-        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         # Should use phone from remoteJidAlt, not the LID
         assert result == {"status": "received", "sender": "435000000000"}
@@ -315,7 +325,7 @@ class TestWebhookIncoming:
             },
         }
 
-        result = await whatsapp_webhook(request, token=VALID_TOKEN)
+        result = await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         assert result == {"status": "processed", "trigger": "self-chat"}
         # Reply should use phone-based JID, not LID
@@ -331,7 +341,7 @@ class TestWebhookIncoming:
         request.app = mock_app
         request.json.return_value = webhook_payload
 
-        await whatsapp_webhook(request, token=VALID_TOKEN)
+        await whatsapp_webhook(request, token=VALID_WEBHOOK_TOKEN)
 
         mock_app.state.agent.process_event.assert_not_called()
         mock_app.state.whatsapp_action.send_message.assert_not_called()

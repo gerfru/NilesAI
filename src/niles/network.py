@@ -36,3 +36,28 @@ def is_private_host(hostname: str) -> bool:
         if any(ip in net for net in PRIVATE_NETWORKS):
             return True
     return False
+
+
+def resolve_public_ip(hostname: str) -> str | None:
+    """Resolve a hostname to one validated public IP (DNS-rebinding safe).
+
+    Performs a SINGLE DNS resolution and returns the first address only if
+    EVERY resolved address is public. Returns None if any address is
+    private/reserved or resolution fails (fail closed).
+
+    Callers must then connect to the returned IP literal (not re-resolve the
+    hostname) to close the TOCTOU window an attacker-controlled DNS could use
+    to return a public IP for validation and a private IP for the connection.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return None
+    first: str | None = None
+    for _family, _type, _proto, _canonname, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if any(ip in net for net in PRIVATE_NETWORKS):
+            return None
+        if first is None:
+            first = str(ip)
+    return first

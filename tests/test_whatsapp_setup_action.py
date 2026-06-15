@@ -18,7 +18,7 @@ def _make_action(
         wa_store or AsyncMock(),
         whatsapp_action or AsyncMock(),
         webhook_base_url=webhook_base_url,
-        evolution_api_key=api_key,
+        webhook_token=api_key,
     )
 
 

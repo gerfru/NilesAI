@@ -237,6 +237,14 @@ Open `https://<YOUR-URL>/ui/login` -- the Google login button should appear.
 - WhatsApp sessions are persisted in `~/.evolution/instances/`
 - Webhooks are configured automatically
 
+> **Upgrade note (webhook security):** The webhook now authenticates with a
+> dedicated token derived from `SESSION_SECRET` instead of the Evolution admin
+> key, so a leaked webhook URL can no longer expose admin access. The token is
+> baked into the registered webhook URL, so **after upgrading, reconnect
+> WhatsApp once** (Settings → WhatsApp → Connect) to re-register with the new
+> token. Until then, inbound messages on an already-connected instance return
+> 401. New connections need no extra step.
+
 ### Connecting
 
 1. Log in to the web UI: `https://localhost/ui/login`

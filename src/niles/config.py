@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Niles configuration via Pydantic Settings."""
 
+import hashlib
+import hmac
 import logging
 import secrets
 
@@ -37,6 +39,18 @@ class Settings(BaseSettings):
 
     # Internal base URL for webhooks (Evolution API → Niles Core, Docker-internal)
     webhook_base_url: str = "http://niles_core:8000"
+
+    @property
+    def webhook_token(self) -> str:
+        """Dedicated WhatsApp webhook auth token, decoupled from the Evolution
+        admin key (CWE-598).
+
+        Evolution API only supports the token as a URL query parameter (not a
+        header), so it can leak into reverse-proxy/access logs. Deriving it from
+        session_secret via one-way HMAC means a leaked webhook URL grants at
+        most webhook spoofing — never the Evolution admin key or session_secret.
+        """
+        return hmac.new(self.session_secret.encode(), b"whatsapp-webhook", hashlib.sha256).hexdigest()
 
     # Niles API authentication
     niles_api_key: str = Field(
