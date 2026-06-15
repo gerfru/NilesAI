@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.10](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.9...niles-core-v0.2.10) (2026-06-15)
+
+
+### Features
+
+* **llm:** token-based context budget (W9) ([#181](https://github.com/gerfru/NilesAI/issues/181)) ([f13883e](https://github.com/gerfru/NilesAI/commit/f13883ef32f6ee8f68f0ccdc7768d69b6b6f8fb2))
+
 ## [0.2.9](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.8...niles-core-v0.2.9) (2026-06-15)
 
 
