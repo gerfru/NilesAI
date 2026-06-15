@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.1...niles-core-v0.2.2) (2026-06-15)
+
+
+### Bug Fixes
+
+* **deps:** update dependency langfuse to v4 ([#165](https://github.com/gerfru/NilesAI/issues/165)) ([3464ffb](https://github.com/gerfru/NilesAI/commit/3464ffb03234a6a8a46f98f036f712d66d580c0f))
+
+
+### Miscellaneous
+
+* **deps:** pin dependencies ([#163](https://github.com/gerfru/NilesAI/issues/163)) ([644ff09](https://github.com/gerfru/NilesAI/commit/644ff097795162efc06ddf83fe66bb86556cded9))
+* **deps:** update anthropics/claude-code-action digest to d5726de ([#161](https://github.com/gerfru/NilesAI/issues/161)) ([8684a44](https://github.com/gerfru/NilesAI/commit/8684a44e6501de1985c5017a76153cf27489b295))
+* **deps:** update langfuse/langfuse docker tag to v3 ([#164](https://github.com/gerfru/NilesAI/issues/164)) ([c7bc9ff](https://github.com/gerfru/NilesAI/commit/c7bc9fff5ec42ab8c5313683764bc2e0e351581d))
+
 ## [0.2.1](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.0...niles-core-v0.2.1) (2026-06-13)
 
 
