@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.2...niles-core-v0.2.3) (2026-06-15)
+
+
+### Miscellaneous
+
+* **infra:** repo & container hardening (PR1) ([#167](https://github.com/gerfru/NilesAI/issues/167)) ([7761043](https://github.com/gerfru/NilesAI/commit/77610432fb73ecf0a485ec3bace20547c905305e))
+
 ## [0.2.2](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.1...niles-core-v0.2.2) (2026-06-15)
 
 
