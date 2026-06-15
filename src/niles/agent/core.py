@@ -272,13 +272,7 @@ class NilesAgent:
         _force_search = _web_search and _search_tool in _tool_names
 
         for _round in range(MAX_TOOL_ROUNDS):
-            if _force_search and _round == 0:
-                _tool_choice: object = {
-                    "type": "function",
-                    "function": {"name": _search_tool},
-                }
-            else:
-                _tool_choice = "auto" if all_tools else None
+            _tool_choice = self._tool_choice_for_round(_force_search, _round, all_tools, _search_tool)
 
             try:
                 _llm_start = time.monotonic()
@@ -302,55 +296,18 @@ class NilesAgent:
                 yield {"type": "done"}
                 return
 
-            # Consume the stream, accumulating text content and tool-call deltas
-            full_content = ""
-            tool_calls_by_idx: dict[int, dict] = {}
-            finish_reason = None
-            # Buffer responses that look like JSON tool calls instead of
-            # streaming them — avoids showing raw JSON to the user.
-            _buffering = False
-
+            # Consume the stream live (yields text chunks); accumulated state
+            # (content / tool_calls / finish_reason / buffering) is returned via dict.
+            _stream_state: dict = {}
             try:
-                async for chunk in stream:
-                    # Final chunk with usage data has empty choices
-                    if not chunk.choices:
-                        if chunk.usage:
-                            LLM_TOKENS.labels(type="prompt").inc(chunk.usage.prompt_tokens)
-                            LLM_TOKENS.labels(type="completion").inc(chunk.usage.completion_tokens)
-                        continue
-                    choice = chunk.choices[0]
-                    finish_reason = choice.finish_reason or finish_reason
-
-                    if choice.delta.content:
-                        full_content += choice.delta.content
-                        # If the first content looks like JSON or a code-fenced
-                        # tool call, buffer it.  Single backticks (inline code)
-                        # are NOT buffered — only triple-backtick fences or
-                        # bare '{'.
-                        stripped = full_content.lstrip()
-                        if not _buffering and (stripped.startswith("{") or stripped.startswith("```")):
-                            _buffering = True
-                        if not _buffering:
-                            yield {"type": "chunk", "text": choice.delta.content}
-
-                    if choice.delta.tool_calls:
-                        for tc_delta in choice.delta.tool_calls:
-                            idx = tc_delta.index
-                            if idx not in tool_calls_by_idx:
-                                tool_calls_by_idx[idx] = {
-                                    "id": "",
-                                    "name": "",
-                                    "arguments": "",
-                                }
-                            if tc_delta.id:
-                                tool_calls_by_idx[idx]["id"] = tc_delta.id
-                            if tc_delta.function:
-                                if tc_delta.function.name:
-                                    tool_calls_by_idx[idx]["name"] += tc_delta.function.name
-                                if tc_delta.function.arguments:
-                                    tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
+                async for item in self._consume_stream(stream, _stream_state):
+                    yield item
             finally:
                 LLM_DURATION.observe(time.monotonic() - _llm_start)
+            full_content = _stream_state["content"]
+            tool_calls_by_idx = _stream_state["tool_calls"]
+            finish_reason = _stream_state["finish_reason"]
+            _buffering = _stream_state["buffering"]
 
             # No tool calls → check for text-based tool call fallback
             if finish_reason != "tool_calls" or not tool_calls_by_idx:
@@ -363,48 +320,14 @@ class NilesAgent:
                     full_content = ""  # Don't pass JSON as assistant content
                     # Don't save or return — fall through to tool execution below
                 else:
-                    # Flush buffered content that turned out not to be a tool call
-                    if _buffering and full_content:
-                        rejected_name = is_rejected_tool_call(full_content)
-                        if rejected_name:
-                            logger.info(
-                                "Suppressed rejected tool call: %s",
-                                rejected_name,
-                            )
-                            full_content = (
-                                "Ich kann diese Anfrage mit den aktuell "
-                                "verfügbaren Funktionen nicht beantworten. "
-                                "Bitte aktiviere den Recherche-Modus."
-                            )
-                        yield {"type": "chunk", "text": full_content}
-                    if full_content:
-                        await self.history.add_message(chat_id, "user", _history_content)
-                        await self.history.add_message(chat_id, "assistant", full_content)
-                    else:
-                        logger.warning(
-                            "LLM returned empty streaming response for event: %s",
-                            event.get("content", "")[:100],
-                        )
-                        yield {
-                            "type": "chunk",
-                            "text": "Entschuldigung, ich habe keine Antwort erhalten.",
-                        }
-                    yield {"type": "done"}
+                    async for item in self._finalize_text_response(
+                        chat_id, full_content, _buffering, _history_content, event
+                    ):
+                        yield item
                     return
 
             # Tool calls detected → build assistant message and execute tools
-            assistant_msg = {
-                "role": "assistant",
-                "content": full_content or None,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                    }
-                    for tc in (tool_calls_by_idx[i] for i in sorted(tool_calls_by_idx))
-                ],
-            }
+            assistant_msg = self._build_assistant_message(full_content, tool_calls_by_idx)
             messages.append(assistant_msg)
 
             for tc_dict in assistant_msg["tool_calls"]:
@@ -432,6 +355,106 @@ class NilesAgent:
                 "text": "Ich konnte die Anfrage nicht abschliessen.",
             }
 
+        yield {"type": "done"}
+
+    @staticmethod
+    def _tool_choice_for_round(force_search: bool, round_idx: int, all_tools: list, search_tool: str) -> object:
+        """Tool-choice for a round: force the search tool on round 0 in Recherche-Modus."""
+        if force_search and round_idx == 0:
+            return {"type": "function", "function": {"name": search_tool}}
+        return "auto" if all_tools else None
+
+    @staticmethod
+    def _accumulate_tool_call_delta(tool_calls_by_idx: dict[int, dict], tc_delta) -> None:
+        """Merge a streamed tool-call delta fragment into the accumulator."""
+        idx = tc_delta.index
+        if idx not in tool_calls_by_idx:
+            tool_calls_by_idx[idx] = {"id": "", "name": "", "arguments": ""}
+        if tc_delta.id:
+            tool_calls_by_idx[idx]["id"] = tc_delta.id
+        if tc_delta.function:
+            if tc_delta.function.name:
+                tool_calls_by_idx[idx]["name"] += tc_delta.function.name
+            if tc_delta.function.arguments:
+                tool_calls_by_idx[idx]["arguments"] += tc_delta.function.arguments
+
+    async def _consume_stream(self, stream, state: dict):
+        """Consume an LLM stream: yield live text chunks; fill *state* with the
+        accumulated content / tool_calls / finish_reason / buffering flag.
+
+        Content that begins like a JSON or code-fenced tool call is buffered
+        (not streamed) so raw JSON never reaches the user.
+        """
+        full_content = ""
+        tool_calls_by_idx: dict[int, dict] = {}
+        finish_reason = None
+        buffering = False
+        try:
+            async for chunk in stream:
+                # Final chunk with usage data has empty choices
+                if not chunk.choices:
+                    if chunk.usage:
+                        LLM_TOKENS.labels(type="prompt").inc(chunk.usage.prompt_tokens)
+                        LLM_TOKENS.labels(type="completion").inc(chunk.usage.completion_tokens)
+                    continue
+                choice = chunk.choices[0]
+                finish_reason = choice.finish_reason or finish_reason
+
+                if choice.delta.content:
+                    full_content += choice.delta.content
+                    stripped = full_content.lstrip()
+                    if not buffering and (stripped.startswith("{") or stripped.startswith("```")):
+                        buffering = True
+                    if not buffering:
+                        yield {"type": "chunk", "text": choice.delta.content}
+
+                if choice.delta.tool_calls:
+                    for tc_delta in choice.delta.tool_calls:
+                        self._accumulate_tool_call_delta(tool_calls_by_idx, tc_delta)
+        finally:
+            state["content"] = full_content
+            state["tool_calls"] = tool_calls_by_idx
+            state["finish_reason"] = finish_reason
+            state["buffering"] = buffering
+
+    @staticmethod
+    def _build_assistant_message(full_content: str, tool_calls_by_idx: dict[int, dict]) -> dict:
+        """Build the assistant message dict carrying the requested tool calls."""
+        return {
+            "role": "assistant",
+            "content": full_content or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                }
+                for tc in (tool_calls_by_idx[i] for i in sorted(tool_calls_by_idx))
+            ],
+        }
+
+    async def _finalize_text_response(self, chat_id, full_content, buffering, history_content, event):
+        """Emit the final text answer (flushing buffered content), persist the
+        user+assistant turn, and yield the terminating done event."""
+        if buffering and full_content:
+            rejected_name = is_rejected_tool_call(full_content)
+            if rejected_name:
+                logger.info("Suppressed rejected tool call: %s", rejected_name)
+                full_content = (
+                    "Ich kann diese Anfrage mit den aktuell "
+                    "verfügbaren Funktionen nicht beantworten. "
+                    "Bitte aktiviere den Recherche-Modus."
+                )
+            yield {"type": "chunk", "text": full_content}
+        if full_content:
+            await self.history.add_message(chat_id, "user", history_content)
+            await self.history.add_message(chat_id, "assistant", full_content)
+        else:
+            logger.warning(
+                "LLM returned empty streaming response for event: %s",
+                event.get("content", "")[:100],
+            )
+            yield {"type": "chunk", "text": "Entschuldigung, ich habe keine Antwort erhalten."}
         yield {"type": "done"}
 
     async def process_event(self, event: dict) -> str:
