@@ -13,6 +13,8 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +47,11 @@ from .startup import (
 )
 
 logger = logging.getLogger(__name__)
+
+try:
+    __version__ = _pkg_version("niles-core")
+except PackageNotFoundError:  # not installed (e.g. running from a raw checkout)
+    __version__ = "dev"
 
 
 # Default logging until settings are loaded
@@ -379,7 +386,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app = FastAPI(title="Niles AI Core", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Niles AI Core", version=__version__, lifespan=lifespan)
 
 
 async def _api_exception_handler(request: Request, exc: Exception) -> Response:
