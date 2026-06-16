@@ -28,7 +28,7 @@ gebündelt (Tests/Docs zählen nicht zum 400-LOC-Gate, daher Bündelung möglich
 **Verifiziert in Produktion:** WhatsApp neu verbunden, registriertes Webhook-Token == abgeleitetes
 `webhook_token` (nicht mehr der Evolution-Admin-Key).
 
-**Offen:** Nur noch W19 (Observability-Glue) + W20 (Kosmetik + ADRs) — Betrieb/Kosmetik. Phase B–D (W8–W18) ist abgeschlossen.
+**Status:** Alle Wellen W1–W20 sind abgeschlossen. W19 via #197 (homelab-gateway-Anbindung) + #198 (standalone `--profile monitoring`); W20 via #196 (Version aus `importlib.metadata` + ADR-0001/0003). Bewusst zurückgestellt (W20-Stretch „falls Restbudget"): GET-Orphan-Claim aus dem GET-Handler ziehen, MCP-per-Server-Allowlist.
 
 **Abweichungen vom Ursprungsplan (bewusst):**
 - Webhook-Fix (W5): Evolution unterstützt **nur** Query-Param-Auth (keine Header) → statt Header-Migration
@@ -310,8 +310,8 @@ W19 (unabhängig)
 | W16 | Tests Web/Agent-Loop | H | ~350 | ✅ (Phase-D PR1) |
 | W17 | Tests + Coverage-Gates (branch on, fail_under 77) | M | ~300 | ✅ (Phase-D PR1) |
 | W18 | mypy/Typen-Baseline | M | ~200 | ✅ #190 + #191 |
-| W19 | Observability-Glue | L | ~150 | ☐ |
-| W20 | Kosmetik + ADRs | L | ~200 | ☐ |
+| W19 | Observability-Glue | L | ~150 | ✅ #197 (homelab) + #198 (standalone) |
+| W20 | Kosmetik + ADRs | L | ~200 | ✅ #196 |
 
 *LOC = [Schätzung], vor PR am echten Diff prüfen.
 
