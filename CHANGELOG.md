@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.12](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.11...niles-core-v0.2.12) (2026-06-16)
+
+
+### Documentation
+
+* accuracy sweep — align all docs with current codebase ([#194](https://github.com/gerfru/NilesAI/issues/194)) ([48495ed](https://github.com/gerfru/NilesAI/commit/48495ed3c542af20b8eb5a06884da50a766b65f8))
+
+
+### Miscellaneous
+
+* **app:** version from importlib.metadata + ADR-0001/0003 (W20) ([#196](https://github.com/gerfru/NilesAI/issues/196)) ([ef6d23a](https://github.com/gerfru/NilesAI/commit/ef6d23abd4294a719200b873fe38616d497be9fb))
+
 ## [0.2.11](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.10...niles-core-v0.2.11) (2026-06-16)
 
 
