@@ -394,7 +394,7 @@ Niles uses **document-structure-aware chunking** because Notion pages are inhere
 
 1. **`_split_by_headings(text)`** -- Split on `# / ## / ###` lines into sections. Track heading hierarchy so `## Sub` under `# Main` gets context `"# Main > ## Sub"`. Code blocks are masked (`_mask_code_blocks`) so bash comments like `# install deps` don't trigger false splits.
 
-2. **`_split_section(body)`** -- Within each section, split by paragraph boundaries respecting `chunk_size` (default: 600 chars) with `chunk_overlap` (default: 100 chars). No overlap across section boundaries.
+2. **`_split_section(body)`** -- Within each section, split by paragraph boundaries respecting `chunk_size` with `chunk_overlap`. These are configurable via the `notion_chunk_size` (default: 600 chars) and `notion_chunk_overlap` (default: 100 chars) settings; the `NotionEmbeddingPipeline.__init__` only supplies the fallback defaults. No overlap across section boundaries.
 
 3. **Prefix each chunk** with breadcrumb context: `[Wiki > Setup > # Installation] actual content here`
 
@@ -414,7 +414,7 @@ Niles uses **document-structure-aware chunking** because Notion pages are inhere
 
 - **Model:** `nomic-embed-text-v2-moe` running locally via Ollama
 - **Dimensions:** 768
-- **Connection:** Persistent `httpx.AsyncClient` for connection pooling to `http://host.docker.internal:11434/api/embed`
+- **Connection:** Persistent `httpx.AsyncClient` for connection pooling. The embedder reuses the `llm_base_url` setting (there is no separate `OLLAMA_BASE_URL`) and calls the `/api/embed` endpoint, e.g. `http://host.docker.internal:11434/api/embed`
 
 **Task prefixes** (required by nomic-embed-text-v2-moe for optimal retrieval):
 - `"search_document: "` -- prepended when indexing chunks
@@ -430,16 +430,17 @@ Niles uses **document-structure-aware chunking** because Notion pages are inhere
 
 | Column | Type | Purpose |
 |--------|------|---------|
+| `id` | SERIAL | Surrogate primary key |
 | `page_id` | TEXT | FK to notion_pages |
-| `chunk_level` | INT | 0 = summary, 1 = detail |
+| `chunk_level` | SMALLINT | 0 = summary, 1 = detail |
 | `chunk_index` | INT | Position within page |
 | `chunk_text` | TEXT | Full chunk with prefix |
 | `embedding` | VECTOR(768) | nomic-embed-text-v2-moe vector |
 | `page_title` | TEXT | Breadcrumb for keyword boost |
 | `heading_context` | TEXT | Heading hierarchy for keyword boost |
-| `created_at` | TIMESTAMP | For freshness tracking |
+| `created_at` | TIMESTAMPTZ | For freshness tracking |
 
-**Primary key:** `(page_id, chunk_level, chunk_index)` -- upsert-safe.
+**Primary key:** `id SERIAL PRIMARY KEY`. The tuple `(page_id, chunk_level, chunk_index)` is a UNIQUE constraint (upsert-safe), not the primary key.
 
 **Index:** HNSW with `m=16, ef_construction=64` using cosine distance operator (`vector_cosine_ops`).
 
@@ -538,12 +539,12 @@ IVFFlat with default settings (`probes=1`) only searches 1 out of N clusters. Du
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `NOTION_TOKEN` | -- | Internal Integration Token (required) |
-| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API endpoint |
+| `llm_base_url` | `http://host.docker.internal:11434` | Ollama API endpoint (shared with the LLM; the embedder appends `/api/embed`) |
 | `notion_embedding_model` | `nomic-embed-text-v2-moe` | Embedding model name |
 | `notion_similarity_threshold` | `0.30` | Minimum cosine similarity for results |
-| `notion_auto_sync` | `true` | Enable automatic sync scheduler |
-| Chunk size | 600 chars | Hardcoded in `NotionEmbeddingPipeline.__init__` |
-| Chunk overlap | 100 chars | Hardcoded in `NotionEmbeddingPipeline.__init__` |
+| `notion_sync_interval` | `30` | Minutes between automatic syncs; `0` disables the scheduler |
+| `notion_chunk_size` | `600` | Characters per chunk (default supplied by `NotionEmbeddingPipeline.__init__`) |
+| `notion_chunk_overlap` | `100` | Overlap between chunks (default supplied by `NotionEmbeddingPipeline.__init__`) |
 
 For setup instructions, see [Deployment.md Section 12](Deployment.md#12-notion-knowledge-base-rag).
 

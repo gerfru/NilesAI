@@ -28,7 +28,7 @@ gebündelt (Tests/Docs zählen nicht zum 400-LOC-Gate, daher Bündelung möglich
 **Verifiziert in Produktion:** WhatsApp neu verbunden, registriertes Webhook-Token == abgeleitetes
 `webhook_token` (nicht mehr der Evolution-Admin-Key).
 
-**Offen:** Phase B–E (W8–W20) — LLM-Reife, Architektur-Schuld, Komplexität/Tests, Betrieb/Kosmetik.
+**Offen:** Nur noch W19 (Observability-Glue) + W20 (Kosmetik + ADRs) — Betrieb/Kosmetik. Phase B–D (W8–W18) ist abgeschlossen.
 
 **Abweichungen vom Ursprungsplan (bewusst):**
 - Webhook-Fix (W5): Evolution unterstützt **nur** Query-Param-Auth (keine Header) → statt Header-Migration
@@ -309,7 +309,7 @@ W19 (unabhängig)
 | W15 | Refactor process_event + iCal-Parser | M | ~300 | ✅ (Phase-D PR3) |
 | W16 | Tests Web/Agent-Loop | H | ~350 | ✅ (Phase-D PR1) |
 | W17 | Tests + Coverage-Gates (branch on, fail_under 77) | M | ~300 | ✅ (Phase-D PR1) |
-| W18 | mypy/Typen-Baseline | M | ~200 | ☐ |
+| W18 | mypy/Typen-Baseline | M | ~200 | ✅ #190 + #191 |
 | W19 | Observability-Glue | L | ~150 | ☐ |
 | W20 | Kosmetik + ADRs | L | ~200 | ☐ |
 

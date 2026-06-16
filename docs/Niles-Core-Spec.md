@@ -1,6 +1,7 @@
 # Niles AI Core -- Technical Specification
 
-> **Version:** 10.0
+> **Spec Version:** 10.0
+> **Project Version:** 0.2.11 (`pyproject.toml`)
 > **Updated:** 2026-06-11
 
 ---
@@ -23,12 +24,13 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | Component | Internal Port | External Access | Purpose |
 | --------- | ------------- | --------------- | ------- |
 | Ollama (llama3.1:8b) | 11434 (Host) | `http://localhost:11434` | LLM inference (OpenAI-compatible) |
-| PostgreSQL | 5432 | Not exposed | Database (evolution_db) |
+| PostgreSQL (pgvector) | 5432 | Not exposed | Database (evolution_db) |
 | Evolution API v2.3.7 | 8080 | `https://whatsapp.example.local` | WhatsApp gateway |
 | Niles Core (FastAPI) | 8000 | `https://niles.example.local` | Python backend + web UI |
 | Vikunja 1.1.0 | 3456 | `https://vikunja.example.local` | Todo/task management |
 | signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
 | SearXNG | 8080 | Not exposed | Meta search engine (optional, profile `search`) |
+| Langfuse 3 | 3000 | `127.0.0.1:3000` | LLM tracing (optional, profile `langfuse`) |
 
 **Network architecture:** All Docker services communicate internally via HTTP on `niles_network`. External access through homelab-gateway (Caddy reverse proxy on `proxy` network, HTTPS with self-signed certs, subdomain-based routing). PostgreSQL and internal service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
 
@@ -102,8 +104,14 @@ Niles/
 │       ├── config.py                 # Pydantic Settings + apply_overrides
 │       ├── logging_config.py         # Structured JSON logging (structlog)
 │       ├── metrics.py                # Prometheus metrics definitions
+│       ├── crypto.py                 # FieldEncryptor (Fernet column-level encryption)
+│       ├── network.py                # SSRF guard / private-IP blocklist helpers
+│       ├── redaction.py              # PII/secret redaction for logs
+│       ├── tokens.py                 # Token helpers (signing/validation)
 │       ├── user_store.py             # User management (Google OAuth)
 │       ├── settings_store.py         # Runtime settings overrides (PostgreSQL)
+│       ├── contact_store.py          # Per-user contacts data access (PostgreSQL)
+│       ├── event_store.py            # Calendar events data access (PostgreSQL)
 │       ├── whatsapp_store.py        # Per-user WhatsApp sessions (PostgreSQL)
 │       ├── signal_store.py          # Signal message store (PostgreSQL)
 │       ├── vikunja_store.py         # Per-user Vikunja credentials (PostgreSQL)
@@ -134,20 +142,23 @@ Niles/
 │       │       ├── whatsapp.py       # send_whatsapp, get_whatsapp_messages
 │       │       └── notion.py        # search_notion
 │       ├── memory/
-│       │   ├── store.py              # Key-value memory (PostgreSQL)
+│       │   ├── store.py              # Key-value memory (PostgreSQL, per-user)
 │       │   └── history.py            # Conversation history
-│       ├── actions/                  # 12 action modules (Routes → Actions → Stores)
+│       ├── actions/                  # Action modules (Routes → Actions → Stores)
 │       │   ├── admin.py              # User CRUD with password hashing
 │       │   ├── briefing.py           # BriefingGenerator (daily/weekly overview)
 │       │   ├── calendar.py           # Calendar queries
 │       │   ├── contacts.py           # Contact search + CardDAV connect/disconnect
+│       │   ├── message_dispatch.py   # Shared channel send routing (WhatsApp/Signal)
 │       │   ├── notion.py             # NotionRetriever (pgvector RAG search)
 │       │   ├── settings.py           # Setting validation + persistence
 │       │   ├── signal.py             # Signal send + status (signal-cli-rest-api)
+│       │   ├── signal_setup.py       # Signal credential/link management (UI-facing)
 │       │   ├── tasks.py              # Vikunja task CRUD (agent-facing)
 │       │   ├── vikunja_setup.py      # Vikunja credential management (UI-facing)
 │       │   ├── weather.py            # Location search + coordinate persistence
-│       │   └── whatsapp.py           # WhatsApp send (Evolution API)
+│       │   ├── whatsapp.py           # WhatsApp send (Evolution API)
+│       │   └── whatsapp_setup.py     # WhatsApp instance/QR management (UI-facing)
 │       ├── jobs/
 │       │   └── briefing.py           # Scheduler jobs for briefing
 │       ├── sources/
@@ -158,6 +169,8 @@ Niles/
 │       │   └── web/                  # Web UI package (feature-based modules)
 │       │       ├── __init__.py       # Re-exports for backward compatibility
 │       │       ├── _core.py          # Router, templates, auth guards, shared helpers
+│       │       ├── _deps.py          # Per-request dependency resolution (AppState access)
+│       │       ├── _legal.py         # Legal/imprint/privacy pages
 │       │       ├── _auth.py          # Login, Google OAuth, logout
 │       │       ├── _chat.py          # Chat page, SSE streaming, history, clear
 │       │       ├── _settings.py      # Settings page, update_setting, Ollama models
@@ -172,6 +185,7 @@ Niles/
 │       │       └── _admin.py         # User management: list/create/reset/delete
 │       ├── sync/
 │       │   ├── carddav.py            # CardDAV contact sync
+│       │   ├── carddav_manager.py    # CardDAVSourceManager (per-user CRUD, sync, migration)
 │       │   ├── caldav.py             # CalDAV calendar sync
 │       │   ├── ical_parser.py        # Shared iCalendar parser
 │       │   ├── manager.py            # CalendarSourceManager (CRUD, sync, migration)
@@ -186,7 +200,11 @@ Niles/
 │       │   │   ├── __init__.py
 │       │   │   ├── __main__.py
 │       │   │   └── server.py
-│       │   └── fetch/                # Web Fetch MCP server (trafilatura)
+│       │   ├── fetch/                # Web Fetch MCP server (trafilatura)
+│       │   │   ├── __init__.py
+│       │   │   ├── __main__.py
+│       │   │   └── server.py
+│       │   └── search/               # SearXNG web search MCP server (FEATURE_SEARCH)
 │       │       ├── __init__.py
 │       │       ├── __main__.py
 │       │       └── server.py
@@ -253,7 +271,7 @@ Niles/
 ├── alembic/
 │   ├── env.py                       # Alembic environment (sync connection)
 │   ├── script.py.mako               # Migration template
-│   └── versions/                    # Migration files (001_baseline, ..., 011_contacts_per_user)
+│   └── versions/                    # Migration files (001_baseline, ..., 012_memory_user_id)
 ├── config/
 │   ├── soul.md                       # Agent personality
 │   ├── mcp_servers.yaml              # MCP server configuration
@@ -279,6 +297,8 @@ Niles/
 ├── .env
 └── .env.example
 ```
+
+**Dependency injection:** Startup wiring is collected in a `StartupContext` dataclass (`startup.py`), which bundles the pool, encryptor, stores, actions, scheduler, and agent built during the lifespan. The runtime `app.state` shape is described by the `AppState` Protocol in `types.py`.
 
 ### 2.3 Data Flow: WhatsApp Message
 
@@ -394,6 +414,9 @@ class Settings(BaseSettings):
     llm_temperature_tools: float = 0.35  # temperature when tools are available
     llm_temperature_chat: float = 0.3    # temperature for pure chat (no tools)
     llm_max_tokens: int = 4096           # max completion tokens per LLM call
+    llm_timeout: float = 120.0           # max seconds per LLM request
+    llm_num_ctx: int = 8192              # Ollama context window (input+output)
+    mcp_max_result_tokens: int = 3000    # cap a single MCP tool result (approx. tokens)
     # PostgreSQL
     postgres_host: str = "evolution_postgres"
     postgres_port: int = 5432
@@ -412,9 +435,11 @@ class Settings(BaseSettings):
     base_url: str = ""      # For OAuth redirect URI
     # Timezone
     timezone: str = "Europe/Vienna"
+    # Phone normalization: default country code (without +) for local numbers
+    phone_country_code: str = "43"  # Austria
     # Features
     feature_whatsapp_send_others: bool = True  # May Niles send WhatsApp to others?
-    # CardDAV (configured via Settings UI)
+    # CardDAV (legacy env config; per-user creds live in carddav_sources table)
     carddav_url: str = ""
     carddav_user: str = ""
     carddav_password: str = ""
@@ -438,6 +463,9 @@ class Settings(BaseSettings):
     signal_api_url: str = "http://signal_api:8080"
     signal_phone_number: str = ""
     feature_signal_send_others: bool = False
+    feature_signal: bool = False
+    # Trusted reverse proxy CIDR for X-Forwarded-For (empty = disabled)
+    trusted_proxy: str = ""
     # Web Search (SearXNG)
     feature_search: bool = False
     searxng_url: str = "http://searxng:8080"
@@ -450,15 +478,29 @@ class Settings(BaseSettings):
     # Notion RAG (see docs/RAG.md for architecture details)
     feature_notion: bool = False
     notion_token: str = ""
-    notion_sync_interval: int = 0             # minutes between syncs (0=disabled)
+    notion_sync_interval: int = 30            # minutes between syncs
     notion_embedding_model: str = "nomic-embed-text-v2-moe"
     notion_summary_model: str = ""            # LLM for summaries (falls back to llm_model)
     notion_summary_max_input: int = 4000      # Max chars sent to LLM for summarization
     notion_summary_max_tokens: int = 200      # Max LLM output tokens for summary
 
     # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
-    # REQUIRED in production (LOG_LEVEL != DEBUG). App refuses to start without it.
+    # REQUIRED by default. App refuses to start without it.
     credential_encryption_key: str = ""
+    # Set to true to allow starting without a key (dev only)
+    credential_encryption_optional: bool = False
+
+    # LLM Tracing (Langfuse, opt-in — requires langfuse package)
+    langfuse_host: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+
+    # Error tracking (Sentry, opt-in)
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1
+
+    # Conversation history pruning
+    history_retention_days: int = 90
 ```
 
 Loads from `.env` and environment variables. `extra = "ignore"`.
@@ -474,10 +516,10 @@ Complete settings table with defaults and env variables: see #6.1.
 ```python
 class NilesAgent:
     def __init__(self, config, contacts, whatsapp, memory, history,
-                 mcp_manager, calendar, calendar_manager, wa_store,
-                 vikunja_store=None,
+                 mcp_manager=None, calendar=None, calendar_manager=None,
+                 wa_store=None, vikunja_store=None,
                  signal=None, signal_store=None,
-                 http_client=None, user_mcp_pool=None): ...
+                 user_store=None, http_client=None): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call, chat_id) -> dict: ...
@@ -532,16 +574,16 @@ class NilesAgent:
 
 ### 3.4 Memory Store (`src/niles/memory/store.py`)
 
-Key-value store in PostgreSQL (table `memory`).
+Per-user key-value store in PostgreSQL (table `memory`). All operations are scoped by `user_id` (composite PK `(user_id, key)`).
 
 ```python
 class MemoryStore:
-    async def initialize(self) -> None       # CREATE TABLE + INDEX
-    async def get(self, key: str) -> Any | None
-    async def set(self, key: str, value: Any) -> None  # UPSERT
-    async def delete(self, key: str) -> bool
-    async def search(self, prefix: str) -> list[dict]
-    async def list_all(self) -> list[dict]   # For system prompt
+    async def get(self, user_id: int, key: str) -> Any | None
+    async def set(self, user_id: int, key: str, value: Any) -> None  # UPSERT
+    async def delete(self, user_id: int, key: str) -> bool
+    async def search(self, user_id: int, prefix: str) -> list[MemoryEntry]
+    async def list_all(self, user_id: int, *, limit: int = 200,
+                       offset: int = 0) -> list[MemoryEntry]   # For system prompt
 ```
 
 ### 3.5 Conversation History (`src/niles/memory/history.py`)
@@ -583,7 +625,6 @@ EDITABLE_SETTINGS = {
     "llm_base_url", "llm_model", "timezone", "log_level",
     "feature_whatsapp_send_others",
     "caldav_calendars",
-    "carddav_url", "carddav_user", "carddav_password",
     "feature_signal_send_others",
     "signal_api_url", "signal_phone_number", "signal_disabled",
     "feature_briefing_daily", "feature_briefing_weekly",
@@ -602,7 +643,7 @@ class SettingsStore:
     async def delete(self, key: str) -> None
 ```
 
-Only keys in `EDITABLE_SETTINGS` can be changed. Credentials and infrastructure settings are locked.
+Only keys in `EDITABLE_SETTINGS` can be changed. Credentials and infrastructure settings are locked. **CardDAV credentials are no longer stored in `settings_overrides`** — they moved into the per-user `carddav_sources` table (managed by `CardDAVSourceManager`).
 
 ### 3.8 WhatsApp Session Store (`src/niles/whatsapp_store.py`)
 
@@ -953,10 +994,34 @@ CREATE TABLE IF NOT EXISTS vikunja_credentials (
 );
 ```
 
+### carddav_sources
+
+```sql
+-- Created by Alembic migration 011 (per-user CardDAV sources)
+-- CardDAV credentials moved here OUT of settings_overrides.
+CREATE TABLE IF NOT EXISTS carddav_sources (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL,
+    auth_user TEXT NOT NULL DEFAULT '',
+    auth_password TEXT,
+    last_synced TIMESTAMPTZ,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Per-user uniqueness (COALESCE not allowed in inline UNIQUE)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_carddav_sources_url_user
+    ON carddav_sources (url, COALESCE(user_id, -1));
+CREATE INDEX IF NOT EXISTS idx_carddav_sources_user_id
+    ON carddav_sources (user_id);
+```
+
 ### contacts
 
 ```sql
--- Created/populated by CardDAV sync
+-- Created/populated by CardDAV sync. Per-user since migration 011.
 CREATE TABLE contacts (
     id SERIAL PRIMARY KEY,
     full_name TEXT,
@@ -967,8 +1032,17 @@ CREATE TABLE contacts (
     phone_work TEXT,      -- Legacy
     email TEXT,
     cardav_uid TEXT,
-    cardav_url TEXT
+    cardav_url TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,         -- migration 011
+    source_id INTEGER REFERENCES carddav_sources(id) ON DELETE CASCADE  -- migration 011
 );
+
+CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts (user_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_source_id ON contacts (source_id);
+-- migration 011 replaced the global cardav_uid UNIQUE constraint with a
+-- per-user unique index:
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_cardav_uid_user
+    ON contacts (cardav_uid, COALESCE(user_id, -1));
 ```
 
 ### contact_phones
@@ -1004,15 +1078,19 @@ ON signal_messages (phone, timestamp DESC);
 ### memory
 
 ```sql
+-- Per-user since migration 012: user_id NOT NULL, composite PK (user_id, key)
 CREATE TABLE IF NOT EXISTS memory (
-    key TEXT PRIMARY KEY,
+    key TEXT NOT NULL,
     value JSONB NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- migration 012
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_updated
 ON memory (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_user_id ON memory (user_id);
 ```
 
 ### conversations
@@ -1052,16 +1130,32 @@ CREATE TABLE IF NOT EXISTS calendar_sources (
 
 Note: Google Calendar is no longer managed via `calendar_sources`. Per-user Google tokens are stored in `user_google_tokens` (see below), and calendar operations go through the gws MCP server.
 
-### events (extension)
+### events
 
 ```sql
--- source_id links events to their calendar source (NULL = legacy)
-ALTER TABLE events ADD COLUMN IF NOT EXISTS
-    source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE;
+-- Created in 001_baseline.py (unified definition, FK -> calendar_sources)
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    summary TEXT NOT NULL,
+    dtstart TIMESTAMP WITH TIME ZONE NOT NULL,
+    dtend TIMESTAMP WITH TIME ZONE,
+    all_day BOOLEAN DEFAULT FALSE,
+    description TEXT,
+    location TEXT,
+    transp TEXT DEFAULT 'OPAQUE',
+    caldav_uid TEXT UNIQUE,
+    caldav_url TEXT,
+    source_id INTEGER REFERENCES calendar_sources(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_dtstart ON events (dtstart);
+CREATE INDEX IF NOT EXISTS idx_events_summary ON events (summary);
 CREATE INDEX IF NOT EXISTS idx_events_source_id ON events (source_id);
 ```
 
-`ON DELETE CASCADE` automatically removes all events of a source when deleted.
+`source_id` links events to their calendar source (NULL = legacy). `ON DELETE CASCADE` automatically removes all events of a source when deleted.
 
 ### settings_overrides
 
@@ -1221,6 +1315,9 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `llm_temperature_tools` | `0.35` | `LLM_TEMPERATURE_TOOLS` | No |
 | `llm_temperature_chat` | `0.3` | `LLM_TEMPERATURE_CHAT` | No |
 | `llm_max_tokens` | `4096` | `LLM_MAX_TOKENS` | No |
+| `llm_timeout` | `120.0` | `LLM_TIMEOUT` | No |
+| `llm_num_ctx` | `8192` | `LLM_NUM_CTX` | No |
+| `mcp_max_result_tokens` | `3000` | `MCP_MAX_RESULT_TOKENS` | No |
 | `langfuse_host` | `""` | `LANGFUSE_HOST` | No |
 | `langfuse_public_key` | `""` | `LANGFUSE_PUBLIC_KEY` | No |
 | `langfuse_secret_key` | `""` | `LANGFUSE_SECRET_KEY` | No |
@@ -1237,6 +1334,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `session_secret` | auto-generated | `SESSION_SECRET` | No |
 | `base_url` | `""` | `BASE_URL` | No\* |
 | `timezone` | `"Europe/Vienna"` | `TIMEZONE` | No |
+| `phone_country_code` | `"43"` | `PHONE_COUNTRY_CODE` | No |
+| `trusted_proxy` | `""` | `TRUSTED_PROXY` | No |
 | `feature_whatsapp_send_others` | `true` | `FEATURE_WHATSAPP_SEND_OTHERS` | No |
 | `carddav_url` | `""` | `CARDDAV_URL` | No |
 | `carddav_user` | `""` | `CARDDAV_USER` | No |
@@ -1256,6 +1355,7 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `signal_api_url` | `"http://signal_api:8080"` | `SIGNAL_API_URL` | No\*\*\*\* |
 | `signal_phone_number` | `""` | `SIGNAL_PHONE_NUMBER` | No |
 | `feature_signal_send_others` | `false` | `FEATURE_SIGNAL_SEND_OTHERS` | No |
+| `feature_signal` | `false` | `FEATURE_SIGNAL` | No |
 | `briefing_channel` | `"whatsapp"` | `BRIEFING_CHANNEL` | No |
 | `feature_briefing_daily` | `false` | `FEATURE_BRIEFING_DAILY` | No |
 | `feature_briefing_weekly` | `false` | `FEATURE_BRIEFING_WEEKLY` | No |
@@ -1265,11 +1365,19 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 | `searxng_url` | `"http://searxng:8080"` | `SEARXNG_URL` | No |
 | `feature_notion` | `false` | `FEATURE_NOTION` | No\*\*\*\*\*\* |
 | `notion_token` | `""` | `NOTION_TOKEN` | No |
-| `notion_sync_interval` | `60` | `NOTION_SYNC_INTERVAL` | No |
+| `notion_sync_interval` | `30` | `NOTION_SYNC_INTERVAL` | No |
 | `notion_embedding_model` | `"nomic-embed-text-v2-moe"` | `NOTION_EMBEDDING_MODEL` | No |
 | `notion_chunk_size` | `600` | `NOTION_CHUNK_SIZE` | No |
 | `notion_chunk_overlap` | `100` | `NOTION_CHUNK_OVERLAP` | No |
 | `notion_similarity_threshold` | `0.3` | `NOTION_SIMILARITY_THRESHOLD` | No |
+| `notion_summary_model` | `""` | `NOTION_SUMMARY_MODEL` | No |
+| `notion_summary_max_input` | `4000` | `NOTION_SUMMARY_MAX_INPUT` | No |
+| `notion_summary_max_tokens` | `200` | `NOTION_SUMMARY_MAX_TOKENS` | No |
+| `credential_encryption_key` | `""` | `CREDENTIAL_ENCRYPTION_KEY` | Yes\*\*\*\*\*\*\* |
+| `credential_encryption_optional` | `false` | `CREDENTIAL_ENCRYPTION_OPTIONAL` | No |
+| `sentry_dsn` | `""` | `SENTRY_DSN` | No |
+| `sentry_traces_sample_rate` | `0.1` | `SENTRY_TRACES_SAMPLE_RATE` | No |
+| `history_retention_days` | `90` | `HISTORY_RETENTION_DAYS` | No |
 
 \* `base_url` is recommended when Google OAuth is behind a reverse proxy (prevents redirect URI from untrusted headers).
 
@@ -1282,6 +1390,8 @@ Pydantic Settings (`src/niles/config.py`) loads values from `.env` and environme
 \*\*\*\*\* Enables SearXNG web search. Requires the SearXNG Docker container (profile `search`).
 
 \*\*\*\*\*\* Enables Notion knowledge base (RAG). Requires `notion_token` and `ollama pull nomic-embed-text-v2-moe`.
+
+\*\*\*\*\*\*\* `credential_encryption_key` is required by default — the app refuses to start without it (set `CREDENTIAL_ENCRYPTION_OPTIONAL=true` for development).
 
 Briefing: WhatsApp number is automatically detected (connected instance). No manual configuration needed.
 
@@ -1349,11 +1459,12 @@ Multi-stage build (Builder → gws-downloader → Runtime):
 | Container | Image | Network | Purpose |
 | --------- | ----- | ------- | ------- |
 | `niles_core` | `niles-core:${NILES_VERSION:-latest}` (Dockerfile.niles) | niles_network, proxy | Python backend + web UI |
-| `niles_evolution_postgres` | `postgres:15-alpine` | niles_network | PostgreSQL |
+| `niles_evolution_postgres` | `pgvector/pgvector:pg15` | niles_network | PostgreSQL (pgvector for Notion RAG) |
 | `niles_evolution_api` | `evoapicloud/evolution-api:v2.3.7` | niles_network, proxy | WhatsApp gateway |
 | `vikunja` | `vikunja/vikunja:1.1.0` | niles_network, proxy | Todo/task management |
 | `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | niles_network | Signal gateway (signal-cli v0.13.24) |
 | `niles_searxng` | `searxng/searxng:2025.5.10-1b787ed35` | niles_network | Meta search engine (profile `search`) |
+| `niles_langfuse` | `langfuse/langfuse:3` | niles_network | LLM tracing (opt-in, profile `langfuse`) |
 
 HTTPS termination is handled by `gateway-caddy` in the separate [homelab-gateway](../../homelab-gateway) repo.
 

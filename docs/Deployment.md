@@ -118,11 +118,13 @@ The script:
 ### Health Check
 
 ```bash
-curl -sk https://localhost/health
+curl -sk https://niles.example.local/health
 # Expected response: {"status":"ok"}
 ```
 
-Web UI: `https://localhost/ui/login` (self-signed certificate -- accept browser warning)
+Web UI: `https://niles.example.local/ui/login` (self-signed certificate -- accept browser warning)
+
+> Niles binds no host port and ships no TLS -- the homelab-gateway terminates HTTPS and routes the subdomain. There is no `https://localhost` endpoint.
 
 ---
 
@@ -359,7 +361,6 @@ Contacts are synchronized via CardDAV (e.g., from mailbox.org, Nextcloud, iCloud
 ```bash
 CARDDAV_USER=your-username
 CARDDAV_PASSWORD=your-password
-FEATURE_CARDDAV_SYNC=true
 ```
 
 Alternatively via the web UI: **Settings > Contacts**.
@@ -902,7 +903,7 @@ openssl rand -hex 16   # → LANGFUSE_SALT
 # LANGFUSE_URL=http://localhost:3000
 
 # Service starten
-docker compose --profile langfuse up -d langfuse
+docker compose -f docker/docker-compose.yml --profile langfuse up -d langfuse
 
 # Langfuse-Datenbank anlegen (einmalig)
 docker exec niles_evolution_postgres psql -U evolution -d evolution_db \
@@ -952,9 +953,12 @@ groups:
           description: "Möglicher Kostentreiber wenn API statt Ollama genutzt wird."
 ```
 
-Ohne externen Prometheus: Metriken manuell abrufen:
+Ohne externen Prometheus: Metriken manuell abrufen. `niles_core` exponiert
+keinen Host-Port (Zugriff nur über das homelab-gateway), und `/metrics` ist
+API-Key-geschützt (`require_api_key`, prüft den `X-API-Key`-Header gegen
+`NILES_API_KEY`):
 ```bash
-curl http://localhost:8000/metrics | grep niles_llm_tokens
+curl -sk -H "X-API-Key: $NILES_API_KEY" https://niles.example.local/metrics | grep niles_llm_tokens
 ```
 
 ---
@@ -1016,6 +1020,8 @@ curl http://localhost:8000/metrics | grep niles_llm_tokens
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `SIGNAL_API_URL` | `http://signal_api:8080` | signal-cli-rest-api endpoint (override only) |
+| `SIGNAL_PHONE_NUMBER` | -- | Signal phone number (e.g. `+435000000000`; usually auto-discovered) |
+| `FEATURE_SIGNAL` | `false` | Enable Signal integration (requires `signal` Docker profile) |
 | `FEATURE_SIGNAL_SEND_OTHERS` | `false` | May Niles send Signal to other people? |
 | `BRIEFING_CHANNEL` | `whatsapp` | Briefing delivery: whatsapp, signal, or both |
 
@@ -1042,9 +1048,21 @@ curl http://localhost:8000/metrics | grep niles_llm_tokens
 | -------- | ------- | ----------- |
 | `FEATURE_NOTION` | `false` | Enable Notion knowledge base (RAG) |
 | `NOTION_TOKEN` | -- | Notion Internal Integration Token (`ntn_...`) |
-| `NOTION_SYNC_INTERVAL` | `0` | Minutes between auto-syncs (0 = disabled, manual only) |
+| `NOTION_SYNC_INTERVAL` | `30` | Minutes between auto-syncs (0 = disabled, manual only) |
 | `NOTION_EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` | Ollama embedding model |
 | `NOTION_SUMMARY_MODEL` | *(llm_model)* | Ollama model for page summaries (Level-0 chunks) |
+
+**Advanced / Infrastructure (optional):**
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `WEBHOOK_BASE_URL` | `http://niles_core:8000` | Internal base URL for Evolution API webhooks (Docker-internal) |
+| `TRUSTED_PROXY` | -- (disabled) | Trusted reverse-proxy CIDR for `X-Forwarded-For` (e.g. `172.18.0.0/16`); empty = rate limiter uses direct connection IP |
+| `PHONE_COUNTRY_CODE` | `43` | Default country code (without `+`) for normalizing local phone numbers |
+| `POSTGRES_HOST_PORT` | `0` (random) | Loopback host port for PostgreSQL (debugging only; set e.g. `5432`) |
+| `CREDENTIAL_ENCRYPTION_OPTIONAL` | `false` | Allow start without `CREDENTIAL_ENCRYPTION_KEY` (development only) |
+| `SENTRY_DSN` | -- | Sentry error-tracking DSN (opt-in) |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.1` | Sentry performance trace sample rate |
 
 **Feature Flags:**
 
@@ -1081,6 +1099,10 @@ External HTTPS access is provided by homelab-gateway via subdomains (niles.examp
 | `./scripts/cleanup.sh` | Delete all containers and volumes (reset) |
 | `./scripts/dev.sh` | Local dev server without Docker |
 | `./scripts/test.sh` | Run tests |
+| `./scripts/test-integration.sh` | Run integration tests (needs live DB) |
+| `./scripts/test-e2e.sh` | Run end-to-end tests |
+| `./scripts/benchmark-llm.sh` | Benchmark LLM performance |
+| `./scripts/notion-status.sh` | Show Notion sync/embedding status |
 | `./scripts/check-pii.sh` | Scan code for PII leaks |
 
 ### Further Documentation
