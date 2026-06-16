@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.13](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.12...niles-core-v0.2.13) (2026-06-16)
+
+
+### Documentation
+
+* **plan:** mark W19 + W20 complete ([#199](https://github.com/gerfru/NilesAI/issues/199)) ([2fe4d2a](https://github.com/gerfru/NilesAI/commit/2fe4d2ae62fc945b55acbbd8cdb446b05f7c59d2))
+
 ## [0.2.12](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.11...niles-core-v0.2.12) (2026-06-16)
 
 
