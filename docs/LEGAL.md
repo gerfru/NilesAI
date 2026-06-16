@@ -32,9 +32,15 @@ As a copyleft license, AGPL-3.0 requires that modified versions of the source co
 
 ### 2.1 License Audit Summary
 
-Full audit performed 2026-03-03 via `pip-licenses`. All 148 transitive Python
-dependencies were verified. No GPL-only dependencies found in the Python
-dependency tree.
+> **⚠️ Re-audit needed.** The figures below are from the last full audit
+> (2026-03-03 via `pip-licenses`) and are now stale: they predate the addition
+> of `tiktoken`, `sentry-sdk`, and `defusedxml`, and the upgrade to `openai` v2.
+> The transitive count and per-category counts no longer reflect the current
+> tree. For the authoritative current set, see `uv.lock` / run `pip-audit`.
+
+Last full audit performed 2026-03-03 via `pip-licenses`. At that time, all 148
+transitive Python dependencies were verified and no GPL-only dependencies were
+found in the Python dependency tree.
 
 | License Category | Count | Compatibility |
 |---|---|---|
@@ -76,6 +82,9 @@ No license conflicts detected.
 | notion-client | MIT | [github.com/ramnes/notion-sdk-py](https://github.com/ramnes/notion-sdk-py) |
 | SQLAlchemy | MIT | [github.com/sqlalchemy/sqlalchemy](https://github.com/sqlalchemy/sqlalchemy) |
 | cryptography | Apache-2.0 / BSD | [github.com/pyca/cryptography](https://github.com/pyca/cryptography) |
+| tiktoken | MIT | [github.com/openai/tiktoken](https://github.com/openai/tiktoken) |
+| sentry-sdk[fastapi] | MIT | [github.com/getsentry/sentry-python](https://github.com/getsentry/sentry-python) |
+| defusedxml | PSF / Apache-2.0 | [github.com/tiran/defusedxml](https://github.com/tiran/defusedxml) |
 | **psycopg2-binary** | **LGPL** | [github.com/psycopg/psycopg2](https://github.com/psycopg/psycopg2) |
 
 **psycopg2-binary (LGPL):** Python imports are dynamic linking. The LGPL

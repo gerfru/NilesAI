@@ -40,9 +40,9 @@ knowledge base. All processed by a local LLM. No cloud. No subscription. No data
 
 - **Privacy by architecture, not by promise** — 100% local LLM inference via Ollama. No cloud API calls, no telemetry, no data broker.
 - **Talk to it like a person** — "Hey Niles, was steht morgen an?" via WhatsApp self-chat, Signal, or the web UI. Natural language in, tool calls under the hood.
-- **Connects your world** — Calendar (CalDAV + Google), contacts (CardDAV), tasks (Vikunja), knowledge base (Notion + pgvector RAG), web search (SearXNG), weather — one assistant for everything.
+- **Connects your world** — Calendar via CalDAV + ICS (incl. Google Calendar as read-only ICS subscription), contacts (CardDAV), tasks (Vikunja), knowledge base (Notion + pgvector RAG), web search (SearXNG), weather — one assistant for everything.
 - **Extensible via MCP** — Add community tools via Model Context Protocol. Destructive operations are automatically blocked.
-- **Multi-user from day one** — Google OAuth, per-user WhatsApp sessions, per-user task lists, per-user Google Calendar.
+- **Multi-user from day one** — Google OAuth login, per-user WhatsApp sessions, per-user task lists.
 - **One command to run it** — Docker Compose, auto-provisioned accounts, automated briefings. No manual wiring.
 
 ---
@@ -64,7 +64,7 @@ knowledge base. All processed by a local LLM. No cloud. No subscription. No data
 
 ### Productivity
 
-- Multi-source calendar sync (CalDAV, Google Calendar via MCP, ICS) with event search and creation
+- Multi-source calendar sync (CalDAV + ICS, incl. read-only Google Calendar via ICS) with event search and creation
 - Task management via Vikunja (list, create, complete) with auto-provisioned per-user accounts
 - Contact sync via CardDAV with multi-phone support
 
@@ -168,7 +168,6 @@ The LLM can invoke these tools during conversations:
 | `mcp__fetch__fetch_url` | Fetch and extract text from web pages (SSRF-protected) |
 | `mcp__searxng__web_search` | Web search via SearXNG (when enabled) |
 | `mcp__weather__*` | Weather data (current + forecast, Open-Meteo) |
-| `mcp__gws__*` | Google Calendar (per-user OAuth, when connected) |
 
 Additional MCP tools from external servers are automatically discovered.
 

@@ -9,16 +9,27 @@
 - **Ollama version:** 0.13.1
 - **Test framework:** Claude-as-Judge (`tests/e2e/test_llm_judge.py`)
 - **Judge model:** see `tests/e2e/judge.py` (currently `claude-sonnet-4-6`)
+
+> **Two distinct eval suites exist in the repo — this document covers the first one:**
+>
+> 1. **`llm_judge` (Claude-as-Judge, DB-backed):** `tests/e2e/test_llm_judge.py`. A real `NilesAgent` with real DB/service seed fixtures answers each scenario; Claude (`claude-sonnet-4-6`) scores the response 0–10 across five criteria (threshold 7/10). Requires `ANTHROPIC_API_KEY` and a reachable Ollama. This is the suite scored below.
+> 2. **`llm_eval` (golden-dataset regression gate, no DB):** `tests/evals/test_llm_evals.py` runs 20 cases from `tests/evals/golden_dataset.json` against a real local Ollama with **tools mocked** (no DB, no services). It asserts behavioral expectations (correct tool / no-tool) rather than using an LLM judge. `tests/evals/eval_gate.py` compares the pass count against `tests/evals/baseline.json` (`pass: 20`, `tolerance: 1`, so the gate fails below a floor of 19). This is a deterministic regression gate, not a model-quality benchmark. It runs via the `.github/workflows/llm-eval.yml` workflow, which is **`workflow_dispatch`-only (manual) on a self-hosted runner** — despite the workflow's display name "LLM Eval (nightly)", there is **no scheduled/cron trigger**.
 - **Score threshold:** 7/10 (passing)
-- **Test count:** 19 scenarios (tool selection, no-tool, ambiguous, multi-tool)
+- **Test count:** 22 scenarios (tool selection, no-tool, ambiguous, multi-tool). 3 of these are feature-gated and skipped by default: `notion_search` (`FEATURE_NOTION=true`), `weather` (forecast/current), and `send_signal` (`SIGNAL_PHONE` set). The per-test tables below cover the 19 scenarios that run without those flags.
 - **System prompt:** minimal ("Du bist Niles.") — full `config/soul.md` not loaded in E2E
 
 ## Results
 
+> **Note on `mistral:7b`:** `mistral:7b` is **not** part of the current benchmark default
+> model set (`scripts/benchmark-llm.sh` defaults to `llama3.1:8b qwen3:8b mistral-nemo:12b`).
+> The `mistral:7b` rows below are **historical** results from an earlier manual run and are
+> **not reproducible from the committed benchmark defaults**. They are retained only to
+> document the failure mode described under Recommendation.
+
 | Model             | Tool Sel. | Tool Args | Response | Personality | Language | Avg  |
 |-------------------|-----------|-----------|----------|-------------|----------|------|
 | llama3.1:8b       | 5.7       | 4.9       | 5.3      | 5.1         | 7.7      | 5.7  |
-| mistral:7b        | 2.1       | 5.2       | 2.1      | 4.0         | 6.3      | 3.9  |
+| mistral:7b (hist.)| 2.1       | 5.2       | 2.1      | 4.0         | 6.3      | 3.9  |
 | llama3.3:latest   |           |           |          |             |          |      |
 | qwen3:8b          |           |           |          |             |          |      |
 
@@ -48,7 +59,7 @@
 
 (*) No search/fetch tool available — correct response is to explain the limitation.
 
-### Per-Test Breakdown: mistral:7b
+### Per-Test Breakdown: mistral:7b (historical — not in current benchmark defaults)
 
 | Test                  | Tool Sel. | Tool Args | Response | Personality | Language |
 |-----------------------|-----------|-----------|----------|-------------|----------|
@@ -76,7 +87,7 @@
 | Model             | Tokens/s | RAM Usage | Model Size |
 |-------------------|----------|-----------|------------|
 | llama3.1:8b       |          |           | 4.7 GB     |
-| mistral:7b        |          |           | 4.1 GB     |
+| mistral:7b (hist.)|          |           | 4.1 GB     |
 | llama3.3:latest   |          |           |            |
 | qwen3:8b          |          |           |            |
 

@@ -1,6 +1,6 @@
 # Niles AI Core -- Development Guide
 
-> **Updated:** 2026-06-11
+> **Updated:** 2026-06-16
 
 ---
 
@@ -144,64 +144,76 @@ Then: `psql -h 127.0.0.1 -U evolution -d evolution_db`
 ./scripts/test.sh
 ```
 
-Or directly:
+`test.sh` runs the **fast unit-test suite only**. It deselects the slow/infra
+markers (`-m "not integration and not e2e and not llm_judge"`) and uses a plain
+`python3.14 -m venv .venv` with `pip install -e .[dev]` (**not** uv).
 
-```bash
-uv run pytest tests/ -v
-```
+> **Note:** `uv run pytest tests/ -v` is **not** equivalent — without the marker
+> deselection it would also collect the `integration` and `e2e` tests (which
+> require a live Docker Compose stack / Ollama and otherwise fail or skip).
+> To reproduce the fast suite directly:
+> `pytest tests/ -v -m "not integration and not e2e and not llm_judge"`.
+
+### Test Markers
+
+Defined in `[tool.pytest.ini_options].markers` (`pyproject.toml`):
+
+| Marker | Meaning | Deselect with |
+| ------ | ------- | ------------- |
+| `integration` | Requires Docker Compose infrastructure | `-m "not integration"` |
+| `e2e` | End-to-end agent pipeline tests | `-m "not e2e"` |
+| `llm_judge` | Requires Ollama + Claude API key, slow | `-m "not llm_judge"` |
+| `llm_eval` | Behavioral quality evals against live Ollama | `-m "not llm_eval"` |
+
+### Dedicated Test Scripts
+
+| Script | Scope | Requirements |
+| ------ | ----- | ------------ |
+| `./scripts/test.sh` | Fast unit suite (deselects integration/e2e/llm_judge) | None (plain `.venv`) |
+| `./scripts/test-integration.sh` | `tests/integration/` (`-m integration`) | Running Docker Compose stack, `.env`, Ollama |
+| `./scripts/test-e2e.sh [pipeline\|judge\|all]` | `tests/e2e/` | PostgreSQL; `judge` mode also needs `ANTHROPIC_API_KEY` + Ollama |
+
+### Coverage Gate
+
+Configured in `[tool.coverage]` (`pyproject.toml`):
+
+- `branch = true` — branch coverage is measured, not just line coverage.
+- `fail_under = 77` — the test run fails if total (branch-inclusive) coverage
+  drops below 77% (raised from 70 after the W16/W17 route/agent-loop test additions).
+- Source: `src/niles`; `tests/*` and `alembic/*` are omitted.
 
 ### Test Structure
 
+> Non-exhaustive — representative layout. The flat `tests/*.py` files are the
+> unit suite; the subdirectories hold the infra-dependent / behavioral tests.
+
 ```text
 tests/
-├── conftest.py                     # Shared Fixtures (environment variables)
-├── test_admin_action.py            # AdminAction (user CRUD, password, soft-delete)
-├── test_briefing.py                # BriefingGenerator + time parsing + channel routing
-├── test_caldav.py                  # CalDAV sync
-├── test_calendar_improvements.py   # Calendar query improvements
-├── test_calendar_manager.py        # CalendarSourceManager (CRUD, sync, migration)
-├── test_carddav.py                 # CardDAV sync
-├── test_chat_wa_history.py         # Chat + WhatsApp history integration
-├── test_config.py                  # Settings validation
-├── test_confirmation.py            # Agent confirmation flow (send_whatsapp, multi-phone)
-├── test_contacts.py                # ContactsAction, normalize_phone, multi-phone
-├── test_contacts_action_setup.py   # ContactsAction connect/disconnect (CardDAV setup)
+├── conftest.py                     # Shared fixtures (environment variables)
+├── helpers.py                      # Shared test helpers
 ├── test_core.py                    # NilesAgent, tool-call pipeline, text-tool-call fallback
-├── test_crypto.py                  # FieldEncryptor (Fernet encryption/decryption)
-├── test_features.py                # Feature flags (send_others, self-check) + webhook auth
-├── test_fetch_mcp.py               # Web Fetch MCP server (SSRF, extraction, truncation)
-├── test_health.py                  # GET /health endpoint
-├── test_http_retry.py              # HTTP client retry logic
-├── test_ical_parser.py             # iCalendar parser
-├── test_logging.py                 # Structured logging + Prometheus metrics
-├── test_mcp.py                     # MCP integration
-├── test_memory.py                  # MemoryStore, ConversationHistory
-├── test_migrations.py              # Alembic migration chain validation
-├── test_network.py                 # Network-level tests (SSRF, private IP detection)
-├── test_notion_embeddings.py       # Notion embedding pipeline (chunking, Ollama calls)
-├── test_notion_rag_prompt.py       # Notion RAG context injection into prompts
-├── test_notion_retriever.py        # NotionRetriever (pgvector search, threshold)
-├── test_notion_summarizer.py       # NotionSummarizer (LLM page summaries)
-├── test_notion_sync.py             # Notion API sync (block-to-text, pagination, MD5)
-├── test_notion_tool.py             # search_notion tool handler
-├── test_notion_web.py              # Notion web routes (status/connect/disconnect/sync/search)
-├── test_rrule_expansion.py         # RRULE expansion (recurring events)
-├── test_search_mcp.py              # SearXNG search MCP server
-├── test_security.py                # API auth, rate limiting
-├── test_self_chat.py               # WhatsApp self-chat (trigger, strip, webhook integration)
-├── test_settings_action.py         # SettingsAction (runtime settings management)
-├── test_settings_store.py          # Runtime settings store
-├── test_signal.py                  # Signal action, listener, echo guard, triggers
-├── test_signal_setup_action.py     # Signal setup action (QR link, connect/disconnect)
-├── test_tasks.py                   # Vikunja task management
-├── test_vikunja_provisioning.py    # Vikunja auto-provisioning (register, login, token)
-├── test_vikunja_setup_action.py    # VikunjaSetupAction (credentials, SSRF validation)
-├── test_vikunja_store.py           # Per-user Vikunja credentials + agent resolution
-├── test_weather_action.py          # WeatherAction (coordinates, Open-Meteo API)
-├── test_weather_mcp.py             # Weather MCP server integration
 ├── test_web.py                     # Web UI, Google OAuth, sessions, CSRF
-├── test_whatsapp_sessions.py       # Per-user WhatsApp sessions
-└── test_whatsapp_setup_action.py   # WhatsApp setup action (instance management)
+├── test_web_routes.py              # Web route handlers
+├── test_security.py                # API auth, rate limiting
+├── test_migrations.py              # Alembic migration chain validation
+├── ...                             # ~60 further flat unit-test modules
+├── integration/                    # @pytest.mark.integration — live Docker/Ollama
+│   ├── conftest.py
+│   ├── test_calendar_integration.py
+│   ├── test_tasks_integration.py
+│   └── ...                         # contacts, mcp, memory, notion, signal, stores, whatsapp
+├── e2e/                            # @pytest.mark.e2e — pipeline / Claude-as-Judge
+│   ├── conftest.py
+│   ├── fake_llm.py                 # FakeLLM driver
+│   ├── judge.py                    # Claude-as-Judge harness
+│   ├── test_http_e2e.py
+│   ├── test_tool_pipeline.py
+│   └── test_llm_judge.py
+└── evals/                          # @pytest.mark.llm_eval — behavioral quality
+    ├── eval_gate.py
+    ├── golden_dataset.json
+    ├── baseline.json
+    └── test_llm_evals.py
 ```
 
 ### Conventions
@@ -326,6 +338,7 @@ DATABASE_URL="..." alembic history
 | `009_vikunja_password_synced.py`   | Vikunja password sync tracking columns                            |
 | `010_drop_google_calendar.py`      | Remove legacy Google Calendar source type                         |
 | `011_contacts_per_user.py`         | Per-user contacts scoping                                         |
+| `012_memory_user_id.py`            | Per-user memory scoping (`user_id` column on memory table)        |
 
 ---
 

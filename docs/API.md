@@ -1,6 +1,6 @@
 # Niles AI Core -- API Reference
 
-> **Updated:** 2026-06-11
+> **Updated:** 2026-06-16
 
 ---
 
@@ -35,13 +35,13 @@ curl -k -X POST https://localhost/chat \
 
 ### /webhook/whatsapp -- URL Token
 
-Expects the query parameter `?token=` with the value of `EVOLUTION_API_KEY`. Evolution API (self-hosted v2.3.x) cannot send custom headers in webhook requests (feature request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), so a URL token is used instead.
+Expects the query parameter `?token=` with the value of the derived `webhook_token` (an HMAC-SHA256 of `SESSION_SECRET` keyed with `"whatsapp-webhook"`, decoupled from the Evolution admin key). Evolution API (self-hosted v2.3.x) cannot send custom headers in webhook requests (feature request: [EvolutionAPI/evolution-api#1933](https://github.com/EvolutionAPI/evolution-api/issues/1933)), so a URL token is used instead.
 
 ```text
-POST /webhook/whatsapp?token=<EVOLUTION_API_KEY>
+POST /webhook/whatsapp?token=<webhook_token>
 ```
 
-**Risk assessment:** Query parameters can appear in server logs. Caddy does not log query parameters by default. The webhook traffic runs internally over the Docker network (HTTP, container-to-container), never over the public network. Once Evolution API supports custom headers, migration to header-based authentication is recommended.
+**Risk assessment:** Query parameters can appear in server logs. Because the `webhook_token` is derived from `SESSION_SECRET` via one-way HMAC (decoupled from `EVOLUTION_API_KEY`), a leaked webhook URL grants at most webhook spoofing, never the Evolution admin key or session secret. Caddy does not log query parameters by default. The webhook traffic runs internally over the Docker network (HTTP, container-to-container), never over the public network. Once Evolution API supports custom headers, migration to header-based authentication is recommended.
 
 ### /ui/* -- Session Cookies (Google OAuth or API Key)
 
@@ -77,7 +77,7 @@ Keys can be rotated at any time:
 
 1. Set new key in `.env` (`NILES_API_KEY`, `SESSION_SECRET`, `EVOLUTION_API_KEY`)
 2. Restart containers: `./scripts/start.sh`
-3. When changing `EVOLUTION_API_KEY`: Update the webhook URL in the Evolution API (see below)
+3. When changing `SESSION_SECRET`: The derived `webhook_token` changes, so the webhook URL in the Evolution API must be updated (see below). Rotating `EVOLUTION_API_KEY` does NOT change the `webhook_token`.
 4. When changing `SESSION_SECRET`: All existing web UI sessions become invalid (users must log in again)
 
 If `NILES_API_KEY` or `SESSION_SECRET` is not set, Niles generates a new key on each container start (automatic rotation).
@@ -86,18 +86,43 @@ If `NILES_API_KEY` or `SESSION_SECRET` is not set, Niles generates a new key on 
 
 ## API Endpoints
 
+### GET /
+
+Redirects to the web UI (`/ui/chat`) with HTTP 303.
+
 ### GET /health
 
-Health check. Returns server status and DB pool info.
+Liveness probe. Returns server status. DB pool stats are available via `/metrics` (API-key protected).
 
 **Response:**
 
 ```json
 {
-  "status": "ok",
-  "db_pool": {"size": 2, "free": 2, "min": 2, "max": 10}
+  "status": "ok"
 }
 ```
+
+---
+
+### GET /ready
+
+Readiness probe. Checks DB connectivity (`SELECT 1`) and migration status (queries `alembic_version`). No auth required.
+
+**Response (ready):**
+
+```json
+{
+  "status": "ready"
+}
+```
+
+**Response (not ready):** HTTP 503 with `{"status": "not_ready", "errors": [...]}` (e.g., `"db: unreachable"`, `"alembic: no version found"`).
+
+---
+
+### POST /csp-report
+
+Receives Content-Security-Policy violation reports from browsers. No auth required (browsers send without credentials). Logs the violation and always returns HTTP 204.
 
 ---
 
@@ -130,9 +155,12 @@ Direct chat interface for tests and integrations. Processes the message through 
 
 ```json
 {
-  "message": "What's the weather like?"
+  "message": "What's the weather like?",
+  "user_id": 1
 }
 ```
+
+`user_id` is optional.
 
 **Response:**
 
@@ -154,7 +182,7 @@ Direct chat interface for tests and integrations. Processes the message through 
 **Notes:**
 
 - Requires `X-API-Key` header (see Authentication)
-- Uses `chat_id = "api"` for conversation history
+- Accepts an optional `user_id` (integer). When present, `chat_id = "web-user-{user_id}"`; otherwise `chat_id = "api"` is used for conversation history
 - Memory and tool calls are fully available (same pipeline as WhatsApp)
 
 ---
@@ -177,7 +205,7 @@ Webhook endpoint for the Evolution API. Receives WhatsApp events.
    - Ignored (no LLM call, no auto-reply)
    - Evolution API stores messages internally (queryable via `get_whatsapp_messages` tool)
 
-**Authentication:** Requires `?token=<EVOLUTION_API_KEY>` as query parameter. HTTP 401 for invalid tokens.
+**Authentication:** Requires `?token=<webhook_token>` as query parameter (the HMAC-derived `webhook_token`, not `EVOLUTION_API_KEY`). HTTP 401 for invalid tokens.
 
 **Response:** Always returns HTTP 200 (prevents retry spam from the Evolution API).
 
@@ -324,17 +352,59 @@ Returns the CardDAV connection status as an HTML fragment. Shows number of synce
 
 Tests CardDAV connection with the provided credentials (`url`, `username`, `password`). On success: saves credentials in settings store, starts initial sync, and registers daily sync job.
 
-### POST /ui/api/contacts/disconnect
+### POST /ui/api/contacts/{source_id}/disconnect
 
-Removes CardDAV credentials from the settings store, deletes all synced contacts, and removes the sync job.
+Removes a specific CardDAV source. Synced contacts are CASCADE-deleted. Returns the updated status as HTML fragment.
 
-### POST /ui/api/contacts/sync
+### POST /ui/api/contacts/{source_id}/sync
 
-Triggers a manual CardDAV contact sync. Returns the updated status as HTML fragment.
+Triggers a manual CardDAV contact sync for a specific source. Returns the updated status as HTML fragment.
 
 ### GET /ui/api/caldav/calendars
 
 Returns available CalDAV calendar collections as an HTML fragment (via PROPFIND discovery).
+
+### GET /ui/api/weather/location-search
+
+Proxies location search via the Open-Meteo Geocoding API. Query parameter: `q` (2-100 characters). Returns selectable location buttons as an HTML fragment.
+
+### POST /ui/api/weather/location
+
+Saves the weather location. Expects form fields `latitude`, `longitude`, and optional `location_name` + CSRF token. Returns the updated weather location fragment.
+
+### POST /ui/api/weather/location/remove
+
+Removes the configured weather location. Requires CSRF token. Returns the updated weather location fragment.
+
+### GET /ui/api/vikunja/status
+
+Returns the per-user Vikunja connection status as an HTML fragment.
+
+### POST /ui/api/vikunja/connect
+
+Saves the Vikunja API token for the current user. Expects form fields `api_token` and optional `api_url` + CSRF token. Returns the updated status fragment.
+
+### POST /ui/api/vikunja/disconnect
+
+Removes the current user's Vikunja API token. Requires CSRF token. Returns the updated status fragment.
+
+### GET /ui/api/settings/ollama_models
+
+Returns `<option>` elements for all locally available Ollama models (admin only). Falls back to a single option with the current model if Ollama is unreachable.
+
+### POST /ui/api/briefing/test/{briefing_type}
+
+Manually triggers a briefing (generate + send via the configured channel). Admin only. `briefing_type` must be `daily` or `weekly`.
+
+### User Management (Admin-only)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/ui/admin/users` | GET | Admin | Admin page listing all users |
+| `/ui/api/admin/users` | POST | Admin | Create a new user (email, display_name, password) |
+| `/ui/api/admin/users/{user_id}/password` | POST | Admin | Reset a user's password |
+| `/ui/api/admin/users/{user_id}/deactivate` | POST | Admin | Deactivate a user (cannot deactivate own account) |
+| `/ui/api/admin/users/{user_id}` | DELETE | Admin | Permanently delete a user and all data (GDPR Art. 17) |
 
 ### Notion Knowledge Base (Admin-only)
 
@@ -353,10 +423,10 @@ All admin endpoints require the user to have `is_admin=true`. Non-admin users re
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/ui/signal` | GET | Admin | Signal setup page |
 | `/ui/api/signal/status` | GET | Admin | Signal connection status |
 | `/ui/api/signal/qrcode` | GET | Admin | QR code for Signal linking |
 | `/ui/api/signal/link` | POST | Admin | Initiate Signal linking process |
+| `/ui/api/signal/disconnect` | POST | Admin | Unlink Signal device, stop listener, clear phone number |
 
 ### Legal
 
@@ -804,13 +874,15 @@ curl -k -X POST https://whatsapp.example.local/webhook/set/niles-whatsapp \
   -d '{
     "webhook": {
       "enabled": true,
-      "url": "http://niles_core:8000/webhook/whatsapp?token=<EVOLUTION_API_KEY>",
+      "url": "http://niles_core:8000/webhook/whatsapp?token=<webhook_token>",
       "events": ["MESSAGES_UPSERT"]
     }
   }'
 ```
 
 **Note:** The webhook URL uses the Docker-internal hostname `niles_core` (HTTP, container-to-container). The `curl` call itself goes through homelab-gateway (HTTPS).
+
+**Two distinct credentials:** The `apikey` header authenticates to the Evolution API (admin key, `EVOLUTION_API_KEY`). The `?token=` in the webhook URL is the derived `webhook_token` (HMAC of `SESSION_SECRET`), which Niles uses to authenticate incoming webhook requests. These are independent.
 
 ---
 

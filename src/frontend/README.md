@@ -6,7 +6,7 @@ Placeholder for a future dedicated frontend (React, Svelte, or native macOS app)
 
 The web interface is currently implemented **server-side** as part of Niles Core:
 
-- **Location:** `src/niles/sources/web.py` + `src/niles/templates/`
+- **Location:** `src/niles/sources/web/` (route package) + `src/niles/templates/`
 - **Stack:** Jinja2 templates, Tailwind CSS, htmx, SSE streaming
 - **Auth:** Google OAuth 2.0 + API-Key fallback, signed session cookies
 
@@ -17,7 +17,7 @@ This approach was chosen for simplicity (no separate build step, no Node.js depe
 - Chat with SSE streaming (word-by-word responses)
 - Settings dashboard (feature flags, LLM config, timezone)
 - WhatsApp connection management (QR code pairing)
-- Calendar source management (CalDAV, Google Calendar, ICS)
+- Calendar source management (CalDAV, ICS)
 - Contact sync management (CardDAV)
 - Dark mode toggle
 

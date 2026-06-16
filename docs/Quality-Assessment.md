@@ -2,8 +2,15 @@
 
 > Last updated: 2026-06-11 | After Phase 2 Refactoring (PR #92) — God Function Extraction + Security Fixes
 >
-> **Note:** Scores below remain from the 2026-03-13 assessment. LOC metrics have been updated
-> to reflect the Phase 2 refactoring. A full re-scoring is pending.
+> **⚠️ STALE — predates the W11–W18 work program.** Scores below are a historical
+> snapshot from the 2026-03-13 assessment (LOC metrics last touched for the Phase 2
+> refactoring). They do NOT reflect the W11–W18 changes merged afterward, including:
+> Store extraction (`ContactStore`/`EventStore`, W11 #183), `MessageDispatch`
+> (W12 #184), `process_event_stream`/`process_event` decomposition (W14/W15
+> #188/#189), the removal of all per-module mypy overrides plus
+> `disallow_untyped_defs=true` (W18 #190/#191), the coverage threshold raise to 77%
+> (W16/W17), and the addition of ADRs under `docs/adr/`. Inline corrections below
+> flag the now-factually-wrong claims; a full re-scoring is still pending.
 
 ## Score Overview
 
@@ -14,7 +21,7 @@
 | Architecture       | 9.0   | +0.5  | Extract `main.py` lifespan into builder/factory |
 | DevOps             | 9.5   | =     | Staging environment, rollback docs              |
 | UI/UX              | 8.0   | =     | axe-core CI integration, HTMX focus management  |
-| Maintainability    | 8.5   | =     | Reduce remaining 10 mypy overrides              |
+| Maintainability    | 8.5   | =     | ~~Reduce remaining 10 mypy overrides~~ (done, W18) — raise coverage further |
 | Observability      | 7.0   | =     | Sentry or equivalent                            |
 | Resilience         | 8.0   | =     | Circuit breakers, Ollama retry                  |
 | Performance        | 8.5   | =     | Query result caching, remaining 3 raw clients   |
@@ -56,12 +63,12 @@ encryption, gitleaks + detect-secrets to pre-commit, SBOM generation in CI.
 
 | Metric              | Value                                                          |
 |---------------------|----------------------------------------------------------------|
-| Largest file        | `agent/core.py` — 557 LOC (was 866, tool_defs.py extracted)   |
+| Largest file        | `agent/core.py` — 557 LOC [STALE: decomposed in W14/W15 #188/#189; no longer the largest file] |
 | Second largest      | `startup.py` — 499 LOC (extracted from main.py)               |
 | Third largest       | `main.py` — 448 LOC (was 802, startup.py extracted)           |
 | Agent modules       | `core.py` 557, `tool_defs.py` 322, `context.py` ~346          |
 | Web module max      | 388 LOC (`_notion.py`) — was 2,444                             |
-| Direct dependencies | 25 production + 8 dev (pyproject.toml)                         |
+| Direct dependencies | 25 production + 8 dev (pyproject.toml) [STALE: now 28 prod — +tiktoken, sentry-sdk, defusedxml] |
 | Avg file size       | ~140 LOC across 97 Python files                                |
 | File size dist.     | No files > 600 LOC (was 2 files > 800 LOC)                    |
 
@@ -221,6 +228,7 @@ Actions (actions/*.py) — 12 modules (was 7)
   does NOT import from: web/*, agent/*
 
 Stores (*_store.py, memory/store.py) — 7 stores
+  [STALE: ContactStore + EventStore added in W11 (#183), MessageDispatch in W12 (#184)]
   imports from: asyncpg only
   does NOT import from: anything in niles.*
 ```
@@ -428,7 +436,8 @@ pass addresses BFSG/EU Accessibility Act basics.
 
 - 914 test functions across 45 test files (+ 3 E2E)
 - Code-to-test ratio: 13,483 LOC source / ~15,400 LOC tests = 1:1.14
-- Coverage threshold: 65% minimum enforced in CI (`pyproject.toml`)
+- Coverage threshold: `fail_under = 77` with `branch = true` enforced in CI
+  (`pyproject.toml [tool.coverage]`) — raised from 65% line-only in W16/W17
 - Test categories: unit tests for stores, agent core, security, calendar sync,
   web routes, signal integration, migrations, Notion RAG (5 test files),
   Google MCP pool, action layer (5 test files), integration tests
@@ -470,6 +479,12 @@ httpcore) silenced at WARNING level. All app code uses
 
 **Type checking:**
 
+> **UPDATED (W18, #190/#191):** All per-module `[[tool.mypy.overrides]]` blocks
+> have since been removed — type errors were fixed at the source rather than
+> suppressed. `disallow_untyped_defs = true` and `disallow_incomplete_defs = true`
+> are now enforced project-wide (`pyproject.toml [tool.mypy]`). The paragraph
+> below describes the historical 2026-06-11 state and no longer applies.
+
 mypy enabled with 10 per-module override blocks (down from 12 — `web.*` and
 `sync.caldav` overrides removed in Phase 1). `AppState` Protocol
 (`types.py`) provides typed access to `app.state` attributes, replacing
@@ -481,9 +496,12 @@ Remaining overrides: `sync.manager`, `main`, `sync.ical_parser`,
 
 **Why 8.5 and not higher:**
 
-- 10 mypy override modules still suppress real type errors
-- 65% coverage threshold is modest (CLAUDE.md spec: 70-80%)
-- No formal ADRs (Architecture Decision Records)
+- ~~10 mypy override modules still suppress real type errors~~ — RESOLVED in
+  W18 (#190/#191): all overrides removed, `disallow_untyped_defs=true` enforced
+- ~~65% coverage threshold is modest (CLAUDE.md spec: 70-80%)~~ — raised to
+  `fail_under = 77` (branch-inclusive) in W16/W17
+- ~~No formal ADRs (Architecture Decision Records)~~ — `docs/adr/` now exists
+  (e.g. `ADR-0002-dependency-provision.md`)
 
 **Why 8.5 and not lower:**
 
@@ -819,7 +837,7 @@ Intermediate step — score change deferred to Phase 4a (combined impact).
 |-----|-----------------|-------|------------------------------------------------------------------------|--------|
 | 11  | Observability   | 7.0   | Error tracking (Sentry/GlitchTip self-hosted), consistent request IDs  | Large  |
 | 12  | Architecture    | 9.0   | Extract `main.py` lifespan into builder/factory pattern                | Medium |
-| 13  | Maintainability | 8.5   | Reduce remaining 10 mypy overrides, raise coverage to 70%              | Medium |
+| 13  | Maintainability | 8.5   | ~~Reduce remaining 10 mypy overrides, raise coverage to 70%~~ — DONE (W18 overrides removed + `disallow_untyped_defs`; coverage now `fail_under=77`) | Medium |
 | 14  | UI/UX           | 8.0   | axe-core in CI, HTMX focus management, aria-live on toasts             | Small  |
 | 15  | Performance     | 8.5   | Settings/contact caching, Ollama model list caching                    | Small  |
 | 16  | Resilience      | 8.0   | Circuit breakers for CalDAV, Ollama retry with backoff                 | Medium |
