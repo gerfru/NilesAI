@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.11](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.10...niles-core-v0.2.11) (2026-06-16)
+
+
+### Code Refactoring
+
+* **agent:** decompose process_event_stream (W14) ([#188](https://github.com/gerfru/NilesAI/issues/188)) ([d8742c1](https://github.com/gerfru/NilesAI/commit/d8742c16476e9c4ae92bd79351d04fdf2e51b78d))
+* **arch:** DI via Depends + typed StartupContext (W13) ([#185](https://github.com/gerfru/NilesAI/issues/185)) ([57aeffc](https://github.com/gerfru/NilesAI/commit/57aeffcb35e1266370b7a85d1b0ff782c2a36815))
+* **arch:** extract ContactStore + EventStore from the action layer (W11) ([#183](https://github.com/gerfru/NilesAI/issues/183)) ([ece8ea8](https://github.com/gerfru/NilesAI/commit/ece8ea82d433128e87f5c6fd932b2d788a289d5b))
+* **arch:** unify messaging policy in MessageDispatch (W12) ([#184](https://github.com/gerfru/NilesAI/issues/184)) ([852a421](https://github.com/gerfru/NilesAI/commit/852a421c644688d654edfe2acf67c1d4d6b63a92))
+* decompose process_event + iCal RRULE expansion (W15) ([#189](https://github.com/gerfru/NilesAI/issues/189)) ([7a7fd57](https://github.com/gerfru/NilesAI/commit/7a7fd57153be0889c4d2d15a2d2c23e1ecc76c79))
+* **types:** enable disallow_untyped_defs, annotate all functions (W18) ([#191](https://github.com/gerfru/NilesAI/issues/191)) ([655ab18](https://github.com/gerfru/NilesAI/commit/655ab1875598ae5d079686e81bf62b0785fc9cbf))
+* **types:** remove all per-module mypy overrides (W18) ([#190](https://github.com/gerfru/NilesAI/issues/190)) ([082e165](https://github.com/gerfru/NilesAI/commit/082e165e8009413928c9bf7a7a354f6105e3f2b0))
+
+
+### Miscellaneous
+
+* **deps:** update anthropics/claude-code-action digest to 4d7e1f0 ([#192](https://github.com/gerfru/NilesAI/issues/192)) ([136267a](https://github.com/gerfru/NilesAI/commit/136267ac63fc8f54627880b58b133f46006d506f))
+* surface refactor commits in release changelog ([#193](https://github.com/gerfru/NilesAI/issues/193)) ([da8878d](https://github.com/gerfru/NilesAI/commit/da8878d44b8f3146e1880829b30b1f3132b72e18))
+
+
+### Tests
+
+* **web+agent:** cover route handlers + non-streaming loop; branch coverage (W16/W17) ([#186](https://github.com/gerfru/NilesAI/issues/186)) ([c6486a5](https://github.com/gerfru/NilesAI/commit/c6486a552c5af3e80f90dafb8cb311174fe4b869))
+
 ## [0.2.10](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.9...niles-core-v0.2.10) (2026-06-15)
 
 
