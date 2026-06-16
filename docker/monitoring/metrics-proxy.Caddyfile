@@ -1,0 +1,18 @@
+# Metrics scrape sidecar (standalone --profile monitoring).
+# Niles protects /metrics with an X-API-Key header; Prometheus cannot send
+# custom request headers, so this tiny Caddy injects the key and proxies to
+# niles_core. Only /metrics is served; everything else returns 404.
+{
+	admin off
+	auto_https off
+}
+
+:8000 {
+	@metrics path /metrics
+	handle @metrics {
+		reverse_proxy niles_core:8000 {
+			header_up X-API-Key {$NILES_API_KEY}
+		}
+	}
+	respond 404
+}

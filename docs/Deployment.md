@@ -1039,6 +1039,30 @@ place if it is ever needed: structured logs with correlation IDs, Prometheus
 metrics, optional Langfuse LLM tracing (§16), and `gateway-tempo` already running
 in the homelab as an OTLP backend. See [ADR-0004](adr/ADR-0004-observability.md).
 
+### Standalone (without homelab-gateway)
+
+If you run Niles **without** the homelab stack, a self-contained Prometheus is
+available behind the `monitoring` Compose profile:
+
+```bash
+# Requires NILES_API_KEY set in .env (same key the app uses)
+docker compose -f docker/docker-compose.yml --profile monitoring up -d
+```
+
+This starts two extra containers:
+
+- `niles_metrics_proxy` — a tiny Caddy sidecar that injects the `X-API-Key`
+  header (Prometheus can't send custom headers) and proxies `/metrics` to
+  `niles_core`. Config: [`docker/monitoring/metrics-proxy.Caddyfile`](../docker/monitoring/metrics-proxy.Caddyfile).
+- `niles_prometheus` — Prometheus on `127.0.0.1:9090`, scraping Niles every 30s
+  and loading [`docker/monitoring/niles-alerts.yml`](../docker/monitoring/niles-alerts.yml)
+  via `rule_files`. Config: [`docker/monitoring/prometheus.yml`](../docker/monitoring/prometheus.yml).
+
+Open `http://127.0.0.1:9090` for metrics and `…/alerts` for rule status. This
+lean profile bundles **no** Alertmanager (alerts are visible, not delivered),
+Grafana, or Loki, and the `host_saturation` rules stay inactive (no node-exporter).
+For the full stack, use the homelab-gateway wiring above.
+
 ---
 
 ## 18. Reference
