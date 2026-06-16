@@ -333,12 +333,91 @@ services:
           cpus: "2.0"
           memory: 1G
 
+  # Standalone observability (opt-in) — activate with:
+  #   docker compose --profile monitoring up -d
+  # For deployments WITHOUT homelab-gateway. Prometheus scrapes Niles /metrics
+  # (via the key-injecting sidecar) and loads docker/monitoring/niles-alerts.yml.
+  # Alerts are visible at http://127.0.0.1:9090/alerts (no Alertmanager bundled).
+  niles_metrics_proxy:
+    image: caddy:2.11-alpine@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2
+    container_name: niles_metrics_proxy
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /config
+      - /data
+    environment:
+      # Injected into the scrape request; must equal Niles' own NILES_API_KEY.
+      - NILES_API_KEY=${NILES_API_KEY:?NILES_API_KEY must be set for the monitoring profile}
+    volumes:
+      - ./monitoring/metrics-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - niles_network
+    profiles:
+      - monitoring
+    depends_on:
+      - niles_core
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  niles_prometheus:
+    image: prom/prometheus:v3.12.0@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
+    container_name: niles_prometheus
+    restart: unless-stopped
+    user: "65534:65534"
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/niles-alerts.yml:/etc/prometheus/niles-alerts.yml:ro
+      - niles_prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - niles_network
+    profiles:
+      - monitoring
+    depends_on:
+      - niles_metrics_proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
 volumes:
   evolution_postgres:
   evolution_instances:
   vikunja_files:
   signal_cli_config:
   searxng_data:
+  niles_prometheus_data:
 
 networks:
   niles_network:

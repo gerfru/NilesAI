@@ -963,7 +963,109 @@ curl -sk -H "X-API-Key: $NILES_API_KEY" https://niles.example.local/metrics | gr
 
 ---
 
-## 17. Reference
+## 17. Observability (Metrics, Alerts, Uptime, Logs)
+
+Niles is built to plug into the existing **homelab-gateway** observability stack
+(`gateway-prometheus`, `gateway-loki` + `gateway-promtail`, `gateway-grafana`,
+`gateway-uptime` / Uptime-Kuma, `gateway-tempo`) — no external SaaS needed.
+
+### Already wired in the app
+
+| Signal | How | Where |
+| ------ | --- | ----- |
+| Error tracking | Sentry (opt-in via `SENTRY_DSN`) | `main.py` lifespan |
+| Metrics | Prometheus exposition at `/metrics` (API-key protected) | `metrics.py`, `niles_*` series |
+| Structured logs | structlog JSON → stdout, with `X-Request-ID` correlation | `logging_config.py` |
+| Liveness / readiness | `GET /health` (liveness) · `GET /ready` (DB + migration check) | `main.py` |
+
+### Uptime (Uptime-Kuma)
+
+In `gateway-uptime` add two HTTP(s) monitors:
+
+- `https://niles.example.local/health` — liveness, 60 s interval.
+- `https://niles.example.local/ready` — readiness; expect `200` (it returns `503`
+  when the DB or migrations are not ready, which Kuma will flag).
+
+### Metrics scrape (Prometheus)
+
+`/metrics` is **API-key protected** (`X-API-Key`) and `niles_core` exposes no host
+port. Scrape it through the gateway and let **Caddy inject the API key** for the
+scrape route (so the key never lives in the Prometheus config):
+
+```caddy
+# homelab-gateway Caddyfile (metrics route for Prometheus)
+@metrics path /metrics
+handle @metrics {
+    request_header X-API-Key {env.NILES_API_KEY}
+    reverse_proxy niles_core:8000
+}
+```
+
+```yaml
+# gateway-prometheus prometheus.yml
+scrape_configs:
+  - job_name: niles
+    scheme: https
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["niles.example.local"]
+```
+
+### Alert rules
+
+Ship [`docker/monitoring/niles-alerts.yml`](../docker/monitoring/niles-alerts.yml)
+to `gateway-prometheus` via its `rule_files:` and route through Alertmanager.
+Covered thresholds (app-rules.md → Monitoring):
+
+- **Error rate > 1%** (`NilesHighErrorRate`, 5xx ratio over 5 m)
+- **p95 latency > 2 s** (`NilesHighLatencyP95`)
+- **DB pool exhausted** (`NilesDbPoolExhausted`) and elevated tool-call repairs
+- **Target down** (`NilesDown`)
+- **Host CPU/memory > 80%** (`HostHighCpu` / `HostHighMemory`) — host-wide, via
+  the homelab node-exporter (not Niles-scoped)
+
+### Log shipping (Loki)
+
+Niles already emits JSON to stdout, so no app change is needed: configure
+`gateway-promtail` to tail the `niles_core` container logs and label them
+(`service="niles"`), shipping to `gateway-loki`. Query/correlate in Grafana by
+`request_id`.
+
+### OpenTelemetry readiness
+
+Distributed tracing via OTel is **not wired** — acceptable for a single-process
+monolith ([ADR-0001](adr/ADR-0001-single-worker.md)). The building blocks are in
+place if it is ever needed: structured logs with correlation IDs, Prometheus
+metrics, optional Langfuse LLM tracing (§16), and `gateway-tempo` already running
+in the homelab as an OTLP backend. See [ADR-0004](adr/ADR-0004-observability.md).
+
+### Standalone (without homelab-gateway)
+
+If you run Niles **without** the homelab stack, a self-contained Prometheus is
+available behind the `monitoring` Compose profile:
+
+```bash
+# Requires NILES_API_KEY set in .env (same key the app uses)
+docker compose -f docker/docker-compose.yml --profile monitoring up -d
+```
+
+This starts two extra containers:
+
+- `niles_metrics_proxy` — a tiny Caddy sidecar that injects the `X-API-Key`
+  header (Prometheus can't send custom headers) and proxies `/metrics` to
+  `niles_core`. Config: [`docker/monitoring/metrics-proxy.Caddyfile`](../docker/monitoring/metrics-proxy.Caddyfile).
+- `niles_prometheus` — Prometheus on `127.0.0.1:9090`, scraping Niles every 30s
+  and loading [`docker/monitoring/niles-alerts.yml`](../docker/monitoring/niles-alerts.yml)
+  via `rule_files`. Config: [`docker/monitoring/prometheus.yml`](../docker/monitoring/prometheus.yml).
+
+Open `http://127.0.0.1:9090` for metrics and `…/alerts` for rule status. This
+lean profile bundles **no** Alertmanager (alerts are visible, not delivered),
+Grafana, or Loki, and the `host_saturation` rules stay inactive (no node-exporter).
+For the full stack, use the homelab-gateway wiring above.
+
+---
+
+## 18. Reference
 
 ### Environment Variables
 
