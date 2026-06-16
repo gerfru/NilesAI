@@ -1,0 +1,21 @@
+# Standalone Prometheus config for Niles — `docker compose --profile monitoring up -d`.
+#
+# Scrapes Niles through the metrics-proxy sidecar (which injects the X-API-Key
+# that /metrics requires — Prometheus cannot send custom headers itself) and
+# loads the shared alert rules. There is no Alertmanager: fired alerts are
+# visible in the Prometheus UI at http://127.0.0.1:9090/alerts. Add an
+# Alertmanager if you want notifications.
+#
+# Note: the host_saturation group in niles-alerts.yml needs a node-exporter,
+# which this lean profile does not bundle — those rules simply stay inactive.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/niles-alerts.yml
+
+scrape_configs:
+  - job_name: niles
+    static_configs:
+      - targets: ["niles_metrics_proxy:8000"]
