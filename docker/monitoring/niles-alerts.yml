@@ -1,0 +1,89 @@
+# Prometheus alerting rules for Niles AI (W19 — Observability).
+#
+# Load from the homelab-gateway Prometheus (gateway-prometheus) via its
+# rule_files: config. Thresholds follow app-rules.md → Monitoring
+# (error rate > 1%, p95 > 2s, resource saturation).
+#
+# Metric names are defined in src/niles/metrics.py. Host CPU/memory alerts are
+# NOT Niles metrics — they come from the homelab node-exporter (gateway-node-
+# exporter); an example is included at the bottom and is host-wide, not
+# Niles-scoped.
+
+groups:
+  - name: niles_availability
+    rules:
+      - alert: NilesDown
+        expr: up{job="niles"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Niles is down"
+          description: "Prometheus has not been able to scrape job=niles for 2 minutes."
+
+  - name: niles_http
+    rules:
+      - alert: NilesHighErrorRate
+        expr: |
+          sum(rate(niles_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(niles_http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Niles 5xx error rate > 1% (5m)"
+          description: "{{ $value | humanizePercentage }} of HTTP requests are failing."
+
+      - alert: NilesHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(niles_http_request_duration_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Niles p95 request latency > 2s (5m)"
+          description: "95th-percentile request duration is {{ $value }}s."
+
+  - name: niles_resources
+    rules:
+      - alert: NilesDbPoolExhausted
+        expr: niles_db_pool_free == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Niles DB connection pool exhausted"
+          description: "No idle DB connections (niles_db_pool_free=0) for 3 minutes."
+
+      - alert: NilesToolRepairRateHigh
+        # Elevated text tool-call repairs ⇒ the model/prompt is emitting malformed
+        # tool calls; fix at the root (prompt / model), not by tolerating repairs.
+        expr: sum(rate(niles_llm_tool_repairs_total[15m])) > 0.2
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Niles tool-call repair rate elevated"
+          description: "Sustained json-repair/fuzzy-match fallback on tool calls."
+
+  # Host-level saturation (homelab-wide, NOT Niles-specific) — requires the
+  # homelab node-exporter. Included as the canonical CPU/memory > 80% example.
+  - name: host_saturation
+    rules:
+      - alert: HostHighMemory
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage > 80% (5m)"
+      - alert: HostHighCpu
+        expr: |
+          (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU usage > 80% (5m)"
