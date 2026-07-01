@@ -154,7 +154,7 @@ services:
   # Note-to-Self self-chat bug NOT yet fixed (upstream signal-cli #1930)
   signal_api:
     container_name: niles_signal_api
-    image: bbernhard/signal-cli-rest-api@sha256:419d08b18db00ecabd30386765662330fda85bdacc7c302f0cd541244895aeb5  # 1771797934-ci
+    image: bbernhard/signal-cli-rest-api@sha256:5b1dd4ece2fb8a40287f72fb90b139ae840fe6ac5147b78340fd0f627ca80973  # 1771797934-ci
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
