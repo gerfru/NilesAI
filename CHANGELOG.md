@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.14](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.13...niles-core-v0.2.14) (2026-07-09)
+
+
+### Bug Fixes
+
+* **deps:** bump lxml-html-clean 0.4.5 + msgpack 1.2.1 (security) ([#212](https://github.com/gerfru/NilesAI/issues/212)) ([20b5f1e](https://github.com/gerfru/NilesAI/commit/20b5f1e0e9cd3b7891874c2fd9096741353434dd))
+
+
+### Miscellaneous
+
+* **deps:** update actions/checkout action to v7 ([#202](https://github.com/gerfru/NilesAI/issues/202)) ([2a4ed83](https://github.com/gerfru/NilesAI/commit/2a4ed83b9cf5ac05ba7ce7e153296f3973ede458))
+* **deps:** update actions/setup-python digest to ece7cb0 ([#205](https://github.com/gerfru/NilesAI/issues/205)) ([411ae52](https://github.com/gerfru/NilesAI/commit/411ae5299a9b5914fb2fd0a6feb0e20164911ff4))
+* **deps:** update anthropics/claude-code-action digest to 37b464c ([#201](https://github.com/gerfru/NilesAI/issues/201)) ([082fc67](https://github.com/gerfru/NilesAI/commit/082fc67741626c022afc96d511c86818e0e57c76))
+* **deps:** update astral-sh/ruff-action action to v4.1.0 ([#209](https://github.com/gerfru/NilesAI/issues/209)) ([af6d56d](https://github.com/gerfru/NilesAI/commit/af6d56d59d5bb3859688d500f278ec0f2f50f2e2))
+* **deps:** update astral-sh/setup-uv action to v8.3.2 ([#210](https://github.com/gerfru/NilesAI/issues/210)) ([e775978](https://github.com/gerfru/NilesAI/commit/e77597889ef3908faf305a37edc73fe3a57b3dee))
+* **deps:** update bbernhard/signal-cli-rest-api docker digest to 5b1dd4e ([#206](https://github.com/gerfru/NilesAI/issues/206)) ([9d0d14e](https://github.com/gerfru/NilesAI/commit/9d0d14e6aed7dca0c965f80c9d632960432c7554))
+* **deps:** update caddy:2.11-alpine docker digest to 5f5c864 ([#207](https://github.com/gerfru/NilesAI/issues/207)) ([2ca3c1d](https://github.com/gerfru/NilesAI/commit/2ca3c1d585745cfe1a1b0c49e7a853a25de3f191))
+* **deps:** update dependency pydantic-settings to v2.14.2 [security] ([#204](https://github.com/gerfru/NilesAI/issues/204)) ([e060f71](https://github.com/gerfru/NilesAI/commit/e060f714f885bf2fe914c246eb64b7504f5b4268))
+* **deps:** update ghcr.io/astral-sh/uv docker tag to v0.11.28 ([#203](https://github.com/gerfru/NilesAI/issues/203)) ([107807c](https://github.com/gerfru/NilesAI/commit/107807c36cea4add68a16252f30e778195d213ca))
+* **deps:** update prom/prometheus docker tag to v3.13.0 ([#208](https://github.com/gerfru/NilesAI/issues/208)) ([01aa4a4](https://github.com/gerfru/NilesAI/commit/01aa4a4c78ca3f49d39c200d2cf0effb3a8f5ad3))
+
 ## [0.2.13](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.12...niles-core-v0.2.13) (2026-06-16)
 
 
