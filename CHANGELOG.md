@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.15](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.14...niles-core-v0.2.15) (2026-07-09)
+
+
+### Miscellaneous
+
+* **deps:** bump pip from 26.1 to 26.1.2 ([#213](https://github.com/gerfru/NilesAI/issues/213)) ([853e114](https://github.com/gerfru/NilesAI/commit/853e114703cec29f5149ed257bd6cafad02c54d1))
+
 ## [0.2.14](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.13...niles-core-v0.2.14) (2026-07-09)
 
 
