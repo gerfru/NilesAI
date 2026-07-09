@@ -62,6 +62,8 @@ dependencies = [
 
     # HTML text extraction for web fetch MCP server
     "trafilatura>=2.0.0",
+    # Pin transitive lxml[html-clean] to patched release (GHSA-4jhm-jv67-739f)
+    "lxml-html-clean>=0.4.5",
 
     # Robust JSON repair for malformed LLM tool-call output
     "json-repair>=0.58.0",
