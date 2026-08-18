@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.16](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.15...niles-core-v0.2.16) (2026-08-18)
+
+
+### Code Refactoring
+
+* **docker:** use dedicated external gateway networks per service ([#229](https://github.com/gerfru/NilesAI/issues/229)) ([342b786](https://github.com/gerfru/NilesAI/commit/342b786b9072cd0c3b79ea7e66ba66006f693de2))
+
+
+### Miscellaneous
+
+* **deps:** unblock CI — bundle security bumps, docker/action updates, fix ruff format ([#226](https://github.com/gerfru/NilesAI/issues/226)) ([298f642](https://github.com/gerfru/NilesAI/commit/298f642abbf376f9f6ea0941c9d9ba39c8cffbb5))
+* **deps:** update astral-sh/setup-uv action to v10 ([#228](https://github.com/gerfru/NilesAI/issues/228)) ([7cf51b6](https://github.com/gerfru/NilesAI/commit/7cf51b6ba20670c1ef879ce212915ad6aea3f08c))
+
 ## [0.2.15](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.14...niles-core-v0.2.15) (2026-07-09)
 
 
