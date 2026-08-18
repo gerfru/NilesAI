@@ -276,10 +276,12 @@ web via `app.state`, not imports.
 ToolHandler = Callable[[dict, str, ToolContext], Awaitable[dict]]
 TOOL_REGISTRY: dict[str, ToolHandler] = {}
 
+
 def register_tool(name: str):
     def decorator(func: ToolHandler) -> ToolHandler:
         TOOL_REGISTRY[name] = func
         return func
+
     return decorator
 ```
 
@@ -524,12 +526,12 @@ removal of 2 mypy override groups improve type safety.
 **Prometheus metrics** (`metrics.py`, 40 lines):
 
 ```python
-REQUESTS      = Counter("niles_http_requests_total", ..., ["method", "endpoint", "status"])
-LATENCY       = Histogram("niles_http_request_duration_seconds", ..., ["method", "endpoint"])
-LLM_LATENCY   = Histogram("niles_llm_request_duration_seconds")
-LLM_TOKENS    = Counter("niles_llm_tokens_total", ..., ["type"])  # prompt/completion
-TOOL_CALLS    = Counter("niles_tool_calls_total", ..., ["tool_name", "success"])
-ACTIVE_SSE    = Gauge("niles_active_sse_connections")
+REQUESTS = Counter("niles_http_requests_total", ..., ["method", "endpoint", "status"])
+LATENCY = Histogram("niles_http_request_duration_seconds", ..., ["method", "endpoint"])
+LLM_LATENCY = Histogram("niles_llm_request_duration_seconds")
+LLM_TOKENS = Counter("niles_llm_tokens_total", ..., ["type"])  # prompt/completion
+TOOL_CALLS = Counter("niles_tool_calls_total", ..., ["tool_name", "success"])
+ACTIVE_SSE = Gauge("niles_active_sse_connections")
 ```
 
 Metrics endpoint at `/metrics` (API-key protected). HTTP middleware records

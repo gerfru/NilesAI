@@ -294,15 +294,18 @@ All migrations use `op.execute()` with raw SQL. No SQLAlchemy Table objects.
 
 ```python
 """Short description of the change."""
+
 from alembic import op
 
 revision = "003"
 down_revision = "002"
 
+
 def upgrade():
     op.execute("""
         ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT
     """)
+
 
 def downgrade():
     op.execute("""
@@ -357,6 +360,7 @@ Example:
 
 ```python
 from . import ToolContext, register_tool
+
 
 @register_tool("my_tool")
 async def handle_my_tool(args: dict, chat_id: str, ctx: ToolContext) -> dict:

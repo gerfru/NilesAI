@@ -412,11 +412,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://host.docker.internal:11434/v1"
     llm_model: str = "llama3.1:8b"
     llm_temperature_tools: float = 0.35  # temperature when tools are available
-    llm_temperature_chat: float = 0.3    # temperature for pure chat (no tools)
-    llm_max_tokens: int = 4096           # max completion tokens per LLM call
-    llm_timeout: float = 120.0           # max seconds per LLM request
-    llm_num_ctx: int = 8192              # Ollama context window (input+output)
-    mcp_max_result_tokens: int = 3000    # cap a single MCP tool result (approx. tokens)
+    llm_temperature_chat: float = 0.3  # temperature for pure chat (no tools)
+    llm_max_tokens: int = 4096  # max completion tokens per LLM call
+    llm_timeout: float = 120.0  # max seconds per LLM request
+    llm_num_ctx: int = 8192  # Ollama context window (input+output)
+    mcp_max_result_tokens: int = 3000  # cap a single MCP tool result (approx. tokens)
     # PostgreSQL
     postgres_host: str = "evolution_postgres"
     postgres_port: int = 5432
@@ -430,9 +430,9 @@ class Settings(BaseSettings):
     # Internal base URL for webhooks (Evolution API -> Niles Core, Docker-internal)
     webhook_base_url: str = "http://niles_core:8000"
     # Auth
-    niles_api_key: str      # Auto-generated via secrets.token_urlsafe(32)
-    session_secret: str     # Auto-generated via secrets.token_urlsafe(64)
-    base_url: str = ""      # For OAuth redirect URI
+    niles_api_key: str  # Auto-generated via secrets.token_urlsafe(32)
+    session_secret: str  # Auto-generated via secrets.token_urlsafe(64)
+    base_url: str = ""  # For OAuth redirect URI
     # Timezone
     timezone: str = "Europe/Vienna"
     # Phone normalization: default country code (without +) for local numbers
@@ -470,19 +470,19 @@ class Settings(BaseSettings):
     feature_search: bool = False
     searxng_url: str = "http://searxng:8080"
     # Briefing / Digest
-    briefing_channel: str = "whatsapp"        # whatsapp | signal | both
+    briefing_channel: str = "whatsapp"  # whatsapp | signal | both
     feature_briefing_daily: bool = False
     feature_briefing_weekly: bool = False
-    briefing_daily_time: str = "07:30"        # HH:MM, Mon-Fri
-    briefing_weekly_time: str = "07:15"       # HH:MM, Monday
+    briefing_daily_time: str = "07:30"  # HH:MM, Mon-Fri
+    briefing_weekly_time: str = "07:15"  # HH:MM, Monday
     # Notion RAG (see docs/RAG.md for architecture details)
     feature_notion: bool = False
     notion_token: str = ""
-    notion_sync_interval: int = 30            # minutes between syncs
+    notion_sync_interval: int = 30  # minutes between syncs
     notion_embedding_model: str = "nomic-embed-text-v2-moe"
-    notion_summary_model: str = ""            # LLM for summaries (falls back to llm_model)
-    notion_summary_max_input: int = 4000      # Max chars sent to LLM for summarization
-    notion_summary_max_tokens: int = 200      # Max LLM output tokens for summary
+    notion_summary_model: str = ""  # LLM for summaries (falls back to llm_model)
+    notion_summary_max_input: int = 4000  # Max chars sent to LLM for summarization
+    notion_summary_max_tokens: int = 200  # Max LLM output tokens for summary
 
     # Credential encryption (column-level, Fernet AES-128-CBC + HMAC)
     # REQUIRED by default. App refuses to start without it.
@@ -515,11 +515,23 @@ Complete settings table with defaults and env variables: see #6.1.
 
 ```python
 class NilesAgent:
-    def __init__(self, config, contacts, whatsapp, memory, history,
-                 mcp_manager=None, calendar=None, calendar_manager=None,
-                 wa_store=None, vikunja_store=None,
-                 signal=None, signal_store=None,
-                 user_store=None, http_client=None): ...
+    def __init__(
+        self,
+        config,
+        contacts,
+        whatsapp,
+        memory,
+        history,
+        mcp_manager=None,
+        calendar=None,
+        calendar_manager=None,
+        wa_store=None,
+        vikunja_store=None,
+        signal=None,
+        signal_store=None,
+        user_store=None,
+        http_client=None,
+    ): ...
     async def process_event(self, event: dict) -> str: ...
     async def process_event_stream(self, event: dict): ...  # SSE async generator
     async def _execute_tool_call(self, tool_call, chat_id) -> dict: ...
