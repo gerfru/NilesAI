@@ -35,5 +35,7 @@ if ! python -c "import pytest" 2>/dev/null; then
     echo ""
 fi
 
-# Run tests (exclude integration + e2e tests — use dedicated scripts for those)
-python -m pytest tests/ -v -m "not integration and not e2e and not llm_judge" "$@"
+# Run tests (exclude integration + e2e + live-LLM tests — use dedicated scripts for those)
+# Both llm_judge (Ollama + Claude API) and llm_eval (live Ollama) hit real LLM endpoints
+# and hang on dev machines where Ollama is reachable; CI excludes llm_eval the same way.
+python -m pytest tests/ -v -m "not integration and not e2e and not llm_judge and not llm_eval" "$@"

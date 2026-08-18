@@ -213,7 +213,7 @@ services:
   # Langfuse (LLM Tracing, opt-in) — activate with: docker compose --profile langfuse up -d
   # Access: http://localhost:3000  |  Credentials: set via LANGFUSE_* env vars
   langfuse:
-    image: langfuse/langfuse:3@sha256:1a128e60b0b6547a576010819f91e27c6bde929ca3c640115038e5de15511f9f
+    image: langfuse/langfuse:4@sha256:f24c8b1c987a5dc78e3a75ad3e5d9f87ebcadafbd91d8674a739c43fad451905
     container_name: niles_langfuse
     restart: unless-stopped
     security_opt:
@@ -374,7 +374,7 @@ services:
         max-file: "2"
 
   niles_prometheus:
-    image: prom/prometheus:v3.13.0@sha256:c6b27ea434f8389bfe233fbc7be381cf50587c286e871bc842008f5a1b1908a7
+    image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
     container_name: niles_prometheus
     restart: unless-stopped
     user: "65534:65534"
