@@ -1,6 +1,6 @@
 # Niles AI - Complete Docker Setup
 # Services: Niles Core + Evolution API + PostgreSQL
-# HTTPS termination handled by homelab-gateway (external Caddy)
+# HTTPS termination handled by homelab-gateway through dedicated external networks.
 
 services:
   # PostgreSQL for Evolution API
@@ -74,7 +74,7 @@ services:
       - evolution_instances:/evolution/instances
     networks:
       - niles_network
-      - proxy
+      - gateway-whatsapp
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 30s
@@ -146,7 +146,7 @@ services:
         condition: service_healthy
     networks:
       - niles_network
-      - proxy
+      - gateway-vikunja
     restart: unless-stopped
 
   # Signal (signal-cli-rest-api) — activate via Settings UI (feature_signal)
@@ -308,7 +308,7 @@ services:
       - ../config:/app/config:ro
     networks:
       - niles_network
-      - proxy
+      - gateway-niles
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -422,5 +422,12 @@ volumes:
 networks:
   niles_network:
     driver: bridge
-  proxy:
+  gateway-niles:
     external: true
+    name: gateway-niles
+  gateway-vikunja:
+    external: true
+    name: gateway-vikunja
+  gateway-whatsapp:
+    external: true
+    name: gateway-whatsapp
