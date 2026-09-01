@@ -183,7 +183,7 @@ services:
 
   # SearXNG (Privacy-focused meta search engine) — activate via --profile search
   searxng:
-    image: searxng/searxng@sha256:4baf815fff29c6ba8b2f41625deea54f8b1e9371d5c670ca510eebc7d0153883  # 2025.5.10-1b787ed35
+    image: searxng/searxng@sha256:b36af7984b87191b595bc5301418ed6432c047668a4547ab531a7439b816fac3  # 2025.5.10-1b787ed35
     container_name: niles_searxng
     restart: unless-stopped
     security_opt:
