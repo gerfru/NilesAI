@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.17](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.16...niles-core-v0.2.17) (2026-09-01)
+
+
+### Miscellaneous
+
+* **deps:** update anchore/sbom-action action to v0.24.1 ([#232](https://github.com/gerfru/NilesAI/issues/232)) ([abf7983](https://github.com/gerfru/NilesAI/commit/abf79831150b630f1630efec36ff46785e9cd8f9))
+* **deps:** update anchore/sbom-action action to v0.24.2 ([#234](https://github.com/gerfru/NilesAI/issues/234)) ([ed3948c](https://github.com/gerfru/NilesAI/commit/ed3948c062d7ecb8ea25f4cb07def781582f2f3d))
+* **deps:** update langfuse/langfuse:4 docker digest to 7dcc141 ([#235](https://github.com/gerfru/NilesAI/issues/235)) ([c459de3](https://github.com/gerfru/NilesAI/commit/c459de37b588c9917bbfd78340b49a8f40ce8f30))
+* **deps:** update pgvector/pgvector:pg15 docker digest to a947c45 ([#236](https://github.com/gerfru/NilesAI/issues/236)) ([c556b65](https://github.com/gerfru/NilesAI/commit/c556b659a3fd95d8a72d65f88ec50f99d5890f31))
+* **deps:** update searxng/searxng docker digest to b36af79 ([#238](https://github.com/gerfru/NilesAI/issues/238)) ([edf78d2](https://github.com/gerfru/NilesAI/commit/edf78d29475fbede117b2040dc6ff66efc7ddc75))
+
 ## [0.2.16](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.15...niles-core-v0.2.16) (2026-08-18)
 
 
