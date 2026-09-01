@@ -6,7 +6,7 @@ services:
   # PostgreSQL for Evolution API
   evolution_postgres:
     container_name: niles_evolution_postgres
-    image: pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
+    image: pgvector/pgvector:pg15@sha256:a947c45cdc5906a1bc951f20a8709e321256343ee0f251e4ae00b5e7def4e6da
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
