@@ -74,7 +74,7 @@ jobs:
         # GHSA-pjjw-68hj-v9mw: uv RECORD path traversal on uninstall (build tool, not runtime dep)
         # PYSEC-2026-196: pip console_scripts path traversal (build tool, not runtime)
         run: |
-          uv export --frozen --no-hashes -o /tmp/req.txt
+          uv export --frozen --no-hashes --no-emit-project -o /tmp/req.txt
           pip-audit -r /tmp/req.txt --ignore-vuln CVE-2025-69872 --ignore-vuln GHSA-pjjw-68hj-v9mw --ignore-vuln PYSEC-2026-196
       - name: bandit
         # These rules are handled by ruff S-rules with targeted per-file-ignores
