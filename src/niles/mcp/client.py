@@ -187,7 +187,7 @@ class MCPManager:
             else:
                 logger.debug("Skipping non-text content item: %s", type(c).__name__)
 
-        if result.isError:
+        if result.is_error:
             return f"Error: {' '.join(texts)}" if texts else "Error: unknown MCP error"
 
         return "\n".join(texts) if texts else ""
@@ -271,7 +271,7 @@ def _simplify_schema(schema: dict) -> dict:
 
 def _mcp_tool_to_openai(prefixed_name: str, tool: Tool) -> dict:
     """Convert an MCP Tool to OpenAI function-calling format."""
-    schema = tool.inputSchema or {"type": "object", "properties": {}}
+    schema = tool.input_schema or {"type": "object", "properties": {}}
     return {
         "type": "function",
         "function": {
