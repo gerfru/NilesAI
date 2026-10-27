@@ -892,6 +892,13 @@ docker compose -f docker/docker-compose.yml logs -f niles_core
 Langfuse ist ein optionaler Self-hosted LLM-Tracing-Service, der jeden LLM-Aufruf
 (Prompt, Response, Latenz, Token-Verbrauch, Tool-Calls) aufzeichnet.
 
+Das Python-SDK v5 benoetigt **Langfuse Server >= 4.59.0**. Das Compose-Image
+ist auf diese Version mit Digest gepinnt. Vor einem Upgrade eines bestehenden
+Servers Datenbanken und weitere persistente Langfuse-Daten sichern und den
+[offiziellen Upgrade-Leitfaden](https://langfuse.com/self-hosting/upgrade)
+beachten. Den Server zuerst aktualisieren; fuer aeltere Server SDK v4 verwenden.
+Der Image-Pin aktualisiert keinen bereits laufenden Container automatisch.
+
 ```bash
 # Vorbereitung: Secrets generieren
 openssl rand -hex 32   # → LANGFUSE_NEXTAUTH_SECRET
@@ -923,10 +930,46 @@ LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 ```
 
-Langfuse-Paket installieren:
+Langfuse-Paket fuer lokalen Betrieb installieren (bei `uv run` ebenfalls
+`--extra tracing` angeben, damit das optionale Paket installiert bleibt):
 ```bash
-uv add langfuse
+uv sync --frozen --extra tracing
+uv run --extra tracing uvicorn niles.main:app --host 127.0.0.1 --port 8000
 ```
+
+Das Standard-Docker-Image enthaelt das optionale SDK nicht. Fuer Tracing das
+Niles-Image mit dem Build-Argument bauen und den Core neu erstellen:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yml build --build-arg INSTALL_TRACING=true niles_core
+docker compose --env-file .env -f docker/docker-compose.yml up -d --no-deps niles_core
+```
+
+### Upgrade pruefen
+
+SDK-Regressionstests mit synthetischen Daten, ohne laufendes LLM oder Langfuse:
+
+```bash
+uv sync --frozen --extra dev --extra tracing
+uv run --frozen --extra dev --extra tracing pytest tests/test_tracing.py -v
+```
+
+Diese Tests pruefen den echten SDK-Wrapper fuer normale und gestreamte Antworten
+einschliesslich Modell, Ein-/Ausgabe und Token-Verbrauch mit einem In-Memory-
+Exporter. Sie ersetzen keinen Test gegen den eigenen Langfuse-Server:
+
+1. Server-Version im Langfuse-UI pruefen: mindestens 4.59.0.
+2. Niles mit den eigenen Langfuse-Zugangsdaten starten.
+3. Je eine synthetische Chat-Anfrage ohne Streaming und ueber den Web-Chat mit
+   Streaming ausfuehren, z. B. "Antworte nur mit Hallo.".
+4. Im eigenen Langfuse-Projekt auf beide Generations warten und Modell,
+   Ein-/Ausgabe und Token-Verbrauch pruefen, soweit das LLM diese liefert.
+5. Bei fehlenden Traces die Niles-Logs auf Exportfehler pruefen. Eine erfolgreiche
+   Chat-Antwort allein bestaetigt keinen erfolgreichen Trace-Export.
+
+Ohne vollstaendige `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY` und
+`LANGFUSE_SECRET_KEY` bleibt der normale lokale Client aktiv. Traces enthalten
+Chat-Inhalte; nur einen bewusst konfigurierten eigenen Server verwenden.
 
 ### Token Budget Alert (Prometheus)
 
