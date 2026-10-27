@@ -13,11 +13,11 @@ Configuration via environment variables:
 import os
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from niles.http_retry import retry_http
 
-mcp = FastMCP("search")
+mcp = MCPServer("search")
 
 _DEFAULT_RESULT_COUNT = 10
 _DEFAULT_LANGUAGE = "de"
