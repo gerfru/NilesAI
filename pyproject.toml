@@ -27,7 +27,7 @@ dependencies = [
     "tiktoken>=0.8.0",  # approximate token counting for the context budget
 
     # MCP SDK
-    "mcp>=1.26.0",
+    "mcp>=2.3.0,<3",
 
     # Config
     "pydantic-settings>=2.13.0",

@@ -16,11 +16,11 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from niles.http_retry import retry_http
 
-mcp = FastMCP("weather")
+mcp = MCPServer("weather")
 
 _BASE_URL = "https://api.open-meteo.com/v1/forecast"
 
