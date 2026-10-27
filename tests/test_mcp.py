@@ -1,7 +1,11 @@
 """Tests for MCP client manager and agent integration."""
 
 import logging
+import sys
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from mcp.types import Tool
 
 from niles.mcp.client import (
     MCPManager,
@@ -42,7 +46,7 @@ class TestMCPToolToOpenAI:
     def test_converts_tool(self):
         mock_tool = MagicMock()
         mock_tool.description = "A test tool"
-        mock_tool.inputSchema = {
+        mock_tool.input_schema = {
             "type": "object",
             "properties": {"query": {"type": "string"}},
             "required": ["query"],
@@ -58,7 +62,7 @@ class TestMCPToolToOpenAI:
     def test_handles_none_description(self):
         mock_tool = MagicMock()
         mock_tool.description = None
-        mock_tool.inputSchema = {"type": "object", "properties": {}}
+        mock_tool.input_schema = {"type": "object", "properties": {}}
 
         result = _mcp_tool_to_openai("mcp__s__t", mock_tool)
         assert result["function"]["description"] == ""
@@ -66,10 +70,38 @@ class TestMCPToolToOpenAI:
     def test_handles_none_schema(self):
         mock_tool = MagicMock()
         mock_tool.description = "test"
-        mock_tool.inputSchema = None
+        mock_tool.input_schema = None
 
         result = _mcp_tool_to_openai("mcp__s__t", mock_tool)
         assert result["function"]["parameters"] == {"type": "object", "properties": {}}
+
+    def test_converts_real_sdk_tool(self):
+        tool = Tool(name="sample", description="Sample tool", input_schema={"type": "object", "properties": {}})
+        result = _mcp_tool_to_openai("mcp__test__sample", tool)
+        assert result["function"]["name"] == "mcp__test__sample"
+        assert result["function"]["parameters"]["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_real_mcp_stdio_roundtrip(tmp_path, monkeypatch):
+    """Exercise the installed MCP SDK end-to-end, not mocked protocol objects."""
+    monkeypatch.delenv("SEARXNG_URL", raising=False)
+    config = tmp_path / "mcp.yaml"
+    config.write_text(
+        f"servers:\n  search:\n    command: {sys.executable}\n    args: ['-m', 'niles.mcp.search']\n",
+        encoding="utf-8",
+    )
+    manager = MCPManager(config_path=config)
+    try:
+        await manager.start_all()
+        tool_name = "mcp__search__web_search"
+        assert manager.is_mcp_tool(tool_name)
+        tools = manager.get_openai_tools()
+        assert any(tool["function"]["name"] == tool_name for tool in tools)
+        result = await manager.call_tool(tool_name, {"query": "test"})
+        assert "SEARXNG_URL nicht konfiguriert" in result
+    finally:
+        await manager.stop_all()
 
 
 class TestSimplifySchema:
@@ -321,7 +353,7 @@ class TestMCPManagerCallTool:
         mock_content = MagicMock()
         mock_content.text = "result text"
         mock_result = MagicMock()
-        mock_result.isError = False
+        mock_result.is_error = False
         mock_result.content = [mock_content]
         mock_session.call_tool.return_value = mock_result
 
@@ -340,7 +372,7 @@ class TestMCPManagerCallTool:
         mock_content = MagicMock()
         mock_content.text = "something went wrong"
         mock_result = MagicMock()
-        mock_result.isError = True
+        mock_result.is_error = True
         mock_result.content = [mock_content]
         mock_session.call_tool.return_value = mock_result
 
@@ -479,7 +511,7 @@ class TestDestructiveToolBlocking:
         tool = MagicMock()
         tool.name = name
         tool.description = f"Tool: {name}"
-        tool.inputSchema = {"type": "object", "properties": {}}
+        tool.input_schema = {"type": "object", "properties": {}}
         return tool
 
     async def _start_with_tools(self, tool_names: list[str]) -> MCPManager:
