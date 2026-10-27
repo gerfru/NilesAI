@@ -8,16 +8,26 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /build
 
+ARG INSTALL_TRACING=false
+
 # Install dependencies first (cached layer, only invalidated when pyproject.toml/uv.lock change)
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    if [ "$INSTALL_TRACING" = "true" ]; then \
+      uv sync --frozen --no-dev --no-install-project --extra tracing; \
+    else \
+      uv sync --frozen --no-dev --no-install-project; \
+    fi
 
 # Copy source code, install project, and build Tailwind CSS
 COPY tailwind.config.js .
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    if [ "$INSTALL_TRACING" = "true" ]; then \
+      uv sync --frozen --no-dev --no-editable --extra tracing; \
+    else \
+      uv sync --frozen --no-dev --no-editable; \
+    fi
 RUN python -c "\
 import urllib.request, hashlib; \
 urllib.request.urlretrieve('https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64', '/usr/local/bin/tailwindcss'); \

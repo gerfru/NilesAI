@@ -96,7 +96,7 @@ class NilesAgent:
                 self._OpenAI = _TracedOpenAI
                 logger.info("LLM tracing enabled via Langfuse (%s)", config.langfuse_host)
             except ImportError:
-                logger.warning("langfuse package not installed; LLM tracing disabled. Install: uv add langfuse")
+                logger.warning("langfuse package not installed; LLM tracing disabled. Install: uv sync --extra tracing")
         self.llm_timeout = config.llm_timeout
         self.llm = self._OpenAI(base_url=config.llm_base_url, api_key="not-needed", timeout=self.llm_timeout)
         self.model = config.llm_model

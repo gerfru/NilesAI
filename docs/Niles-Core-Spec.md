@@ -30,7 +30,7 @@ Niles is a local, private AI butler on a Mac Mini M4. It receives events from va
 | Vikunja 1.1.0 | 3456 | `https://vikunja.example.local` | Todo/task management |
 | signal-cli-rest-api | 8080 | Not exposed | Signal gateway (optional) |
 | SearXNG | 8080 | Not exposed | Meta search engine (optional, profile `search`) |
-| Langfuse 3 | 3000 | `127.0.0.1:3000` | LLM tracing (optional, profile `langfuse`) |
+| Langfuse >= 4.59.0 | 3000 | `127.0.0.1:3000` | LLM tracing (optional, profile `langfuse`, Python SDK v5) |
 
 **Network architecture:** All Docker services communicate internally via HTTP on `niles_network`. External access through homelab-gateway (Caddy reverse proxy on `proxy` network, HTTPS with self-signed certs, subdomain-based routing). PostgreSQL and internal service ports are not exposed. signal-cli-rest-api runs as a Docker service alongside other containers (activated via `feature_signal` in Settings UI).
 
@@ -1476,7 +1476,7 @@ Multi-stage build (Builder → gws-downloader → Runtime):
 | `vikunja` | `vikunja/vikunja:1.1.0` | niles_network, proxy | Todo/task management |
 | `niles_signal_api` | `bbernhard/signal-cli-rest-api:1771797934-ci` | niles_network | Signal gateway (signal-cli v0.13.24) |
 | `niles_searxng` | `searxng/searxng:2025.5.10-1b787ed35` | niles_network | Meta search engine (profile `search`) |
-| `niles_langfuse` | `langfuse/langfuse:3` | niles_network | LLM tracing (opt-in, profile `langfuse`) |
+| `niles_langfuse` | `langfuse/langfuse:4.59.0` (digest-pinned) | niles_network | LLM tracing (opt-in, profile `langfuse`, Python SDK v5) |
 
 HTTPS termination is handled by `gateway-caddy` in the separate [homelab-gateway](../../homelab-gateway) repo.
 
