@@ -15,11 +15,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import trafilatura
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from niles.network import resolve_public_ip
 
-mcp = FastMCP("fetch")
+mcp = MCPServer("fetch")
 
 # Defaults
 _DEFAULT_MAX_CHARS = 8000
