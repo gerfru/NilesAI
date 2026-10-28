@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.17](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.16...niles-core-v0.2.17) (2026-10-28)
+
+
+### Bug Fixes
+
+* **mcp:** migrate NilesAI to MCP SDK 2.3 ([#253](https://github.com/gerfru/NilesAI/issues/253)) ([365692d](https://github.com/gerfru/NilesAI/commit/365692de5d0ca710ae15dfe8993c146188b57506))
+* **tracing:** upgrade Langfuse SDK to v5 ([#249](https://github.com/gerfru/NilesAI/issues/249)) ([65139c8](https://github.com/gerfru/NilesAI/commit/65139c884422785fd3133c0074381dcee09a98d0))
+
+
+### Miscellaneous
+
+* **deps:** update actions/setup-python digest to 6d4fd22 ([#251](https://github.com/gerfru/NilesAI/issues/251)) ([787b2f6](https://github.com/gerfru/NilesAI/commit/787b2f6280d512aff8733d87f11e9b8ceb460134))
+* **deps:** update actions/upload-artifact digest to cf430e0 ([#246](https://github.com/gerfru/NilesAI/issues/246)) ([467478d](https://github.com/gerfru/NilesAI/commit/467478d2d628ae5b942e9a880ae02d714eb5e281))
+* **deps:** update anchore/sbom-action action to v0.24.1 ([#232](https://github.com/gerfru/NilesAI/issues/232)) ([abf7983](https://github.com/gerfru/NilesAI/commit/abf79831150b630f1630efec36ff46785e9cd8f9))
+* **deps:** update anchore/sbom-action action to v0.24.2 ([#234](https://github.com/gerfru/NilesAI/issues/234)) ([ed3948c](https://github.com/gerfru/NilesAI/commit/ed3948c062d7ecb8ea25f4cb07def781582f2f3d))
+* **deps:** update anchore/sbom-action action to v0.24.3 ([#245](https://github.com/gerfru/NilesAI/issues/245)) ([b5b8831](https://github.com/gerfru/NilesAI/commit/b5b88318714da58e96a22e72917de1737344d12a))
+* **deps:** update anthropics/claude-code-action digest to 8041f1d ([#243](https://github.com/gerfru/NilesAI/issues/243)) ([dc01758](https://github.com/gerfru/NilesAI/commit/dc017582da4193ea81b18ca93d7a8df7f1a0b02d))
+* **deps:** update astral-sh/setup-uv action to v10.1.0 ([#239](https://github.com/gerfru/NilesAI/issues/239)) ([45b389b](https://github.com/gerfru/NilesAI/commit/45b389bdf32683ae5a48f54c6d0a0a2d07e70650))
+* **deps:** update astral-sh/setup-uv action to v10.2.0 ([#240](https://github.com/gerfru/NilesAI/issues/240)) ([c8f60ff](https://github.com/gerfru/NilesAI/commit/c8f60ffc0631eb6110d3edb9cbe08b67cb4069e9))
+* **deps:** update astral-sh/setup-uv action to v10.3.2 ([#247](https://github.com/gerfru/NilesAI/issues/247)) ([55b995b](https://github.com/gerfru/NilesAI/commit/55b995bd00d03b1f147051487959aff9ee9d45b8))
+* **deps:** update astral-sh/setup-uv action to v10.3.3 ([#256](https://github.com/gerfru/NilesAI/issues/256)) ([e5f8795](https://github.com/gerfru/NilesAI/commit/e5f8795275e426a0962034f6b0db08b46ba6b39c))
+* **deps:** update ghcr.io/astral-sh/uv docker tag to v0.13.6 ([#242](https://github.com/gerfru/NilesAI/issues/242)) ([fbee088](https://github.com/gerfru/NilesAI/commit/fbee088f3b8f8070efc248351a4b6bb110fc5346))
+* **deps:** update langfuse/langfuse:4 docker digest to 7dcc141 ([#235](https://github.com/gerfru/NilesAI/issues/235)) ([c459de3](https://github.com/gerfru/NilesAI/commit/c459de37b588c9917bbfd78340b49a8f40ce8f30))
+* **deps:** update pgvector/pgvector:pg15 docker digest to a947c45 ([#236](https://github.com/gerfru/NilesAI/issues/236)) ([c556b65](https://github.com/gerfru/NilesAI/commit/c556b659a3fd95d8a72d65f88ec50f99d5890f31))
+* **deps:** update prom/prometheus docker tag to v3.15.1 ([#244](https://github.com/gerfru/NilesAI/issues/244)) ([374bce4](https://github.com/gerfru/NilesAI/commit/374bce410b2d55ca30c8e6c9132eb2262e6f152c))
+* **deps:** update searxng/searxng docker digest to b36af79 ([#238](https://github.com/gerfru/NilesAI/issues/238)) ([edf78d2](https://github.com/gerfru/NilesAI/commit/edf78d29475fbede117b2040dc6ff66efc7ddc75))
+
 ## [0.2.16](https://github.com/gerfru/NilesAI/compare/niles-core-v0.2.15...niles-core-v0.2.16) (2026-08-18)
 
 
