@@ -213,7 +213,7 @@ services:
   # Langfuse (LLM Tracing, opt-in) — activate with: docker compose --profile langfuse up -d
   # Access: http://localhost:3000  |  Credentials: set via LANGFUSE_* env vars
   langfuse:
-    image: langfuse/langfuse:4.59.0@sha256:48ecae32cd74d3a567588602c144de0ec626daf32dc5f2e831a03cebd0bb2d34
+    image: langfuse/langfuse:4.72.0@sha256:c311fd9db4b69f6514fdcb1b86a2a105d5a4ed51fbf0ded033ff2722459c804a
     container_name: niles_langfuse
     restart: unless-stopped
     security_opt:
